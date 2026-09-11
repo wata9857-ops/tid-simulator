@@ -1,0 +1,300 @@
+/* 留置場(車庫)の定義と、その構内配線。
+
+   DEPOTS        … シミュレーター上の留置場。capacity は出区待ち列車を置ける数。
+   DEPOT_LAYOUTS … 構内配線図の再現。同梱の配線略図(スクリーンショット)をもとに、
+                   線群・留置線・収容両数を書き起こしたもの。
+                   留置場をクリックしたときの構内図表示 (js/22-depot-view.js) で使う。
+
+   tracks の各項目
+     label … 線名 (画面に出す)
+     cars  … その線に留置できる両数
+     kind  … stabling(電留線) / shed(検修庫) / wash(洗浄線) / siding(待避・副本線)
+*/
+const DEPOTS = {
+    "姫路": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "姫路〜東姫路間" },
+    "西明石": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: -40 }, display: "西明石〜明石間" },
+    "宮原操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "宮原操" },
+    "高槻": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: -40 }, display: "高槻〜島本間" },
+    "向日町操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "向日町操" },
+    "草津": { capacity: 2, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "草津〜栗東間" },
+    "野洲": { capacity: 6, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "野洲〜篠原間" },
+    "米原": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "米原〜坂田間" }
+};
+
+/* 留置場の在線リスト (DEPOTS[x].trains) の管理。
+
+   ★修正: これまで各所から直接 push していたため
+            ・同じ列車が二重に登録される
+            ・消滅した列車や、すでに出区した列車が残り続ける
+          という状態になり、DEPOTS[x].trains.length が実際より多く見えていた。
+          この数は入区の可否判定 (capacity) や指令パッドの表示に使われるため、
+          入区できずに消滅する列車が増える原因にもなっていた。
+          登録・削除・掃除をここに集約する。
+*/
+
+/** 留置場へ列車を登録する。すでに入っている場合は何もしない。 */
+function depotAdd(depotName, train) {
+    const dep = DEPOTS[depotName];
+    if (!dep) return false;
+    depotRemove(train);                       // 別の留置場に残っていたら外す
+    if (dep.trains.indexOf(train) < 0) dep.trains.push(train);
+    return true;
+}
+
+/** すべての留置場の在線リストから、その列車を外す。 */
+function depotRemove(train) {
+    for (const name in DEPOTS) {
+        const list = DEPOTS[name].trains;
+        for (let i = list.length - 1; i >= 0; i--) {
+            if (list[i] === train) list.splice(i, 1);
+        }
+    }
+}
+
+/** 消滅済み・すでに本線へ出た列車を在線リストから取り除く。毎Tick呼ぶ。 */
+function depotPrune() {
+    for (const name in DEPOTS) {
+        const list = DEPOTS[name].trains;
+        for (let i = list.length - 1; i >= 0; i--) {
+            const t = list[i];
+            if (!t || t.state !== "in_depot") list.splice(i, 1);
+        }
+    }
+}
+
+const DEPOT_LAYOUTS = {
+    "姫路": {
+        title: "姫路駅 電留線",
+        owner: "網干総合車両所",
+        leftLabel: "播但線 京口方 / 網干・網干総合車両所方",
+        rightLabel: "山陽本線 御着・東姫路方",
+        note: "上り本線の北側にある電留線群。播但線・姫新線と線路を共用する。" +
+              "本拠の網干総合車両所は姫路の西側（シミュレーターの表示範囲外）にあるため、" +
+              "そこに滞泊する編成もこの構内図にまとめて表示する。",
+        groups: [
+            { name: "姫路電留線", tracks: [
+                { label: "電1", cars: 12, kind: "stabling" },
+                { label: "電2", cars: 12, kind: "stabling" },
+                { label: "電3", cars: 8, kind: "stabling" },
+                { label: "電4", cars: 8, kind: "stabling" }
+            ]},
+            { name: "姫新線側 留置線", tracks: [
+                { label: "姫1", cars: 4, kind: "stabling" },
+                { label: "姫2", cars: 4, kind: "stabling" }
+            ]},
+            { name: "網干総合車両所 (姫路以西)", tracks: [
+                { label: "網1", cars: 12, kind: "stabling" },
+                { label: "網2", cars: 12, kind: "stabling" },
+                { label: "網3", cars: 12, kind: "stabling" },
+                { label: "網4", cars: 12, kind: "stabling" },
+                { label: "網5", cars: 8, kind: "stabling" },
+                { label: "網6", cars: 8, kind: "stabling" },
+                { label: "網検1", cars: 8, kind: "shed" },
+                { label: "網検2", cars: 8, kind: "shed" },
+                { label: "網洗浄", cars: 12, kind: "wash" }
+            ]}
+        ]
+    },
+
+    "西明石": {
+        title: "網干総合車両所 明石支所",
+        owner: "網干総合車両所明石支所",
+        leftLabel: "須磨海浜公園・神戸方",
+        rightLabel: "西明石・大久保方",
+        note: "207系・321系の本拠。出入区線から電留線群・検修庫へ分岐する。",
+        groups: [
+            { name: "出入区線", tracks: [
+                { label: "出1", cars: 12, kind: "siding" },
+                { label: "出2", cars: 12, kind: "siding" }
+            ]},
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 12, kind: "stabling" },
+                { label: "電2", cars: 12, kind: "stabling" },
+                { label: "電3", cars: 12, kind: "stabling" },
+                { label: "電4", cars: 12, kind: "stabling" },
+                { label: "電5", cars: 8, kind: "stabling" },
+                { label: "電6", cars: 8, kind: "stabling" },
+                { label: "電7", cars: 8, kind: "stabling" },
+                { label: "電8", cars: 8, kind: "stabling" },
+                { label: "電9", cars: 7, kind: "stabling" },
+                { label: "電10", cars: 7, kind: "stabling" },
+                { label: "電11", cars: 7, kind: "stabling" }
+            ]},
+            { name: "検修庫・洗浄線", tracks: [
+                { label: "検1", cars: 8, kind: "shed" },
+                { label: "検2", cars: 8, kind: "shed" },
+                { label: "洗浄", cars: 12, kind: "wash" }
+            ]}
+        ]
+    },
+
+    "宮原操": {
+        title: "網干総合車両所 宮原支所",
+        owner: "網干総合車両所宮原支所",
+        leftLabel: "塚本・大阪方 / 北方貨物線",
+        rightLabel: "新大阪方",
+        note: "JR宝塚線用の223系・225系6000番台の本拠。北方貨物線に面した大規模な操車場。",
+        groups: [
+            { name: "電留線 (北群)", tracks: [
+                { label: "北1", cars: 12, kind: "stabling" },
+                { label: "北2", cars: 12, kind: "stabling" },
+                { label: "北3", cars: 12, kind: "stabling" },
+                { label: "北4", cars: 12, kind: "stabling" },
+                { label: "北5", cars: 8, kind: "stabling" },
+                { label: "北6", cars: 8, kind: "stabling" },
+                { label: "北7", cars: 8, kind: "stabling" },
+                { label: "北8", cars: 8, kind: "stabling" }
+            ]},
+            { name: "仕業検査線", tracks: [
+                { label: "仕1", cars: 12, kind: "shed" },
+                { label: "仕2", cars: 12, kind: "shed" },
+                { label: "仕3", cars: 8, kind: "shed" },
+                { label: "仕4", cars: 8, kind: "shed" }
+            ]},
+            { name: "電留線 (南群)", tracks: [
+                { label: "南1", cars: 12, kind: "stabling" },
+                { label: "南2", cars: 12, kind: "stabling" },
+                { label: "南3", cars: 8, kind: "stabling" },
+                { label: "南4", cars: 8, kind: "stabling" },
+                { label: "南5", cars: 6, kind: "stabling" }
+            ]},
+            { name: "電留線 (中央群)", tracks: [
+                { label: "中1", cars: 12, kind: "stabling" },
+                { label: "中2", cars: 12, kind: "stabling" },
+                { label: "中3", cars: 8, kind: "stabling" },
+                { label: "中4", cars: 8, kind: "stabling" },
+                { label: "中5", cars: 7, kind: "stabling" }
+            ]},
+            { name: "洗浄線", tracks: [
+                { label: "洗浄", cars: 12, kind: "wash" }
+            ]}
+        ]
+    },
+
+    "高槻": {
+        title: "網干総合車両所 明石支所 高槻派出所",
+        owner: "網干総合車両所明石支所高槻派出所",
+        leftLabel: "摂津富田・茨木方",
+        rightLabel: "島本・山崎方",
+        note: "高槻駅の西側、下り外側線の南に広がる電留線群。京都線の始発列車を受け持つ。",
+        groups: [
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 12, kind: "stabling" },
+                { label: "電2", cars: 12, kind: "stabling" },
+                { label: "電3", cars: 12, kind: "stabling" },
+                { label: "電4", cars: 12, kind: "stabling" },
+                { label: "電5", cars: 8, kind: "stabling" },
+                { label: "電6", cars: 8, kind: "stabling" }
+            ]},
+            { name: "短編成留置線", tracks: [
+                { label: "短1", cars: 7, kind: "stabling" },
+                { label: "短2", cars: 7, kind: "stabling" },
+                { label: "短3", cars: 7, kind: "stabling" },
+                { label: "短4", cars: 7, kind: "stabling" },
+                { label: "短5", cars: 4, kind: "stabling" }
+            ]}
+        ]
+    },
+
+    "向日町操": {
+        title: "吹田総合車両所 京都支所 (向日町操車場)",
+        owner: "吹田総合車両所京都支所",
+        leftLabel: "長岡京・山崎方",
+        rightLabel: "向日町・京都方",
+        note: "221系・223系の京都車の本拠。特急用の客車留置線と検修庫を併設する。",
+        groups: [
+            { name: "特急・気動車留置線", tracks: [
+                { label: "特1", cars: 12, kind: "stabling" },
+                { label: "特2", cars: 12, kind: "stabling" },
+                { label: "特3", cars: 9, kind: "stabling" },
+                { label: "特4", cars: 9, kind: "stabling" }
+            ]},
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 12, kind: "stabling" },
+                { label: "電2", cars: 12, kind: "stabling" },
+                { label: "電3", cars: 12, kind: "stabling" },
+                { label: "電4", cars: 12, kind: "stabling" },
+                { label: "電5", cars: 8, kind: "stabling" },
+                { label: "電6", cars: 8, kind: "stabling" },
+                { label: "電7", cars: 8, kind: "stabling" },
+                { label: "電8", cars: 8, kind: "stabling" },
+                { label: "電9", cars: 6, kind: "stabling" },
+                { label: "電10", cars: 6, kind: "stabling" },
+                { label: "電11", cars: 6, kind: "stabling" }
+            ]},
+            { name: "検修庫・入出場線", tracks: [
+                { label: "検1", cars: 8, kind: "shed" },
+                { label: "検2", cars: 8, kind: "shed" },
+                { label: "入出場", cars: 12, kind: "siding" }
+            ]},
+            { name: "洗浄線", tracks: [
+                { label: "洗浄", cars: 12, kind: "wash" }
+            ]}
+        ]
+    },
+
+    "草津": {
+        title: "草津駅 電留線",
+        owner: "網干総合車両所宮原支所",
+        leftLabel: "南草津・石山方",
+        rightLabel: "栗東・守山方 / 草津線 手原方",
+        note: "草津線と分岐する構内の待避線を夜間留置に使う。収容は少ない。",
+        groups: [
+            { name: "草津電留線", tracks: [
+                { label: "電1", cars: 8, kind: "stabling" },
+                { label: "電2", cars: 8, kind: "stabling" }
+            ]},
+            { name: "草津線 待避線", tracks: [
+                { label: "待1", cars: 8, kind: "siding" }
+            ]}
+        ]
+    },
+
+    "野洲": {
+        title: "網干総合車両所 宮原支所 野洲派出所",
+        owner: "網干総合車両所宮原支所野洲派出所",
+        leftLabel: "守山・草津方",
+        rightLabel: "篠原・近江八幡方",
+        note: "琵琶湖線の始発・終着を受け持つ電留線群。新快速の12両を丸ごと収容できる。",
+        groups: [
+            { name: "電留線 (上群)", tracks: [
+                { label: "上1", cars: 12, kind: "stabling" },
+                { label: "上2", cars: 12, kind: "stabling" },
+                { label: "上3", cars: 12, kind: "stabling" },
+                { label: "上4", cars: 12, kind: "stabling" },
+                { label: "上5", cars: 12, kind: "stabling" }
+            ]},
+            { name: "電留線 (下群)", tracks: [
+                { label: "下1", cars: 12, kind: "stabling" },
+                { label: "下2", cars: 12, kind: "stabling" },
+                { label: "下3", cars: 8, kind: "stabling" },
+                { label: "下4", cars: 8, kind: "stabling" }
+            ]},
+            { name: "入出区線", tracks: [
+                { label: "入出区", cars: 12, kind: "siding" }
+            ]}
+        ]
+    },
+
+    "米原": {
+        title: "網干総合車両所 宮原支所 米原派出所",
+        owner: "網干総合車両所宮原支所米原派出所",
+        leftLabel: "彦根・南彦根方",
+        rightLabel: "坂田方 / 北陸本線 田村方",
+        note: "米原駅の北、北陸本線との分岐部に並ぶ電留線群。敦賀方面の折り返しを受け持つ。",
+        groups: [
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 12, kind: "stabling" },
+                { label: "電2", cars: 12, kind: "stabling" },
+                { label: "電3", cars: 8, kind: "stabling" },
+                { label: "電4", cars: 8, kind: "stabling" },
+                { label: "電5", cars: 8, kind: "stabling" },
+                { label: "電6", cars: 4, kind: "stabling" }
+            ]},
+            { name: "北陸線側 留置線", tracks: [
+                { label: "北1", cars: 8, kind: "stabling" },
+                { label: "北2", cars: 4, kind: "stabling" }
+            ]}
+        ]
+    }
+};

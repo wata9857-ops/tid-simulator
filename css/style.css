@@ -1,0 +1,65 @@
+    body { margin: 0; background-color: #1a1a1a; font-family: "Meiryo UI", "Yu Gothic", sans-serif; overflow: hidden; }
+    
+    /* ヘッダー */
+    #header { position: fixed; top: 0; left: 0; width: 100%; height: 70px; background: rgba(255,255,255,0.95); border-bottom: 3px solid #0044FF; z-index: 1000; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; font-size: 12px; white-space: nowrap; overflow-x: auto; }
+    .clock { font-size: 34px; font-weight: bold; font-family: "Meiryo UI", "Yu Gothic", monospace; color: #333; margin-right: 20px; flex-shrink: 0; }
+    
+    #banner-area { flex-grow: 1; text-align: center; font-weight: bold; font-size: 16px; margin: 0 20px; overflow: hidden; white-space: normal; line-height: 1.2; }
+    #emergency-banner { display: none; background-color: #ff0000; color: #fff; padding: 4px 15px; border-radius: 4px; animation: flash 1s infinite; }
+    #info-banner { display: none; background-color: #ffcc00; color: #000; padding: 4px 15px; border-radius: 4px; }
+    .banner-orange { background-color: #ff9800 !important; color: #fff !important; }
+    .banner-blue { background-color: #0044FF !important; color: #fff !important; }
+    @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+    .legend { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-right: 70px; font-size: 10px; }
+    .color-box { display: inline-block; width: 10px; height: 10px; margin-right: 2px; vertical-align: middle; border: 1px solid #777; }
+    
+    /* フッター */
+    #footer { position: fixed; bottom: 10px; left: 2.5%; width: 95%; height: 32px; background: #2c3e50; border: 1px solid #555; border-radius: 5px; z-index: 1000; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; color: #ccc; font-size: 11px; font-family: "Meiryo UI", "Yu Gothic", monospace; box-sizing: border-box; }
+    .footer-section { display: flex; align-items: center; gap: 20px; }
+    .status-item { display: flex; align-items: center; gap: 6px; }
+    .led { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .led-green { background-color: #00ff00; box-shadow: 0 0 5px #00ff00; }
+    
+    /* ローディング */
+    #loading-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 20px; font-weight: bold; z-index: 9999; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 8px; pointer-events: none; }
+
+    /* 指令ボタン */
+    #cmd-btn { position: fixed; top: 10px; right: 20px; z-index: 2000; background: #d21f1f; color: #fff; border: 2px solid #fff; padding: 10px 20px; font-weight: bold; font-size: 16px; cursor: pointer; border-radius: 4px; font-family: "Meiryo UI", "Yu Gothic", sans-serif; }
+    #cmd-btn:active { transform: translateY(2px); }
+
+    /* 指令パネル */
+    #cmd-panel { display: none; position: fixed; top: 80px; right: 20px; width: 340px; background: rgba(255,255,255,0.95); border: 2px solid #333; padding: 15px; z-index: 2000; font-size: 12px; border-radius: 8px; max-height: 85vh; overflow-y: auto; }
+    #cmd-panel h3 { margin: 0 0 10px 0; border-bottom: 2px solid #0044FF; padding-bottom: 5px; font-size: 14px; }
+    #cmd-panel h4 { margin: 15px 0 5px 0; background: #eee; padding: 4px; font-size: 12px; border-left: 4px solid #555; }
+    .cmd-section { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed #ccc; }
+    .cmd-row { margin-bottom: 8px; }
+    .cmd-row label { display: block; font-weight: bold; margin-bottom: 2px; font-size: 11px; color:#555; }
+    .cmd-row input, .cmd-row select { width: 100%; padding: 5px; box-sizing: border-box; border:1px solid #999; border-radius:3px; font-family: "Meiryo UI", "Yu Gothic", sans-serif; }
+    
+    .btn-group { display: flex; gap: 5px; margin-top: 5px; }
+    .btn-exec, .btn-suspend, .btn-release, .btn-stop, .btn-clear, .btn-close, .btn-emg-clear { border: none; color: #fff; cursor: pointer; border-radius: 4px; font-weight: bold; font-family: "Meiryo UI", "Yu Gothic", sans-serif; }
+    .btn-exec { flex:1; background: #0044FF; padding: 8px; }
+    .btn-suspend { flex:1; background: #ff8800; padding: 8px; }
+    .btn-suspend-imm { flex:1; background: #d21f1f; padding: 8px; color: #fff; cursor: pointer; border-radius: 4px; font-weight: bold; }
+    .btn-release { flex:1; background: #28a745; padding: 8px; }
+    .btn-stop { background: #d21f1f; padding: 6px 12px; flex: 2; }
+    .btn-clear { background: #28a745; padding: 6px 12px; flex: 1; }
+    .btn-close { background: #666; padding: 6px 12px; }
+    .btn-emg-clear { width:100%; background: #d21f1f; padding: 10px; border:2px solid yellow; }
+
+    /* ログ履歴パネル・業務連絡欄のスタイルは css/header-log.css に分離 */
+
+    /* 緊急制御パネル */
+    #emg-control { display: none; position: fixed; top: 100px; left: 50%; transform: translateX(-50%); width: 300px; background: rgba(200, 0, 0, 0.9); padding: 15px; border: 3px solid #fff; border-radius: 8px; z-index: 3000; text-align: center; color: white; }
+
+    /* スクロールコンテナ */
+    #scroll-container { width: 100vw; height: 100vh; overflow-x: scroll; overflow-y: hidden; -webkit-overflow-scrolling: touch; background-color: #8faadd; padding-top: 70px; padding-bottom: 60px; cursor: grab; }
+    #scroll-container:active { cursor: grabbing; }
+    
+    canvas { display: block; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; image-rendering: pixelated; }
+
+    /* ★追加: 強制発車ボタン (指令パッド) */
+    .btn-force { display:block; width:100%; margin-top:8px; padding:9px; background:#00838F; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:13px; cursor:pointer; font-family: "Meiryo UI", "Yu Gothic", sans-serif; }
+    .btn-force:hover { background:#006064; }
+    .btn-force:active { transform: translateY(1px); }

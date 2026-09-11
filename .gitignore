@@ -1,0 +1,12 @@
+# 比較用に git から取り出した分割前のソース (tools/extract_baseline.py で再生成できる)
+tools/baseline/
+
+# OS / エディタが作るファイル
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
+
+# Excel の一時ファイル
+~$*.xlsx

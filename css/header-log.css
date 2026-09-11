@@ -1,0 +1,295 @@
+/* ヘッダーの業務連絡欄と、運転指令ログ／業務連絡の履歴パネル。
+
+   読みやすさを上げるため
+     ・時刻 / 発信元ラベル / 見出し / 本文 の4段構えに固定し、行頭の位置を揃えた
+     ・発信元を色付きのラベル(チップ)にして、視線で追えるようにした
+     ・重要度で左の帯と背景を変え、事故・運休が埋もれないようにした
+     ・タブと発信元での絞り込みを付けた
+*/
+
+/* ============================================================ 業務連絡 (ヘッダー) */
+#staff-log-feed {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-right: 70px;
+    width: 520px;
+    height: 48px;
+    box-sizing: border-box;
+    background: linear-gradient(180deg, #2f3e50 0%, #263442 100%);
+    border: 1px solid #4a5a6a;
+    border-left: 5px solid #00c853;
+    border-radius: 5px;
+    padding: 0 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+}
+#staff-log-feed:hover { border-color: #7e93a8; box-shadow: 0 0 0 2px rgba(0,200,83,.25); }
+
+.staff-feed-title {
+    flex-shrink: 0;
+    margin-right: 12px;
+    text-align: center;
+    line-height: 1.15;
+}
+.staff-feed-title b {
+    display: block;
+    font-size: 13px;
+    font-weight: bold;
+    color: #7dffab;
+    letter-spacing: .08em;
+}
+.staff-feed-title small {
+    display: block;
+    font-size: 9px;
+    color: #90a4ae;
+    letter-spacing: .02em;
+}
+#staff-log-count {
+    display: inline-block;
+    min-width: 16px;
+    margin-top: 1px;
+    padding: 0 4px;
+    background: #00695c;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: bold;
+    color: #fff;
+}
+
+#staff-log-marquee {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.staff-feed-src {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #b0bec5;
+}
+.staff-feed-head {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    background: rgba(255,255,255,.12);
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #fff59d;
+}
+.staff-feed-body {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    line-height: 1.35;
+    color: #eceff1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.staff-feed-idle { font-size: 12px; color: #78909c; }
+
+/* 発信元ラベル (履歴パネルと共用) */
+.log-chip {
+    flex-shrink: 0;
+    display: inline-block;
+    min-width: 44px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: bold;
+    line-height: 1.35;
+    text-align: center;
+    letter-spacing: .02em;
+}
+
+/* ============================================================ 履歴パネル */
+#log-panel {
+    display: none;
+    position: fixed;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 94%;
+    max-width: 920px;
+    background: #f7f9fb;
+    border: 1px solid #c3ced8;
+    border-top: 4px solid #0044FF;
+    box-shadow: 0 10px 34px rgba(0,0,0,.45);
+    border-radius: 0 0 10px 10px;
+    z-index: 2500;
+    padding: 0;
+    font-family: "Meiryo UI", "Yu Gothic", sans-serif;
+}
+
+#log-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: #e8edf2;
+    border-bottom: 1px solid #c3ced8;
+    padding: 0 10px;
+}
+.log-tab {
+    appearance: none;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 11px 18px 9px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    color: #667585;
+    cursor: pointer;
+}
+.log-tab:hover { color: #2c3e50; background: rgba(255,255,255,.6); }
+.log-tab.is-active { color: #0033cc; border-bottom-color: #0044FF; background: #f7f9fb; }
+.log-tab-num {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 1px 6px;
+    background: #b0bec5;
+    border-radius: 9px;
+    font-size: 10px;
+    color: #fff;
+}
+.log-tab.is-active .log-tab-num { background: #0044FF; }
+
+.log-imp {
+    appearance: none;
+    margin: 8px 0 8px auto;
+    padding: 4px 12px;
+    background: #fff;
+    border: 1px solid #b0bec5;
+    border-radius: 13px;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: bold;
+    color: #667585;
+    cursor: pointer;
+    align-self: center;
+}
+.log-imp.is-active { background: #d21f1f; border-color: #d21f1f; color: #fff; }
+
+#log-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 8px 14px;
+    background: #f0f3f6;
+    border-bottom: 1px solid #dde4ea;
+}
+#log-filter-bar:empty { display: none; }
+.log-filter {
+    --hue: #78909c;
+    appearance: none;
+    padding: 3px 9px;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    border-left: 4px solid var(--hue);
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 11px;
+    color: #45525f;
+    cursor: pointer;
+}
+.log-filter:hover { background: #eceff1; }
+.log-filter.is-active { background: var(--hue); border-color: var(--hue); color: #fff; font-weight: bold; }
+.log-filter-num { margin-left: 5px; opacity: .75; font-size: 10px; }
+
+#log-panel-container {
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 4px 0;
+    background: #f7f9fb;
+}
+#log-panel ul { list-style: none; padding: 0; margin: 0; }
+
+.log-row {
+    --hue: #78909c;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 7px 14px;
+    border-bottom: 1px solid #e4eaef;
+    border-left: 5px solid var(--hue);
+    background: #fff;
+}
+.log-row:hover { background: #f2f7fd; }
+
+.log-time {
+    flex-shrink: 0;
+    width: 62px;
+    padding-top: 1px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: #37474f;
+    letter-spacing: -.02em;
+}
+.log-time.is-dim { color: #b0bec5; font-weight: normal; }
+
+.log-text { flex: 1; min-width: 0; line-height: 1.55; }
+.log-src {
+    margin-right: 7px;
+    font-size: 11px;
+    color: #78909c;
+}
+.log-head {
+    margin-right: 7px;
+    padding: 1px 6px;
+    background: #eceff1;
+    border-radius: 3px;
+    font-size: 11.5px;
+    font-weight: bold;
+    color: #37474f;
+    white-space: nowrap;
+}
+.log-body {
+    font-size: 13px;
+    color: #1c2833;
+    word-break: break-word;
+}
+
+.log-trainno {
+    display: inline-block;
+    padding: 0 4px;
+    background: #0044FF;
+    border-radius: 3px;
+    color: #fff;
+    font-family: Consolas, "Courier New", monospace;
+    font-weight: bold;
+    cursor: pointer;
+}
+.log-trainno:hover { background: #d21f1f; }
+
+/* 重要度 */
+.log-lv-critical { background: #fff0f0; }
+.log-lv-critical .log-head { background: #d21f1f; color: #fff; }
+.log-lv-critical .log-body { font-weight: bold; color: #8b0000; }
+.log-lv-warn { background: #fff9ef; }
+.log-lv-warn .log-head { background: #ffe0b2; color: #7a3e00; }
+.log-lv-info { background: #f5f9ff; }
+
+.log-empty, .dt-none { padding: 26px 14px; text-align: center; color: #8d9aa6; font-size: 13px; }
+
+#log-panel-close {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin: 0;
+    background: #45525f;
+    color: #fff;
+    text-align: center;
+    border: none;
+    border-radius: 0 0 8px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: bold;
+}
+#log-panel-close:hover { background: #2c3e50; }

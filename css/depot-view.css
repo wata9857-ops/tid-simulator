@@ -1,0 +1,151 @@
+/* 留置場の構内配線図モーダル (js/22-depot-view.js) */
+
+#depot-modal-title {
+    margin: 0 0 10px 0;
+    padding-bottom: 7px;
+    border-bottom: 3px solid #0044FF;
+    font-size: 19px;
+    color: #1c2833;
+}
+#depot-modal-title .depot-sub {
+    display: block;
+    margin-top: 3px;
+    font-size: 12px;
+    font-weight: normal;
+    color: #667585;
+}
+
+.depot-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.depot-stats .ds-item {
+    padding: 4px 11px;
+    background: #eef2f6;
+    border: 1px solid #d5dde4;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #45525f;
+}
+.depot-stats b { font-size: 15px; color: #0033cc; }
+.depot-stats small { color: #78909c; }
+
+.depot-note {
+    margin: 0 0 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #55636f;
+}
+
+.depot-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: #45525f;
+}
+.depot-legend .dl-box {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    margin-right: 4px;
+    border: 1px solid #90a4ae;
+    vertical-align: -1px;
+}
+.depot-legend .dl-line {
+    display: inline-block;
+    width: 16px;
+    height: 0;
+    margin-right: 4px;
+    vertical-align: 4px;
+    border-top: 3px solid #d9d9d9;
+}
+.depot-legend .dl-shed { border-top-color: #6a5acd; }
+.depot-legend .dl-wash { border-top-color: #1e90ff; }
+.depot-legend .dl-siding { border-top-color: #8a8a8a; }
+
+/* ------------------------------------------------------------ 配線図 */
+.depot-diagram {
+    margin-bottom: 14px;
+    padding: 6px 4px;
+    background: #11161c;
+    border: 1px solid #2c3742;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+.depot-svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-width: 560px;   /* これより狭いと線名が読めないので横スクロールさせる */
+}
+
+.depot-svg .dv-main   { stroke: #ffffff; stroke-width: 2.5; }
+.depot-svg .dv-ladder { stroke: #6f7d8a; stroke-width: 1.6; fill: none; }
+.depot-svg .dv-track  { stroke: #d9d9d9; stroke-width: 2.5; }
+.depot-svg .dv-track-shed   { stroke: #6a5acd; }
+.depot-svg .dv-track-wash   { stroke: #1e90ff; }
+.depot-svg .dv-track-siding { stroke: #8a8a8a; stroke-dasharray: 7 3; }
+.depot-svg .dv-stop   { stroke: #ff7043; stroke-width: 2.5; }
+.depot-svg .dv-shed   { fill: rgba(106,90,205,.12); stroke: #6a5acd; stroke-width: 1; stroke-dasharray: 3 2; }
+
+.depot-svg .dv-label  { fill: #e0e6eb; font: bold 12px "Meiryo UI", sans-serif; }
+.depot-svg .dv-cap    { fill: #7b8996; font: 10px "Meiryo UI", sans-serif; }
+.depot-svg .dv-group  { fill: #4fc3f7; font: bold 11px "Meiryo UI", sans-serif; }
+.depot-svg .dv-dir    { fill: #ffd54f; font: bold 11px "Meiryo UI", sans-serif; }
+.depot-svg .dv-unit-text { font: bold 10.5px Consolas, "Courier New", monospace; text-anchor: middle; }
+.depot-svg .dv-unit   { cursor: default; }
+
+/* ------------------------------------------------------------ 一覧表 */
+.depot-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+.depot-table th {
+    position: sticky;
+    top: 0;
+    padding: 7px 8px;
+    background: #e8edf2;
+    border: 1px solid #d5dde4;
+    color: #37474f;
+    font-size: 11.5px;
+    text-align: left;
+    white-space: nowrap;
+}
+.depot-table td {
+    padding: 6px 8px;
+    border: 1px solid #e4eaef;
+    color: #1c2833;
+    vertical-align: top;
+}
+.depot-table tr.is-train { background: #fffdf0; }
+.depot-table tr.is-idle  { background: #ffffff; }
+.depot-table tr.is-over  { background: #fdecec; }
+
+.depot-table .dt-track { width: 68px; font-weight: bold; color: #45525f; white-space: nowrap; }
+.depot-table .dt-no {
+    width: 110px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+    font-weight: bold;
+    color: #0033cc;
+    white-space: nowrap;
+}
+.depot-table .dt-cars { width: 52px; white-space: nowrap; }
+.depot-table .dt-state { color: #45525f; }
+.dt-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-right: 4px;
+    background: #78909c;
+    border-radius: 3px;
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: bold;
+}
+.dt-badge-out { background: #e65100; }

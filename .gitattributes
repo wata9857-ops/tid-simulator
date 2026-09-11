@@ -1,0 +1,14 @@
+# 既定: テキストは自動判定し、リポジトリ内では LF で保存する
+* text=auto eol=lf
+
+# Windows 側で改行が混ざらないようにする
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.md    text eol=lf
+*.py    text eol=lf
+
+# バイナリは改行変換しない (壊れるため)
+*.png   binary
+*.jpg   binary
+*.xlsx  binary

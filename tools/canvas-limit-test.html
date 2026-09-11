@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>キャンバス上限チェック (iPad用)</title>
+<style>
+    body { font-family: "Hiragino Sans", "Meiryo UI", sans-serif; margin: 0; padding: 18px;
+           background: #12171d; color: #e6ecf1; line-height: 1.7; }
+    h1 { font-size: 19px; margin: 0 0 4px; }
+    p.lead { font-size: 13px; color: #90a4ae; margin: 0 0 18px; }
+    .card { background: #1c242d; border: 1px solid #2e3a46; border-radius: 8px;
+            padding: 14px 16px; margin-bottom: 14px; }
+    .card h2 { font-size: 14px; margin: 0 0 10px; color: #4fc3f7; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #2e3a46; }
+    th { color: #90a4ae; font-weight: normal; width: 48%; }
+    td { font-family: Consolas, monospace; }
+    .ok   { color: #69f0ae; font-weight: bold; }
+    .ng   { color: #ff5252; font-weight: bold; }
+    .verdict { font-size: 15px; font-weight: bold; padding: 12px 14px; border-radius: 6px; }
+    .verdict.ok { background: #12351f; border: 1px solid #2e7d32; }
+    .verdict.ng { background: #3a1414; border: 1px solid #b71c1c; }
+    .note { font-size: 12px; color: #90a4ae; margin-top: 10px; }
+    code { background: #0d1116; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>キャンバス上限チェック</h1>
+<p class="lead">
+    この端末の Canvas の上限を調べます。シミュレーター本体とは無関係で、
+    ここを開いただけでゲームには何も影響しません。<br>
+    iPad や iPhone の Safari で開いてください。
+</p>
+
+<div id="result"></div>
+
+<script>
+(function () {
+    // ---- シミュレーター本体が必要とするサイズ (js/01-config.js, js/03-stations.js より)
+    const NEED_W = 31160;   // (86駅 x 3ブロック x 120px) + 200
+    const NEED_H = 1300;
+    const SHEETS = 2;       // 本体用と背景用の2枚を確保している
+
+    /** 指定サイズのキャンバスが本当に使えるか (確保できても中身が空になる端末がある) */
+    function canAllocate(w, h) {
+        let c = null;
+        try {
+            c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            if (c.width !== w || c.height !== h) return false;
+            const ctx = c.getContext('2d');
+            if (!ctx) return false;
+            // 端に色を置いて読み返す。失敗する端末では 0 のまま返ってくる。
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(w - 2, h - 2, 2, 2);
+            const px = ctx.getImageData(w - 1, h - 1, 1, 1).data;
+            return px[0] > 200 && px[3] > 200;
+        } catch (e) {
+            return false;
+        } finally {
+            if (c) { c.width = 1; c.height = 1; }   // すぐ解放する
+        }
+    }
+
+    /** 正方形で使える1辺の最大値を二分探索する */
+    function maxSide() {
+        let lo = 1024, hi = 32768, best = 0;
+        if (!canAllocate(lo, lo)) return 0;
+        best = lo;
+        while (lo <= hi) {
+            const mid = Math.floor((lo + hi) / 2 / 256) * 256;
+            if (mid <= best) break;
+            if (canAllocate(mid, mid)) { best = mid; lo = mid + 256; }
+            else hi = mid - 256;
+        }
+        return best;
+    }
+
+    /** 高さを固定して、使える最大の幅を二分探索する */
+    function maxWidthAt(h) {
+        let lo = 512, hi = 40960, best = 0;
+        if (!canAllocate(lo, h)) return 0;
+        best = lo;
+        while (lo <= hi) {
+            const mid = Math.floor((lo + hi) / 2 / 512) * 512;
+            if (mid <= best) break;
+            if (canAllocate(mid, h)) { best = mid; lo = mid + 512; }
+            else hi = mid - 512;
+        }
+        return best;
+    }
+
+    const side = maxSide();
+    const wAtH = maxWidthAt(NEED_H);
+    const needOk = canAllocate(NEED_W, NEED_H);
+    const fmt = (n) => n.toLocaleString();
+    const mark = (b) => b ? '<span class="ok">OK</span>' : '<span class="ng">NG</span>';
+
+    let html = '';
+
+    html += '<div class="card"><h2>この端末で使えるキャンバスの大きさ</h2><table>' +
+        '<tr><th>正方形の1辺の最大</th><td>' + (side ? fmt(side) + ' px (' + fmt(side) + '×' + fmt(side) + ')' : '測定不能') + '</td></tr>' +
+        '<tr><th>面積の目安</th><td>' + (side ? (side * side / 1e6).toFixed(1) + ' Mpx' : '―') + '</td></tr>' +
+        '<tr><th>高さ ' + NEED_H + 'px のときの最大の幅</th><td>' + (wAtH ? fmt(wAtH) + ' px' : '測定不能') + '</td></tr>' +
+        '</table></div>';
+
+    html += '<div class="card"><h2>シミュレーターが必要とする大きさ</h2><table>' +
+        '<tr><th>必要なキャンバス</th><td>' + fmt(NEED_W) + ' × ' + NEED_H + ' px</td></tr>' +
+        '<tr><th>面積</th><td>' + (NEED_W * NEED_H / 1e6).toFixed(1) + ' Mpx</td></tr>' +
+        '<tr><th>必要メモリ (' + SHEETS + '枚ぶん)</th><td>約 ' +
+            Math.round(NEED_W * NEED_H * 4 * SHEETS / 1048576) + ' MB</td></tr>' +
+        '<tr><th>この端末で確保できるか</th><td>' + mark(needOk) + '</td></tr>' +
+        '</table></div>';
+
+    html += needOk
+        ? '<div class="verdict ok">この端末ならシミュレーターの線路図は表示できます。</div>'
+        : '<div class="verdict ng">この端末では線路図のキャンバスを確保できません。<br>' +
+          'ヘッダーの時計は動くのに、線路図が真っ白／真っ黒になります。</div>';
+
+    html += '<div class="card"><h2>端末情報</h2><table>' +
+        '<tr><th>画面 (CSS px)</th><td>' + window.innerWidth + ' × ' + window.innerHeight + '</td></tr>' +
+        '<tr><th>devicePixelRatio</th><td>' + (window.devicePixelRatio || 1) + '</td></tr>' +
+        '<tr><th>userAgent</th><td style="word-break:break-all; font-size:11px;">' +
+            String(navigator.userAgent).replace(/</g, '&lt;') + '</td></tr>' +
+        '</table>' +
+        '<p class="note">測定は 256〜512px 刻みの二分探索なので、実際の上限とは少しずれることがあります。' +
+        '判定は <code>getImageData</code> で読み返して確認しています。</p></div>';
+
+    document.getElementById('result').innerHTML = html;
+})();
+</script>
+
+</body>
+</html>
