@@ -10,7 +10,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const ROOT = path.resolve(__dirname, '..');
+// 既定はこのリポジトリ。TID_ROOT を指定すると、別の場所に置いたコピー
+// (GitHub Pages から落としてきたものなど) を読み込んで検証できる。
+const ROOT = process.env.TID_ROOT
+    ? path.resolve(process.env.TID_ROOT)
+    : path.resolve(__dirname, '..');
 
 // --orig を付けると、分割前の index.html から抜き出した原本を読み込む(比較用)。
 const USE_ORIG = process.argv.indexOf('--orig') >= 0;

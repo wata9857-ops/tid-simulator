@@ -5,6 +5,28 @@ JR西日本 東海道・山陽本線（琵琶湖線／JR京都線／JR神戸線�
 
 `index.html` をブラウザで開けば動きます（サーバー不要）。
 
+## 公開先
+
+GitHub Pages で公開しています。PCの電源が入っていなくてもアクセスできます。
+
+**https://wata9857-ops.github.io/tid-simulator/**
+
+`main` ブランチに push すると、1〜2分で自動的に反映されます。
+（GitHub の Settings → Pages が「Deploy from a branch: main / (root)」になっています）
+
+外部ライブラリもビルドも使っていない素の HTML / CSS / JavaScript なので、
+GitHub Pages にそのまま置くだけで動きます。
+
+### iPad で表示できるかの確認
+
+線路図は横 31,160px の巨大なキャンバスに描いています。
+iOS / iPadOS の Safari にはキャンバスの大きさに上限があり、機種によっては
+確保できずに線路図が真っ白になることがあります（ヘッダーの時計は動きます）。
+
+お使いの端末で足りるかは、下のページを iPad の Safari で開くと判定できます。
+
+**https://wata9857-ops.github.io/tid-simulator/tools/canvas-limit-test.html**
+
 ---
 
 ## ファイル構成
