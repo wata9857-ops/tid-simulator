@@ -171,8 +171,8 @@ class SignalSystem {
             if (b.x < xMin || b.x > xMax) continue;
             // 進行方向の手前側の端に信号機を置く
             const isStation = b.isStation || !!b.hoppoStationName;
-            // 駅は出発信号機、駅間は閉塞信号機。駅間は1ブロックおきに間引く。
-            if (!isStation && (i % 2 !== 0)) continue;
+            // 駅は出発信号機、駅間は閉塞信号機。駅間は間引いて見やすくする。
+            if (!isStation && (i % UNITS_PER_STATION !== 0)) continue;
             out.push({
                 trackId: trackId,
                 index: i,

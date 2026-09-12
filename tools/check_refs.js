@@ -6,11 +6,18 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+/* 旅客向け画面と Super-TID 画面の両方を見る。
+   要素IDや読み込み順の確認は、どちらのページも対象にする。 */
+const PAGES = ['index.html', 'tid.html'].filter(f => fs.existsSync(path.join(ROOT, f)));
+const htmlByPage = {};
+PAGES.forEach(f => { htmlByPage[f] = fs.readFileSync(path.join(ROOT, f), 'utf8'); });
+const html = PAGES.map(f => htmlByPage[f]).join(String.fromCharCode(10));
 const jsFiles = fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).sort();
 const js = jsFiles.map(f => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')).join('\n');
 const css = fs.readdirSync(path.join(ROOT, 'css')).filter(f => f.endsWith('.css'))
     .map(f => fs.readFileSync(path.join(ROOT, 'css', f), 'utf8')).join('\n');
+
+const SCRIPT_RE = /<script src="js\/([^"]+)"><\/script>/g;
 
 let failures = 0;
 function ok(label, cond, detail) {
@@ -69,23 +76,38 @@ ok('使っているCSSクラスが定義されている', missingCss.length === 
    missingCss.length ? missingCss.join(', ') : usedClasses.size + '個');
 
 // ---------------------------------------------- 読み込み順
-const order = [...html.matchAll(/<script src="js\/([^"]+)"><\/script>/g)].map(m => m[1]);
-ok('js/ のファイルがすべて読み込まれている',
-   order.length === jsFiles.length && jsFiles.every(f => order.includes(f)),
-   order.length + ' / ' + jsFiles.length);
-
-const classDefs = {};   // クラス名 -> 定義ファイルの読み込み順
-order.forEach((f, i) => {
-    const src = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');
-    for (const m of src.matchAll(/^class (\w+) \{/gm)) classDefs[m[1]] = i;
+/* ページごとに読み込むファイルは違う (Super-TID 画面だけが 40番台を読む)。
+   js/ の中の全ファイルが、どこかのページで読み込まれているかを見る。 */
+const orderByPage = {};
+PAGES.forEach(f => {
+    orderByPage[f] = [...htmlByPage[f].matchAll(SCRIPT_RE)].map(m => m[1]);
 });
+const loadedAnywhere = new Set([].concat(...PAGES.map(f => orderByPage[f])));
+const neverLoaded = jsFiles.filter(f => !loadedAnywhere.has(f));
+ok('js/ のファイルがどこかのページで読み込まれている', neverLoaded.length === 0,
+   neverLoaded.length ? neverLoaded.join(', ') : loadedAnywhere.size + ' / ' + jsFiles.length);
+PAGES.forEach(f => {
+    const o = orderByPage[f];
+    ok(f + ' の読み込み順に重複が無い', new Set(o).size === o.length, o.length + '件');
+});
+const order = orderByPage[PAGES[0]];
+
 const protoBad = [];
-order.forEach((f, i) => {
-    const src = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');
-    for (const m of src.matchAll(/^(\w+)\.prototype\.\w+ = function/gm)) {
-        if (classDefs[m[1]] === undefined) protoBad.push(f + ': ' + m[1] + ' が未定義');
-        else if (classDefs[m[1]] > i) protoBad.push(f + ': ' + m[1] + ' の定義より前に読み込まれる');
-    }
+const classDefs = {};   // クラス名 -> 定義ファイルの読み込み順 (ページごと)
+PAGES.forEach(page => {
+    const o = orderByPage[page];
+    const defs = {};
+    o.forEach((f, i) => {
+        const src = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');
+        for (const m of src.matchAll(/^class (\w+) \{/gm)) { defs[m[1]] = i; classDefs[m[1]] = i; }
+    });
+    o.forEach((f, i) => {
+        const src = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');
+        for (const m of src.matchAll(/^(\w+)\.prototype\.\w+ = function/gm)) {
+            if (defs[m[1]] === undefined) protoBad.push(page + ' / ' + f + ': ' + m[1] + ' が未定義');
+            else if (defs[m[1]] > i) protoBad.push(page + ' / ' + f + ': ' + m[1] + ' の定義より前に読み込まれる');
+        }
+    });
 });
 ok('prototype への追加がクラス定義より後に読み込まれる', protoBad.length === 0,
    protoBad.length ? protoBad.join(' / ') : Object.keys(classDefs).join(', '));

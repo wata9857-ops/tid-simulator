@@ -193,3 +193,109 @@ const EXTRA_TRAINS = [
     { name: "試9161M", start: "向日町操", dest: "宮原操", time: timeToSec(10,59,0), type: "臨時", dir: -1, hoppo: false },
     { name: "試9160M", start: "宮原操", dest: "向日町操", time: timeToSec(11,42,0), type: "臨時", dir: 1, hoppo: true }
 ];
+
+/**
+ * その駅の「番線が並ぶ縦位置」を返す。
+ *
+ * 旅客向けの線路図 (js/17-renderer.js) と Super-TID の線路図
+ * (js/41-tid-render.js) は、上下の並び順も間隔も違うが、
+ * 「どの番線がどの線路の何番目にあるか」は同じ。
+ * そこで、4本の基準線の縦位置を渡すと番線の縦位置の配列を返す形にして、
+ * 両方の画面で同じ配置を使えるようにした。
+ *
+ * 戻り値は STATION_PLATFORM_RULES[stationName].labels と同じ並び。
+ */
+function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
+    const rule = STATION_PLATFORM_RULES[stationName];
+    if (!rule) return [];
+    let yPositions = [];
+
+    if (stationName === "ひめじ別所") {
+        yPositions = [upInY, downInY, upOutY - 40, downOutY + 40];
+    }
+    else if (stationName === "鷹取") {
+        yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
+    }
+    else if (stationName === "西大路") {
+        yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
+    }
+    else if (stationName === "向日町") {
+        yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
+    }
+    else if (stationName === "向日町操") {
+        yPositions = [upOutY - 40, downOutY + 40];
+    }
+    else if (stationName === "山崎") {
+        yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
+    }
+    else if (stationName === "大阪") {
+        yPositions = [upOutY-28, upOutY, upInY-28, upInY, downInY, downInY+28, downInY+56, downOutY, downOutY+28];
+    } 
+    else if (stationName === "西明石") {
+        yPositions.push(upOutY - 15);
+        yPositions.push(upInY - 15);
+        yPositions.push(upInY + 15);
+        yPositions.push(downInY - 15);
+        yPositions.push(downInY + 15);
+        yPositions.push(downOutY + 15);
+    } 
+    else if (stationName === "京都") {
+        yPositions = [upOutY-20, upOutY+10, upInY-10, upInY+20, downInY-20, downInY+10, downOutY-10, downOutY+20];
+    }
+    else if (stationName === "尼崎") {
+        yPositions = [upOutY-20, upOutY+10, upInY-10, upInY+20, downInY-20, downInY+10, downOutY-10, downOutY+20];
+    }
+    else if (stationName === "高槻") {
+        yPositions = [upOutY-15, upOutY+15, upInY-15, upInY+15, downInY, downOutY];
+    }
+    else if (stationName === "新大阪") {
+         let startY = upOutY - 20;
+        rule.lanes.forEach((_, i) => yPositions.push(startY + (i * 35)));
+    }
+    else if (["舞子","垂水","須磨","芦屋","甲南山手","さくら夙川","西宮","摩耶","朝霧","須磨海浜公園","新長田","JR総持寺","島本","桂川","東姫路","御着","塩屋"].includes(stationName)) {
+        if (rule.lanes.length === 6) { 
+         yPositions = [upOutY, upInY-28, upInY, downInY, downInY+28, downOutY];
+        } else if (rule.lanes.length === 4) {
+         yPositions = [upOutY, upInY, downInY, downOutY];
+        } else if (stationName === "東姫路" || stationName === "御着") {
+         yPositions = [upInY, downInY];
+        if(rule.lanes.length > 2) yPositions.push(upOutY);
+        }
+    } 
+    else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田", "京橋", "放出"].includes(stationName)) {
+        // ★湖西線・福知山線の待避可能駅 (2面4線)
+        yPositions = [upOutY - 15, upOutY + 15, downOutY - 15, downOutY + 15];
+    }
+    else if (["道場", "塚口"].includes(stationName)) {
+        // ★福知山線の待避可能駅 (2面3線)
+        yPositions = [upOutY - 15, upOutY + 15, downOutY];
+    }
+    else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "鴫野"].includes(stationName)) {
+        // ★湖西線・福知山線・東西線の待避なし駅 (2面2線)
+        yPositions = [upOutY, downOutY];
+    }
+    else {
+        let stIdx = STATION_MAP[stationName];
+        if (stIdx !== undefined && stIdx > STATION_MAP["草津"]) {
+        // 複線区間のホーム配置
+        if (rule.lanes.length === 1) yPositions = [upOutY];
+        else if (rule.lanes.length === 2) yPositions = [upOutY, downOutY];
+        else if (rule.lanes.length === 3) yPositions = [upOutY, upInY, downOutY]; // 中線はInのY座標を流用
+        else {
+            // 米原・長浜・敦賀などの大規模駅
+            let half = Math.ceil(rule.lanes.length / 2);
+            for(let i=0; i<half; i++) yPositions.push(upOutY + (i*28) - 28);
+            for(let i=half; i<rule.lanes.length; i++) yPositions.push(downOutY + ((i-half)*28) - 14);
+        }
+        } else {
+        // 複々線区間のホーム配置
+        if (rule.lanes.length >= 1) yPositions.push(upOutY);
+        if (rule.lanes.length >= 2) yPositions.push(upInY);
+        if (rule.lanes.length >= 3) yPositions.push(downInY);
+        if (rule.lanes.length >= 4) yPositions.push(downOutY);
+        }
+    }
+
+
+    return yPositions;
+}

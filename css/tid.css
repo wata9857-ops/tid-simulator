@@ -1,0 +1,286 @@
+/* Super-TID 画面の見た目。
+
+   同梱の実物の画面 (ref-diagram-*.png) から拾った色をそのまま使っている。
+     背景 #B4C7FB / 枠と文字 #3F4658 / パネル #ECEEF5 / 影 #707C9C
+   指令卓らしく、上段に状況、中央に線路図、下段に操作盤を置く。
+   iPad でも使えるよう、下段は横に並べつつ、画面が狭いときは折り返す。
+*/
+
+:root {
+    --tid-bg:        #B4C7FB;
+    --tid-panel:     #ECEEF5;
+    --tid-edge:      #707C9C;
+    --tid-text:      #1B2030;
+    --tid-sub:       #3F4658;
+    --tid-dark:      #2B3550;
+    --tid-darker:    #1E2536;
+    --tid-accent:    #2036FB;
+    --tid-ok:        #17823C;
+    --tid-warn:      #E57B1A;
+    --tid-emg:       #C2121B;
+}
+
+* { box-sizing: border-box; }
+
+.tid-body {
+    margin: 0;
+    background: var(--tid-darker);
+    color: var(--tid-text);
+    font-family: "Meiryo UI", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+}
+
+#tid-loading {
+    position: fixed; inset: 0; z-index: 9000;
+    background: var(--tid-darker); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; letter-spacing: 2px;
+}
+
+/* ===================================================== 上段 */
+#tid-header {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 14px;
+    padding: 6px 12px;
+    background: linear-gradient(180deg, #37415F 0%, #2B3550 100%);
+    color: #fff;
+    border-bottom: 2px solid #0E58C8;
+    min-height: 52px;
+    flex-wrap: wrap;
+}
+.tid-brand { display: flex; align-items: center; gap: 8px; }
+.tid-brand-mark {
+    background: #0E58C8; color: #fff; font-weight: bold; font-family: Arial, sans-serif;
+    padding: 3px 8px; border-radius: 3px; font-size: 16px; letter-spacing: 1px;
+}
+.tid-brand-name { font-size: 15px; }
+.tid-brand-name b { font-size: 17px; letter-spacing: 0.5px; }
+.tid-brand-sub { font-size: 11px; color: #B7C4E4; }
+
+.tid-clock {
+    font-size: 30px; font-weight: bold; letter-spacing: 2px;
+    font-variant-numeric: tabular-nums;
+    color: #EAF0FF; text-shadow: 0 0 8px rgba(120,170,255,0.6);
+    margin-left: auto;
+}
+.tid-stats { display: flex; gap: 12px; }
+.tid-stat { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.tid-stat i { font-style: normal; font-size: 10px; color: #B7C4E4; }
+.tid-stat b { font-size: 15px; }
+
+.tid-status {
+    padding: 5px 14px; border-radius: 3px; font-weight: bold; font-size: 13px;
+    border: 1px solid rgba(255,255,255,0.35);
+}
+.tid-status.is-ok      { background: #14663A; color: #D8FFE6; }
+.tid-status.is-caution { background: #8A6A12; color: #FFF3CC; }
+.tid-status.is-warn    { background: #9A4A0E; color: #FFE6D0; }
+.tid-status.is-emg     { background: var(--tid-emg); color: #fff; animation: tidFlash 1s infinite; }
+@keyframes tidFlash { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.tid-headctl { display: flex; align-items: center; gap: 10px; }
+.tid-inline { font-size: 11px; color: #C8D4F0; display: flex; align-items: center; gap: 5px; }
+.tid-inline select { font-size: 12px; padding: 3px 5px; }
+.tid-link {
+    color: #fff; background: #0E58C8; text-decoration: none;
+    padding: 6px 10px; border-radius: 3px; font-size: 12px; white-space: nowrap;
+}
+
+/* ===================================================== 表示切替 */
+#tid-toolbar {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 4px 12px;
+    background: #222B40; color: #D4DCF2; font-size: 11px;
+    border-bottom: 1px solid #4A5570;
+}
+.tid-toolbar-title { color: #8FA0C8; }
+#tid-toolbar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+#tid-toolbar input { width: 15px; height: 15px; }
+.tid-legend { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #B7C4E4; }
+.lg { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 3px;
+      vertical-align: -1px; border: 1px solid rgba(0,0,0,0.4); }
+.lg-g { background: #25E63C; } .lg-y { background: #FFD21E; } .lg-r { background: #FF2020; }
+.lg-occ { background: #E8453C; } .lg-route { background: #89F939; } .lg-sus { background: #C000C0; }
+
+/* ===================================================== 線路図 */
+#tid-viewport {
+    flex: 1 1 auto;
+    position: relative;
+    background: var(--tid-bg);
+    overflow: hidden;
+    min-height: 220px;
+}
+#tid-canvas { position: absolute; top: 0; left: 0; display: block; }
+#tid-scroll {
+    position: absolute; inset: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    cursor: grab;
+}
+#tid-scroll:active { cursor: grabbing; }
+#tid-spacer { width: 1px; height: 1px; }
+
+/* 駅の在線パネル */
+.tid-station {
+    display: none;
+    position: absolute; top: 10px; right: 10px; width: 340px; max-height: calc(100% - 20px);
+    overflow: auto;
+    background: rgba(255,255,255,0.97);
+    border: 2px solid var(--tid-edge);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    padding: 8px 10px;
+    z-index: 20;
+}
+.tid-station.is-on { display: block; }
+.tid-station-head { display: flex; align-items: center; font-size: 14px; margin-bottom: 6px; }
+.tid-station-head b { font-size: 16px; margin-right: 4px; }
+.tid-x { margin-left: auto; border: none; background: #666; color: #fff; padding: 3px 10px;
+         border-radius: 3px; cursor: pointer; font-size: 11px; }
+.tid-station-sub { margin: 8px 0 4px; font-weight: bold; font-size: 12px; color: var(--tid-sub);
+                   border-left: 4px solid var(--tid-accent); padding-left: 6px; }
+.tid-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.tid-table th { background: #DCE3F5; padding: 3px 4px; border: 1px solid #B6C0DA; }
+.tid-table td { padding: 3px 4px; border: 1px solid #D6DCEA; }
+.tid-table tr.is-busy td { background: #FFF0F0; }
+.tid-free { color: #8A93A8; }
+.tid-mini { display: inline-block; padding: 1px 5px; border-radius: 2px; font-weight: bold; font-size: 10px; }
+.tid-soon { display: flex; gap: 6px; align-items: center; font-size: 11px; padding: 2px 0;
+            border-bottom: 1px dotted #CCD4E6; }
+.tid-soon-eta { margin-left: auto; color: var(--tid-sub); }
+.tid-soon-delay { color: #C2121B; font-weight: bold; }
+
+/* 操作の結果を知らせる小さな帯 */
+.tid-toast {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(20px);
+    background: rgba(20,26,40,0.94); color: #fff; padding: 8px 18px; border-radius: 4px;
+    font-size: 13px; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none;
+    z-index: 30; max-width: 90%;
+}
+.tid-toast.is-on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ===================================================== 下段の指令卓 */
+#tid-dock {
+    flex: 0 0 auto;
+    display: flex; gap: 8px;
+    padding: 8px;
+    background: var(--tid-darker);
+    max-height: 34vh;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.tid-panel {
+    background: var(--tid-panel);
+    border: 1px solid var(--tid-edge);
+    border-radius: 4px;
+    padding: 6px 8px 8px;
+    display: flex; flex-direction: column;
+    min-width: 250px;
+    overflow-y: auto;
+}
+.tid-panel-train { flex: 1 1 250px; }
+.tid-panel-cmd   { flex: 1.3 1 300px; }
+.tid-panel-depot { flex: 1.1 1 280px; }
+.tid-panel-info  { flex: 1.4 1 320px; }
+.tid-panel h2 {
+    margin: 0 0 6px; font-size: 12px; color: #fff; background: var(--tid-dark);
+    padding: 4px 8px; border-radius: 2px; letter-spacing: 1px;
+    display: flex; align-items: center;
+}
+.tid-h2-log { margin-top: 8px !important; }
+.tid-panel select, .tid-panel input {
+    width: 100%; padding: 5px 6px; margin-bottom: 4px; font-size: 12px;
+    border: 1px solid #9AA5C0; border-radius: 3px; background: #fff;
+    font-family: inherit; min-height: 30px;
+}
+.tid-group { border-top: 1px dashed #B6C0DA; padding-top: 5px; margin-top: 5px; }
+.tid-group:first-of-type { border-top: none; margin-top: 0; }
+.tid-group-title { font-size: 11px; font-weight: bold; color: var(--tid-sub); margin-bottom: 4px; }
+.tid-row { display: flex; gap: 5px; }
+.tid-row > * { flex: 1; }
+.tid-hint { font-size: 10px; color: #5C6680; margin: 4px 0 0; line-height: 1.35; }
+
+.tid-btn {
+    border: none; border-radius: 3px; color: #fff; background: #4A5570;
+    padding: 7px 8px; font-size: 12px; font-weight: bold; cursor: pointer;
+    font-family: inherit; margin-bottom: 4px; min-height: 34px;
+}
+.tid-btn:active { transform: translateY(1px); }
+.tid-btn:disabled { background: #9AA1B4; cursor: default; }
+.tid-btn-stop  { background: #C2121B; }
+.tid-btn-go    { background: #17823C; }
+.tid-btn-exec  { background: #0E58C8; }
+.tid-btn-force { background: #00707D; width: 100%; }
+.tid-btn-emg   { background: #8A0F16; border: 2px solid #FFD21E; }
+.tid-group-emg { background: #FDECEC; border-radius: 3px; padding: 5px 6px; }
+
+/* 列車情報 */
+.tid-train-info { font-size: 12px; }
+.tid-tno { display: inline-block; padding: 3px 10px; border-radius: 2px;
+           font-weight: bold; font-size: 16px; letter-spacing: 1px; }
+.tid-tdest { font-size: 14px; font-weight: bold; margin: 4px 0 6px; }
+.tid-kv { display: flex; font-size: 11px; padding: 2px 0; border-bottom: 1px dotted #CCD4E6; }
+.tid-kv span { width: 66px; color: var(--tid-sub); flex: 0 0 auto; }
+.tid-kv b { font-weight: normal; }
+.tid-kv em { color: #C2121B; font-style: normal; font-weight: bold; }
+.tid-fleet { display: inline-block; color: #fff !important; padding: 1px 5px; border-radius: 2px; font-size: 10px; margin-right: 3px; }
+.tid-asp { padding: 1px 6px; border-radius: 2px; color: #fff; font-size: 11px; }
+.tid-asp-R  { background: #C2121B; }
+.tid-asp-Y  { background: #B58600; }
+.tid-asp-YY { background: #8A6A12; }
+.tid-asp-YG { background: #5A8A12; }
+.tid-asp-G  { background: #17823C; }
+.tid-note { font-size: 10px; color: #5C6680; margin-top: 5px; line-height: 1.4; }
+.tid-trouble { margin-top: 6px; background: #FFF0F0; border-left: 4px solid #C2121B;
+               padding: 4px 6px; font-size: 11px; }
+.tid-empty { color: #8A93A8; font-size: 11px; margin: 6px 0; }
+
+/* 輸送障害 */
+.tid-incidents { font-size: 11px; }
+.tid-inc { background: #FFF4E6; border-left: 4px solid var(--tid-warn);
+           padding: 4px 6px; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 6px; }
+.tid-inc-name  { font-weight: bold; color: #8A3A00; }
+.tid-inc-place { color: var(--tid-sub); }
+.tid-inc-stage { color: #2B3550; }
+.tid-inc-rem   { margin-left: auto; color: #C2121B; }
+.tid-inc-train { width: 100%; color: #5C6680; }
+
+/* 記録 */
+.tid-tabs { margin-left: auto; display: flex; gap: 4px; }
+.tid-tab { border: none; background: #4A5570; color: #C8D4F0; font-size: 10px;
+           padding: 3px 8px; border-radius: 2px; cursor: pointer; font-family: inherit; }
+.tid-tab.is-active { background: #0E58C8; color: #fff; }
+.tid-logs { font-size: 11px; overflow-y: auto; flex: 1 1 auto; min-height: 60px; }
+.tid-log { display: flex; gap: 5px; padding: 2px 0; border-bottom: 1px dotted #CCD4E6;
+           align-items: flex-start; }
+.tid-log-time { color: #8A93A8; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.tid-log-chip { color: #fff; border-radius: 2px; padding: 0 4px; font-size: 10px; flex: 0 0 auto; }
+.tid-log-body { flex: 1 1 auto; line-height: 1.35; }
+.tid-log-critical { background: #FFECEC; }
+.tid-log-warn     { background: #FFF7E6; }
+
+/* 隠し要素 (旅客向け画面の仕組みを使うために置いてある) */
+#tid-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden;
+              clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ===================================================== 画面が狭いとき (iPad 縦など) */
+@media (max-width: 1100px) {
+    #tid-dock { flex-wrap: wrap; max-height: 40vh; overflow-y: auto; }
+    .tid-panel { min-width: 220px; }
+    .tid-clock { font-size: 24px; }
+    .tid-stats { display: none; }
+}
+@media (max-width: 760px) {
+    #tid-header { gap: 8px; }
+    .tid-brand-sub { display: none; }
+    .tid-panel { flex: 1 1 100%; }
+    .tid-station { width: auto; left: 10px; right: 10px; }
+}

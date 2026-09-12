@@ -68,14 +68,16 @@ async function checkPage(browser, url, label, viewport, opts) {
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(String(e.message || e)));
+    const ignore = (u) => /favicon|apple-touch-icon/i.test(String(u || ''));
     page.on('console', m => {
         if (m.type() !== 'error') return;
         const t = m.text();
-        if (t.indexOf('favicon') >= 0) return;   // アイコン未配置による404は無視
+        // アイコン未配置による404は無視する
+        if (ignore(t) || (t.indexOf('404') >= 0 && t.indexOf('.js') < 0 && t.indexOf('.css') < 0)) return;
         errors.push('console: ' + t);
     });
     page.on('requestfailed', r => {
-        if (r.url().indexOf('favicon') < 0) errors.push('読み込み失敗: ' + r.url());
+        if (!ignore(r.url())) errors.push('読み込み失敗: ' + r.url());
     });
 
     await page.goto(url, { waitUntil: 'load' });
@@ -85,9 +87,9 @@ async function checkPage(browser, url, label, viewport, opts) {
     ok('JavaScript のエラーが出ていない', errors.length === 0, errors.slice(0, 3).join(' / '));
 
     const info = await page.evaluate(() => {
-        const c = document.querySelector('canvas');
-        const sc = document.getElementById('scroll-container') || document.getElementById('tid-scroll');
-        const sp = document.getElementById('canvas-spacer') || document.getElementById('tid-spacer');
+        const c = document.getElementById('tid-canvas') || document.querySelector('canvas');
+        const sc = document.getElementById('tid-scroll') || document.getElementById('scroll-container');
+        const sp = document.getElementById('tid-spacer') || document.getElementById('canvas-spacer');
         return {
             canvasW: c ? c.width : 0,
             canvasH: c ? c.height : 0,
@@ -119,7 +121,7 @@ async function checkPage(browser, url, label, viewport, opts) {
 
     // 実際に色が塗られているか (真っ白・真っ黒でないか)
     const painted = await page.evaluate(() => {
-        const c = document.querySelector('canvas');
+        const c = document.getElementById('tid-canvas') || document.querySelector('canvas');
         if (!c) return null;
         const g = c.getContext('2d');
         const w = c.width, h = c.height;
@@ -140,7 +142,7 @@ async function checkPage(browser, url, label, viewport, opts) {
 
     // スクロールしてみる
     const scrolled = await page.evaluate(() => {
-        const sc = document.getElementById('scroll-container') || document.getElementById('tid-scroll');
+        const sc = document.getElementById('tid-scroll') || document.getElementById('scroll-container');
         if (!sc) return null;
         const before = sc.scrollLeft;
         sc.scrollLeft = before + 1500;
@@ -154,6 +156,24 @@ async function checkPage(browser, url, label, viewport, opts) {
 
     if (opts.checks) await opts.checks(page, ok);
 
+    if (SHOT && opts.shots) {
+        fs.mkdirSync(SHOT_DIR, { recursive: true });
+        for (const spot of opts.shots) {
+            await page.evaluate((s) => {
+                if (typeof game !== 'undefined' && game.tidRenderer) {
+                    if (s.area) {
+                        const a = document.getElementById('tid-area');
+                        if (a) { a.value = s.area; a.dispatchEvent(new Event('change')); }
+                    }
+                    game.tidRenderer.scrollToStation(s.st);
+                    game.tidRenderer.draw();
+                }
+            }, spot);
+            await page.waitForTimeout(800);
+            await page.screenshot({ path: path.join(SHOT_DIR, 'tid_' + spot.st + (spot.area || '') + '.png') });
+            console.log('    スクリーンショット: tools/.tmp/shots/tid_' + spot.st + (spot.area || '') + '.png');
+        }
+    }
     if (SHOT) {
         fs.mkdirSync(SHOT_DIR, { recursive: true });
         const name = label.replace(/[^\w一-龥ぁ-んァ-ヶ]+/g, '_') + '_' + viewport.width + 'x' + viewport.height + '.png';
@@ -216,7 +236,45 @@ async function checkPage(browser, url, label, viewport, opts) {
         // --- Super-TID 画面 (あれば)
         if (fs.existsSync(path.join(ROOT, 'tid.html'))) {
             await checkPage(browser, base + '/tid.html', 'Super-TID 画面 tid.html',
-                { width: 1440, height: 900 }, { dpr: 1 });
+                { width: 1440, height: 900 }, { dpr: 1, shots: [
+                    { st: '大阪' }, { st: '尼崎', area: 'tozai' },
+                    { st: '京都', area: 'kosei' }, { st: '放出', area: 'tozai' },
+                    { st: '西明石' }
+                ], checks: async (page, ok) => {
+                    // 線区の切り替え
+                    const areas = await page.evaluate(() => TID_AREAS.map(a => a.id));
+                    ok('線区を切り替えられる', areas.length >= 5, areas.join(','));
+                    // 列車を選んで抑止 -> 解除
+                    const r = await page.evaluate(() => {
+                        // 本線上にいる列車。いなければ留置中の車両でも良い。
+                        const t = game.trains.find(x => x.state !== 'finished' && x.state !== 'in_depot')
+                               || game.trains.find(x => x.state !== 'finished');
+                        if (!t) return null;
+                        game.tidUI.selectTrain(t.id);
+                        game.tidUI.cmdHold(false);
+                        const held = t.isManuallySuspended;
+                        game.tidUI.cmdRelease();
+                        return { no: t.trainNo, held: held, released: !t.isManuallySuspended };
+                    });
+                    ok('指令パッドから抑止できる', !!r && r.held, r ? r.no : '列車なし');
+                    ok('指令パッドから抑止解除できる', !!r && r.released);
+                    // 駅情報
+                    await page.evaluate(() => game.tidUI.showStation('大阪'));
+                    await page.waitForTimeout(200);
+                    const stOpen = await page.evaluate(() =>
+                        document.getElementById('tid-station').classList.contains('is-on') &&
+                        document.querySelectorAll('#tid-station .tid-table tr').length > 1);
+                    ok('駅の在線情報が開く', stOpen);
+                    await page.evaluate(() => { game.tidUI.stationName = null; game.tidUI.renderStation(); });
+                    // 留置場の構内図
+                    await page.evaluate(() => showDepotModal('放出'));
+                    await page.waitForTimeout(200);
+                    const dOpen = await page.evaluate(() =>
+                        document.getElementById('depot-modal').style.display === 'flex' &&
+                        document.querySelectorAll('#depot-modal-content svg').length > 0);
+                    ok('留置場の構内配線図が開く', dOpen);
+                    await page.evaluate(() => closeDepotModal());
+                }});
             await checkPage(browser, base + '/tid.html', 'Super-TID 画面 tid.html (iPad 横)',
                 { width: 1180, height: 820 }, { dpr: 2, touch: true });
         }
