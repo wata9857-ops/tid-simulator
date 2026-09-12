@@ -56,6 +56,12 @@ window.onload = function () {
     // 起動時は大阪を中央に
     game.tidRenderer.scrollToStation("大阪");
 
+    /* 画面どうしの共有を始める (js/29-sim-bus.js)。
+       旅客向け画面をすでに開いていれば、そちらが本体になり
+       この画面は同じ状態を映す。指令はどちらから出しても共有される。 */
+    game.bus = new SimBus(game);
+    game.bus.start();
+
     // 1秒ごとに指令パッド・情報パネルを描き直す (線路図は毎フレーム)
     setInterval(() => {
         try { game.tidUI.render(); } catch (e) { console.error(e); }

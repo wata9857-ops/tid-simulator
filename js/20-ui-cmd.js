@@ -134,117 +134,63 @@ UIManager.prototype.updateTrainSelector = function () {
         sel.value = val;
 };
 
+/* ここから下の指令は、実体を js/28-dispatch.js に置いている。
+   Super-TID 画面 (tid.html) や別タブからの指令と同じ処理を通すため。 */
 UIManager.prototype.executeTrainChange = function () {
-        const t = this.game.getTrain(document.getElementById('cmd-no').value);
-        if (!t) return;
-        const dest = document.getElementById('cmd-dest').value;
-        const type = document.getElementById('cmd-type').value;
-        if(dest) t.dest = dest;
-        if(type!=="no_change") { 
-            t.type=type; 
-            if(type==="回送"||type==="臨時") {
-                this.game.spawner.activeTrainNos.delete(t.trainNo); // ★追加: 古い列番を削除
-                t.trainNo=type.charAt(0)+t.trainNo.replace(/\D/g,''); 
-                this.game.spawner.activeTrainNos.add(t.trainNo); // ★追加: 新しい列番を登録
-            }
-        }
-        t.nextAction = document.getElementById('cmd-action').value;
-
-        // ★追加: 運行継続ジャッジ待ち状態での介入を検知し、運転を再開させる
-        if (t.isJudging) {
-            t.isJudging = false;
-            t.minorTrouble = false;
-            t.troubleInfo.active = false;
-            t.state = "running";
-            t.timer = 15;
-            this.updateBanner(`【指令介入】${t.trainNo} に対する運行継続/打ち切りの指示を受信。直ちに運転を再開します。`, "banner-orange");
-        }
-
-        alert("変更完了");
-        this.updateTrainSelector(); // ★追加: セレクトボックスを再構築
+        const r = this.game.dispatch({
+            name: "change",
+            trainId: document.getElementById('cmd-no').value,
+            dest: document.getElementById('cmd-dest').value,
+            type: document.getElementById('cmd-type').value,
+            action: document.getElementById('cmd-action').value
+        });
+        alert(r.msg || (r.ok ? "変更完了" : "変更できませんでした"));
+        this.updateTrainSelector();
 };
 
 UIManager.prototype.executeSuspendOn = function () {
-        const t = this.game.getTrain(document.getElementById('cmd-no').value);
-        if(!t) return;
-        const at = document.getElementById('cmd-stop-at').value;
-        if(at) { t.plannedStop = at; alert("予約完了"); } else { t.isManuallySuspended=true; alert("即時抑止"); }
+        const r = this.game.dispatch({
+            name: "hold",
+            trainId: document.getElementById('cmd-no').value,
+            at: document.getElementById('cmd-stop-at').value
+        });
+        alert(r.msg || (r.ok ? "予約完了" : "実行できませんでした"));
 };
 
 UIManager.prototype.executeSuspendImm = function () {
-        const t = this.game.getTrain(document.getElementById('cmd-no').value);
-        if(!t) return; 
-        t.isManuallySuspended=true; 
-        t.manualSuspendTimer=0; 
-        t.hasNotifiedSuspendLong=false; 
-        t.plannedStop=null; 
-        alert("即時抑止実行"); 
+        const r = this.game.dispatch({
+            name: "hold", trainId: document.getElementById('cmd-no').value
+        });
+        alert(r.msg || (r.ok ? "即時抑止実行" : "実行できませんでした"));
         this.updateTrainSelector();
 };
 
 UIManager.prototype.executeSuspendOff = function () {
-        const t = this.game.getTrain(document.getElementById('cmd-no').value);
-        if(!t) return; 
-        t.isManuallySuspended=false; 
-        t.manualSuspendTimer=0; 
-        t.hasNotifiedSuspendLong=false; 
-        t.plannedStop=null; 
-        if(t.state==="holding"){t.state="running"; t.timer=15;}
-        alert("解除完了");
+        const r = this.game.dispatch({
+            name: "release", trainId: document.getElementById('cmd-no').value
+        });
+        alert(r.msg || (r.ok ? "解除完了" : "実行できませんでした"));
+        this.updateTrainSelector();
 };
 
 /**
- * ★追加: 強制発車指令。
- * 抑止(即時抑止・予約抑止・同ホーム抑止)を解除し、続行間隔や順序待ちの
+ * 強制発車指令。
+ * 抑止(即時・予約・同ホーム抑止)を解除し、続行間隔や順序待ちの
  * 自動判定を1回だけ飛ばして発車させる、指令による割り込み操作。
- *
- * 自動の運転整理ロジックそのものは変更しない。forceStart は発車できた時点で
- * 自動的に解除されるので、以降は通常の判定に戻る。
- * 進路(番線)が空いていない場合は move() 側で止まるため、追突は起きない。
+ * 実体は js/28-dispatch.js の DISPATCH.force。
  */
 UIManager.prototype.executeForceStart = function () {
-    const t = this.game.getTrain(document.getElementById('cmd-no').value);
-    if (!t) { alert("対象列車を選択してください。"); return; }
-
-    // 留置場で待機中の場合は強制出区として扱う
-    if (t.state === "in_depot") {
-        if (!t.depotOutConfig) {
-            alert("この編成には出区する運用が設定されていません。\n「4. 留置場 出区・強制発車指令」で運用を設定してください。");
-            return;
-        }
-        t.forceDepotOut = true;
-        t.timer = 0;
-        t.tryDepotOut(t.startName, true);
-        this.game.ui.updateBanner(`【指令介入】${t.trainNo || "予備車"} に ${t.startName}留置場からの強制出区を指示しました。`, "banner-orange");
-        this.updateDepotSelector();
-        this.updateTrainSelector();
-        return;
-    }
-
-    const blks = this.game.trackMgr.blocks[t.trackId];
-    const blk = blks ? blks[t.currBlockIndex] : null;
-    const stName = blk ? (blk.hoppoStationName || (blk.stationIdx >= 0 ? STATIONS[blk.stationIdx].name : "駅間")) : "駅間";
-
+    const id = document.getElementById('cmd-no').value;
+    if (!id) { alert("対象列車を選択してください。"); return; }
+    const t = this.game.getTrain(id);
     // 見合わせ区間へ突っ込ませないための確認
-    if (this.game.trackMgr.isSuspended(t.trackId, t.currBlockIndex + t.dir)) {
-        if (!confirm(`${stName} の先は運転見合わせ区間です。\n${t.trainNo} を強制発車させますか？`)) return;
+    if (t && this.game.trackMgr.isSuspended(t.trackId, t.currBlockIndex + t.dir)) {
+        if (typeof confirm === "function" &&
+            !confirm(`${t.trainNo} の先は運転見合わせ区間です。強制発車させますか？`)) return;
     }
-
-    const wasSuspended = t.isManuallySuspended || t.plannedStop;
-
-    t.isManuallySuspended = false;
-    t.manualSuspendTimer = 0;
-    t.hasNotifiedSuspendLong = false;
-    t.plannedStop = null;
-    t.forceStart = true;
-    t.timer = 0;                 // 次のTickで即座に発車判定へ入る
-    if (t.state === "holding") t.state = "running";
-    // 終着待ち・同ホーム抑止で止めていた場合は、指令で運転再開させる
-    if (t.nextAction === "wait_instruction") t.nextAction = "turnback";
-
-    this.game.ui.updateBanner(
-        `【指令介入】${stName}${wasSuspended ? "で抑止中" : "停車中"}の ${t.trainNo} に強制発車を指示しました。`,
-        "banner-orange");
+    const r = this.game.dispatch({ name: "force", trainId: id });
+    alert(r.msg || (r.ok ? "強制発車を指示しました" : "実行できませんでした"));
+    this.updateDepotSelector();
     this.updateTrainSelector();
 };
 
@@ -266,95 +212,42 @@ UIManager.prototype.updateTrackCandidates = function () {
 };
 
 UIManager.prototype.applyTrackChange = function () {
-        const t = this.game.getTrain(document.getElementById('cmd-no').value);
-        const stName = document.getElementById("cmd-chg-station").value;
-        const val = document.getElementById("cmd-chg-track").value;
-        if(!t || !stName || !val) { alert("選択不備"); return; }
-        const [targetTrackId, targetLaneIdx] = val.split(",");
-        t.trackChangeReservation = { stationName: stName, targetTrackId: targetTrackId, targetLane: parseInt(targetLaneIdx), status: "pending" };
-        alert("予約しました");
+        const val = document.getElementById("cmd-chg-track").value || "";
+        const parts = val.split(",");
+        const r = this.game.dispatch({
+            name: "trackChange",
+            trainId: document.getElementById('cmd-no').value,
+            station: document.getElementById("cmd-chg-station").value,
+            trackId: parts[0], lane: parseInt(parts[1], 10) || 0
+        });
+        alert(r.msg || (r.ok ? "予約しました" : "選択不備"));
 };
 
 UIManager.prototype.setSuspension = function () {
-        const trk = document.getElementById('sus-track').value;
-        const sName = document.getElementById('sus-start').value;
-        const eName = document.getElementById('sus-end').value;
-        const sIdx = STATION_MAP[sName], eIdx = STATION_MAP[eName];
-        if(sIdx===undefined || eIdx===undefined) return;
-        const blks = this.game.trackMgr.blocks[trk];
-        let sB = blks.find(b=>b.stationIdx===sIdx), eB = blks.find(b=>b.stationIdx===eIdx);
-        if(!sB || !eB) return;
-        // ★修正: 両端の駅ブロックを見合わせ区間から除外し、駅への進入および折り返しを可能にする
-        let minIdx = Math.min(sB.index, eB.index) + 1;
-        let maxIdx = Math.max(sB.index, eB.index) - 1;
-        if (minIdx <= maxIdx) {
-            this.game.trackMgr.manualSuspensions.push({ trackId: trk, start: minIdx, end: maxIdx });
-        }
-        alert("見合わせ設定完了");
+        const r = this.game.dispatch({
+            name: "suspend",
+            trackId: document.getElementById('sus-track').value,
+            from: document.getElementById('sus-start').value,
+            to: document.getElementById('sus-end').value
+        });
+        alert(r.msg || (r.ok ? "見合わせ設定完了" : "設定できませんでした"));
 };
 
 UIManager.prototype.clearSuspension = function () {
-        this.game.trackMgr.manualSuspensions = [];
-        this.game.trains.forEach(t=>{if(t.state==="holding"){t.state="running"; t.timer=15;}});
-        alert("全解除");
+        const r = this.game.dispatch({ name: "clearSuspend" });
+        alert(r.msg || "全解除");
 };
 
 UIManager.prototype.executeDepotOutForce = function () {
-        const depotName = document.getElementById("cmd-depot-sel").value;
-        const trainId = document.getElementById("cmd-depot-train").value;
-        if (!depotName || !trainId) {
-            alert("留置場と対象車両を選択してください。"); return;
-        }
-        const t = this.game.trains.find(tr => tr.id === trainId);
-        if (!t || t.state !== "in_depot") {
-            alert("該当車両が見つかりません。"); return;
-        }
-
-        const delayMin = parseInt(document.getElementById('cmd-depot-time').value);
-        const newType = document.getElementById('cmd-depot-type').value;
-        const newDest = document.getElementById('cmd-depot-dest').value;
-        const nextAction = document.getElementById('cmd-depot-action').value;
-
-        // 行先から進行方向（dir）を自動判定して逆走を防止
-        let startIdx = STATION_MAP[depotName];
-        if (depotName === "宮原操") startIdx = 39;
-        if (depotName === "向日町操") startIdx = 51;
-        
-        let destIdx = STATION_MAP[newDest];
-        if (destIdx === undefined) {
-            if (newDest === "宮原操") destIdx = 39;
-            if (newDest === "向日町操") destIdx = 51;
-            if (newDest === "吹田貨") destIdx = 41;
-        }
-
-        let newDir = 1;
-        if (startIdx !== undefined && destIdx !== undefined) {
-            newDir = (destIdx > startIdx) ? 1 : -1;
-        }
-
-        t.dest = newDest;
-        t.type = newType;
-        t.nextAction = nextAction;
-        t.dir = newDir;
-
-        let tempTrack = t.dir === 1 ? "Up_In" : "Down_In";
-        if (t.type === "回送" || t.type === "臨時") tempTrack = t.dir === 1 ? "Up_Out" : "Down_Out";
-        
-        if (t.trainNo) this.game.spawner.activeTrainNos.delete(t.trainNo);
-        t.trainNo = this.game.spawner.generateTrainNumber(t.type, t.dir, depotName, tempTrack);
-
-        t.dutyName = t.trainNo;
-        t.depotOutConfig = { type: t.type, dest: t.dest, trainNo: t.trainNo, dir: t.dir, dutyName: t.trainNo };
-        
-        t.timer = delayMin * 60;
-        t.forceDepotOut = true; // ★改善: タイマー実行時にも強制出区フラグを持たせる
-        if (t.timer === 0) {
-            t.tryDepotOut(depotName, true);
-        } else {
-            this.game.ui.updateBanner(`【出区予約】${t.trainNo} は ${delayMin}分後に ${depotName}留置場から強制出区します。`, "banner-orange");
-        }
-        
-        alert(`${t.trainNo} (${depotName}留置場) に出区指令を設定しました。`);
+        const r = this.game.dispatch({
+            name: "depotOut",
+            depot: document.getElementById("cmd-depot-sel").value,
+            trainId: document.getElementById("cmd-depot-train").value,
+            delayMin: parseInt(document.getElementById('cmd-depot-time').value, 10) || 0,
+            type: document.getElementById('cmd-depot-type').value,
+            dest: document.getElementById('cmd-depot-dest').value
+        });
+        alert(r.msg || (r.ok ? "出区指令を設定しました" : "設定できませんでした"));
         this.updateDepotSelector();
         this.updateTrainSelector();
 };

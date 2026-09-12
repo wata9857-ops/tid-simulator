@@ -186,6 +186,69 @@ async function checkPage(browser, url, label, viewport, opts) {
     return errs2;
 }
 
+/* 旅客向け画面と Super-TID 画面を同じブラウザで同時に開き、
+   同じシミュレーションを見ているかを確かめる。 */
+async function checkSharedState(browser, base) {
+    head('2画面の状態共有 (index.html と tid.html を同時に開く)');
+    // 同じ localStorage / BroadcastChannel を使うため、1つのコンテキストに2ページ開く
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1 });
+    const errors = [];
+    const p1 = await ctx.newPage();
+    p1.on('pageerror', e => errors.push('index: ' + e.message));
+    await p1.goto(base + '/index.html', { waitUntil: 'load' });
+    await p1.waitForTimeout(3000);
+
+    const p2 = await ctx.newPage();
+    p2.on('pageerror', e => errors.push('tid: ' + e.message));
+    await p2.goto(base + '/tid.html', { waitUntil: 'load' });
+    await p2.waitForTimeout(4000);
+
+    ok('2画面ともエラーなく動く', errors.length === 0, errors.slice(0, 3).join(' / '));
+
+    const roles = await Promise.all([
+        p1.evaluate(() => ({ host: !!(game.bus && game.bus.isHost), n: game.trains.length, t: game.currentTime })),
+        p2.evaluate(() => ({ host: !!(game.bus && game.bus.isHost), n: game.trains.length, t: game.currentTime }))
+    ]);
+    console.log('    旅客向け: 本体=' + roles[0].host + ' 在線' + roles[0].n + '本 / ' +
+                'Super-TID: 本体=' + roles[1].host + ' 在線' + roles[1].n + '本');
+    ok('本体はどちらか一方だけ', roles[0].host !== roles[1].host,
+       '旅客=' + roles[0].host + ' TID=' + roles[1].host);
+    ok('2画面の時刻が揃っている', Math.abs(roles[0].t - roles[1].t) <= CONFIG_TICK * 2,
+       roles[0].t + ' / ' + roles[1].t);
+    ok('2画面の在線本数が揃っている', Math.abs(roles[0].n - roles[1].n) <= 3,
+       roles[0].n + ' / ' + roles[1].n);
+
+    // Super-TID 側で抑止 -> 旅客向け側にも反映されるか
+    const target = await p2.evaluate(() => {
+        const t = game.trains.find(x => x.state !== 'finished' && x.state !== 'in_depot');
+        if (!t) return null;
+        game.tidUI.selectTrain(t.id);
+        game.tidUI.cmdHold(false);
+        return t.id;
+    });
+    await p1.waitForTimeout(2500);
+    const held = target ? await p1.evaluate((id) => {
+        const t = game.trains.find(x => x.id === id);
+        return t ? !!t.isManuallySuspended : null;
+    }, target) : null;
+    ok('Super-TID で抑止すると旅客向け画面にも反映される', held === true, String(held));
+
+    // 旅客向け側で解除 -> Super-TID 側にも反映されるか
+    if (target) {
+        await p1.evaluate((id) => game.dispatch({ name: 'release', trainId: id }), target);
+        await p2.waitForTimeout(2500);
+        const rel = await p2.evaluate((id) => {
+            const t = game.trains.find(x => x.id === id);
+            return t ? !t.isManuallySuspended : null;
+        }, target);
+        ok('旅客向け画面で解除すると Super-TID にも反映される', rel === true, String(rel));
+    }
+
+    await ctx.close();
+}
+
+const CONFIG_TICK = 30;
+
 (async () => {
     const exe = CHROME_CANDIDATES.find(p => fs.existsSync(p));
     if (!exe) { console.error('Chrome / Edge が見つかりません'); process.exit(2); }
@@ -277,6 +340,10 @@ async function checkPage(browser, url, label, viewport, opts) {
                 }});
             await checkPage(browser, base + '/tid.html', 'Super-TID 画面 tid.html (iPad 横)',
                 { width: 1180, height: 820 }, { dpr: 2, touch: true });
+        }
+        // --- 2画面を同時に開いたときの状態共有
+        if (fs.existsSync(path.join(ROOT, 'tid.html'))) {
+            await checkSharedState(browser, base);
         }
     } finally {
         await browser.close();

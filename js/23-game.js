@@ -24,6 +24,9 @@ class GameSystem {
         this.incidents = new IncidentSystem(this);
         // 運用計画 (js/27-operations.js)。出区・送り込み・増発・復旧回送。
         this.ops = new OperationsManager(this);
+        /* 画面どうしで同じシミュレーションを共有する仕組み (js/29-sim-bus.js)。
+           同じブラウザで開いた画面のうち1つが本体になり、残りはその状態を映す。 */
+        this.bus = null;
         this.trains = [];
         this.fleet = new FleetManager(this);   // 編成(車両)の在庫と運用規則
         this.spawner = new Spawner(this);
@@ -82,6 +85,12 @@ class GameSystem {
                 }
             }
         }
+
+        /* 画面どうしの共有を始める。
+           同じブラウザで旅客向け画面と Super-TID 画面を開いたとき、
+           先に開いた方が本体になり、あとから開いた方はその状態を映す。 */
+        this.bus = new SimBus(this);
+        this.bus.start();
 
         // 初回タイムスタンプを0と見なしてループ開始
         requestAnimationFrame((ts) => { this.lastTime = ts; this.loop(ts); });
@@ -183,7 +192,13 @@ class GameSystem {
             // 1秒以上経過していたらロジック更新
             if (deltaTime >= 1000) {
                 this.lastTime = timestamp; // ★エラー時の時間暴走を防ぐため、update前に更新
-                this.update();
+                /* 本体の画面だけがシミュレーションを進める。
+                   従の画面は本体から届く状態を映すだけなので、
+                   同じブラウザで2枚開いても二重に時間が進むことはない。 */
+                if (!this.bus || this.bus.isHost) {
+                    this.update();
+                    if (this.bus) this.bus.publish();
+                }
                 needDraw = true;                       // 状態が進んだので再描画
             }
             // スクロール位置が変わった時のみ再描画(可視領域クリッピングの対象が変わるため)

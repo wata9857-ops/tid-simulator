@@ -152,7 +152,7 @@ class TidUI {
         on("tid-btn-sus-set",   () => this.cmdSuspend());
         on("tid-btn-sus-clear", () => this.cmdClearSuspend());
         on("tid-btn-radio",     () => this.cmdRadio());
-        on("tid-btn-radio-off", () => this.game.clearEmergency());
+        on("tid-btn-radio-off", () => this.cmdClearRadio());
         on("tid-log-cmd",       () => { this.logTab = "cmd"; this.renderLogs(); });
         on("tid-log-staff",     () => { this.logTab = "staff"; this.renderLogs(); });
         on("tid-station-close", () => { this.stationName = null; this.renderStation(); });
@@ -186,108 +186,78 @@ class TidUI {
     }
 
     // ============================================================ 指令
-    cmdHold(atStation) {
-        const t = this.selected();
-        if (!t) { this.notify("対象列車を選んでください。"); return; }
-        if (atStation) {
-            const at = this.el("tid-hold-at").value;
-            if (!at) { this.notify("抑止する駅を選んでください。"); return; }
-            t.plannedStop = at;
-            this.game.ui.updateBanner(`【指令】${t.trainNo} に ${at}駅での抑止を手配しました。`, "banner-orange");
-            this.notify(t.trainNo + " を " + at + " で抑止します。");
-        } else {
-            t.isManuallySuspended = true;
-            t.manualSuspendTimer = 0;
-            t.hasNotifiedSuspendLong = false;
-            t.plannedStop = null;
-            this.game.ui.updateBanner(`【指令】${t.trainNo} を即時抑止しました。`, "banner-orange");
-            this.notify(t.trainNo + " を即時抑止しました。");
-        }
+    /* 指令の実体は js/28-dispatch.js にある。
+       旅客向け画面や別タブからの指令と同じ処理を通すため、
+       ここでは入力を集めて game.dispatch() に渡すだけにしている。 */
+    run(cmd) {
+        const r = this.game.dispatch(cmd);
+        if (r && r.msg && !r.forwarded) this.notify(r.msg);
+        else if (r && r.forwarded) this.notify("指令を本体の画面へ送りました。");
         this.render();
+        return r;
+    }
+
+    cmdHold(atStation) {
+        if (!this.selectedId) { this.notify("対象列車を選んでください。"); return; }
+        const at = atStation ? this.el("tid-hold-at").value : "";
+        if (atStation && !at) { this.notify("抑止する駅を選んでください。"); return; }
+        this.run({ name: "hold", trainId: this.selectedId, at: at });
     }
 
     cmdRelease() {
-        const t = this.selected();
-        if (!t) { this.notify("対象列車を選んでください。"); return; }
-        t.isManuallySuspended = false;
-        t.manualSuspendTimer = 0;
-        t.hasNotifiedSuspendLong = false;
-        t.plannedStop = null;
-        if (t.state === "holding") { t.state = "running"; t.timer = 15; }
-        this.game.ui.updateBanner(`【指令】${t.trainNo} の抑止を解除しました。`, "banner-orange");
-        this.notify(t.trainNo + " の抑止を解除しました。");
-        this.render();
+        if (!this.selectedId) { this.notify("対象列車を選んでください。"); return; }
+        this.run({ name: "release", trainId: this.selectedId });
     }
 
-    /** 強制発車。抑止を解いて、続行間隔の自動判定を1回だけ飛ばす。 */
     cmdForceStart() {
-        const t = this.selected();
-        if (!t) { this.notify("対象列車を選んでください。"); return; }
-        if (t.state === "in_depot") {
-            if (!t.depotOutConfig) {
-                this.notify("この編成には出区する運用が設定されていません。");
-                return;
-            }
-            t.forceDepotOut = true;
-            t.timer = 0;
-            t.tryDepotOut(t.startName, true);
-            this.game.ui.updateBanner(
-                `【指令介入】${t.trainNo || "予備車"} に ${t.startName}留置場からの強制出区を指示しました。`, "banner-orange");
-            this.notify("強制出区を指示しました。");
-            this.render();
-            return;
-        }
-        t.isManuallySuspended = false;
-        t.manualSuspendTimer = 0;
-        t.hasNotifiedSuspendLong = false;
-        t.plannedStop = null;
-        t.forceStart = true;
-        t.timer = 0;
-        if (t.state === "holding") t.state = "running";
-        if (t.nextAction === "wait_instruction") t.nextAction = "turnback";
-        this.game.ui.updateBanner(`【指令介入】${t.trainNo} に強制発車を指示しました。`, "banner-orange");
-        this.notify(t.trainNo + " に強制発車を指示しました。");
-        this.render();
+        if (!this.selectedId) { this.notify("対象列車を選んでください。"); return; }
+        this.run({ name: "force", trainId: this.selectedId });
     }
 
     cmdApplyChange() {
-        const t = this.selected();
-        if (!t) { this.notify("対象列車を選んでください。"); return; }
-        const dest = this.el("tid-dest").value;
-        const type = this.el("tid-type").value;
-        const act = this.el("tid-action").value;
-        let changed = [];
-
-        if (type && type !== "no_change") {
-            // その編成でその種別に変えられるかを確かめる
-            if (!t.canChangeTypeTo(type)) {
-                this.notify("いまの編成では " + type + " に変更できません。");
-                return;
-            }
-            this.game.spawner.activeTrainNos.delete(t.trainNo);
-            t.type = type;
-            if (type === "回送" || type === "臨時") {
-                t.trainNo = type.charAt(0) + String(t.trainNo).replace(/\D/g, "");
-            }
-            t.dutyName = t.trainNo;
-            this.game.spawner.activeTrainNos.add(t.trainNo);
-            changed.push("種別を" + type + "に変更");
-        }
-        if (dest) { t.dest = dest; t.isFinalStop = false; t.updateKoseiRoute(); changed.push("行先を" + dest + "に変更"); }
-        if (act) { t.nextAction = act; changed.push("終着後の処置を変更"); }
-
-        if (t.isJudging) {
-            t.isJudging = false;
-            t.minorTrouble = false;
-            t.troubleInfo = { active: false, cause: "", status: "" };
-            t.state = "running"; t.timer = 15;
-            changed.push("運転再開を指示");
-        }
-        if (!changed.length) { this.notify("変更する内容がありません。"); return; }
-        this.game.ui.updateBanner(`【指令】${t.trainNo} — ${changed.join(" / ")}。`, "banner-orange");
-        this.notify(changed.join(" / "));
-        this.render();
+        if (!this.selectedId) { this.notify("対象列車を選んでください。"); return; }
+        this.run({
+            name: "change", trainId: this.selectedId,
+            dest: this.el("tid-dest").value,
+            type: this.el("tid-type").value,
+            action: this.el("tid-action").value
+        });
     }
+
+    cmdTrackChange() {
+        const val = this.el("tid-chg-track").value || "";
+        const parts = val.split(",");
+        if (!this.selectedId || !parts[0]) { this.notify("列車・駅・番線を選んでください。"); return; }
+        this.run({
+            name: "trackChange", trainId: this.selectedId,
+            station: this.el("tid-chg-station").value,
+            trackId: parts[0], lane: parseInt(parts[1], 10) || 0
+        });
+    }
+
+    cmdDepotOut() {
+        this.run({
+            name: "depotOut",
+            depot: this.el("tid-depot").value,
+            trainId: this.el("tid-depot-train").value,
+            delayMin: parseInt(this.el("tid-depot-time").value, 10) || 0,
+            type: this.el("tid-depot-type").value,
+            dest: this.el("tid-depot-dest").value
+        });
+    }
+
+    cmdSuspend() {
+        this.run({
+            name: "suspend",
+            trackId: this.el("tid-sus-track").value,
+            from: this.el("tid-sus-start").value,
+            to: this.el("tid-sus-end").value
+        });
+    }
+
+    cmdClearSuspend() { this.run({ name: "clearSuspend" }); }
+    cmdRadio()        { this.run({ name: "radio" }); }
+    cmdClearRadio()   { this.run({ name: "clearRadio" }); }
 
     refreshTrackCandidates() {
         const stName = this.el("tid-chg-station").value;
@@ -492,7 +462,8 @@ class TidUI {
     renderIncidents() {
         const e = this.el("tid-incidents");
         if (!e) return;
-        const list = this.game.incidents.list();
+        const list = (this.game.bus && !this.game.bus.isHost)
+            ? this.game.bus.incidentList() : this.game.incidents.list();
         if (!list.length) {
             e.innerHTML = '<p class="tid-empty">輸送障害はありません。</p>';
             return;
