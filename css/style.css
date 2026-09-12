@@ -53,11 +53,36 @@
     /* 緊急制御パネル */
     #emg-control { display: none; position: fixed; top: 100px; left: 50%; transform: translateX(-50%); width: 300px; background: rgba(200, 0, 0, 0.9); padding: 15px; border: 3px solid #fff; border-radius: 8px; z-index: 3000; text-align: center; color: white; }
 
-    /* スクロールコンテナ */
-    #scroll-container { width: 100vw; height: 100vh; overflow-x: scroll; overflow-y: hidden; -webkit-overflow-scrolling: touch; background-color: #8faadd; padding-top: 70px; padding-bottom: 60px; cursor: grab; }
+    /* 線路図の表示域。
+       キャンバスは画面の大きさぶんだけ作り、いちばん下の層に敷く。
+       その上に透明なスクロール領域 (#scroll-container) を重ね、
+       中の #canvas-spacer が線路図全体の大きさを持ってスクロールバーを出す。
+       スクロールされたら、その量ぶんずらしてキャンバスを描き直す。
+       こうすることで
+         ・キャンバスの面積が画面と同じになり、iPad の上限に掛からない
+         ・iOS の慣性スクロールがそのまま使える
+         ・横にも縦にもスクロールできる
+       という形にしている。 */
+    #tid-viewport {
+        position: fixed; top: 70px; left: 0; right: 0; bottom: 50px;
+        background-color: #8faadd;
+        overflow: hidden;
+    }
+    #tidCanvas {
+        position: absolute; top: 0; left: 0;
+        display: block;
+        image-rendering: -webkit-optimize-contrast;
+    }
+    #scroll-container {
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        touch-action: pan-x pan-y;
+        cursor: grab;
+    }
     #scroll-container:active { cursor: grabbing; }
-    
-    canvas { display: block; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; image-rendering: pixelated; }
+    #canvas-spacer { width: 1px; height: 1px; }
 
     /* ★追加: 強制発車ボタン (指令パッド) */
     .btn-force { display:block; width:100%; margin-top:8px; padding:9px; background:#00838F; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:13px; cursor:pointer; font-family: "Meiryo UI", "Yu Gothic", sans-serif; }

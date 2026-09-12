@@ -229,8 +229,14 @@
     <div style="text-align:right; margin-top:15px;"><button id="btn-close-cmd" class="btn-close" onclick="game.ui.toggleCmdPanel()">閉じる</button></div>
 </div>
 
-<div id="scroll-container">
+<!-- 線路図。
+     canvas-spacer は線路図全体の大きさを持つ空の箱で、スクロールバーを出すためのもの。
+     キャンバス自体は画面の大きさぶんしか作らず、スクロール量に合わせて描き直す。
+     こうしないと iPad の Safari でキャンバスの面積の上限に掛かり、
+     線路図が真っ白になってしまう。 -->
+<div id="tid-viewport">
     <canvas id="tidCanvas"></canvas>
+    <div id="scroll-container"><div id="canvas-spacer"></div></div>
 </div>
 <div id="dep-board-modal" onclick="game.ui.closeDepartureBoard()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center; flex-direction:column; gap:10px; overflow-y:auto;">
     

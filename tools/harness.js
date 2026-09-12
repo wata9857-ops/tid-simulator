@@ -41,7 +41,8 @@ function makeCtx() {
     ['save', 'restore', 'beginPath', 'closePath', 'moveTo', 'lineTo', 'stroke', 'fill',
      'fillRect', 'strokeRect', 'clearRect', 'fillText', 'strokeText', 'arc', 'rect',
      'translate', 'rotate', 'scale', 'drawImage', 'quadraticCurveTo', 'bezierCurveTo',
-     'ellipse', 'clip'].forEach(k => { ctx[k] = noop; });
+     'ellipse', 'clip', 'setTransform', 'resetTransform', 'transform',
+     'roundRect', 'arcTo', 'createPattern'].forEach(k => { ctx[k] = noop; });
     return ctx;
 }
 
@@ -50,6 +51,7 @@ function makeEl(id) {
         id: id,
         innerText: '', textContent: '', value: '', className: '', title: '',
         width: 0, height: 0, scrollLeft: 0, scrollTop: 0,
+        clientWidth: 1200, clientHeight: 800, offsetWidth: 1200, offsetHeight: 800,
         style: { setProperty: () => {} },
         children: [],
         options: [],
@@ -102,6 +104,7 @@ const sandbox = {
     Math: Math, Date: Date, JSON: JSON, Object: Object, Array: Array,
     String: String, Number: Number, Boolean: Boolean, RegExp: RegExp,
     Set: Set, Map: Map, Error: Error, isNaN: isNaN, parseInt: parseInt, parseFloat: parseFloat,
+    devicePixelRatio: 1,
     requestAnimationFrame: () => 0,          // ループは回さない (検証側から手で進める)
     alert: (m) => { alerts.push(String(m)); },
     confirm: () => true,

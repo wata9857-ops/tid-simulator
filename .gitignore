@@ -10,3 +10,8 @@ desktop.ini
 
 # Excel の一時ファイル
 ~$*.xlsx
+
+# 検証用に生成する一時ファイル (スクリーンショットなど)
+tools/.tmp/
+node_modules/
+package-lock.json
