@@ -187,26 +187,53 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
         }
 };
 
+/**
+ * 終点に着いたが入区できない列車の後始末。
+ *
+ * ★方針を変えた。
+ *   以前は京都・須磨・大久保に着いた列車を、すぐ「向日町操行きの回送」に
+ *   打ち切っていた。そのため京都に着いた列車のほとんどが向日町操へ
+ *   回送され、営業に戻らないまま消えていた。
+ *   実際の運用では、京都に着いた列車はその場で折り返して次の列車になるのが
+ *   基本で、向日町操への入区は運用の最後や、車両交換が必要なときだけ。
+ *
+ *   そこで
+ *     1. まず折り返して営業を続けられないか試す
+ *     2. 折り返せない (満線・深夜・遅れ過大) ときだけ車両所へ回送する
+ *   という順にした。
+ */
 Train.prototype.tryConvertDeadhead = function (stName) {
         if (this.type === "貨物" || this.type === "回送") return false;
-        if (!["須磨", "大久保", "京都"].includes(stName)) return false;
 
-        let targetDest = (stName === "京都") ? "向日町操" : "西明石";
-        let targetIdx = STATION_MAP[targetDest];
-        let currentIdx = STATION_MAP[stName];
+        // --- 1. まず折り返しを試す
+        if (this.game.ops.preferTurnback(this, stName)) return true;
+
+        // --- 2. 折り返せないときだけ車両所へ回送する
+        const DEADHEAD_TO = { "京都": "向日町操", "須磨": "西明石", "大久保": "西明石",
+                              "高槻": "宮原操", "尼崎": "宮原操", "大阪": "宮原操" };
+        let targetDest = DEADHEAD_TO[stName];
+        if (!targetDest) return false;
+
+        let targetIdx = fleetIndexOf(targetDest);
+        let currentIdx = fleetIndexOf(stName);
+        if (targetIdx === null || currentIdx === null) return false;
         let nextDir = (targetIdx > currentIdx) ? 1 : -1;
-        
-        this.game.ui.updateBanner(`【運転整理】${stName}駅での消滅を回避し、${this.trainNo} を ${targetDest} 行きの回送に変更して運転を継続します。`, "banner-orange");
-        
+
+        this.game.ui.updateBanner(
+            `【運転整理】${stName}駅で折り返せないため、${this.trainNo} を ` +
+            `${targetDest} 行きの回送に変更して入区させます。`, "banner-orange");
+
         this.game.spawner.activeTrainNos.delete(this.trainNo);
         this.type = "回送";
         this.dest = targetDest;
-        this.trainNo = "回" + (Math.floor(Math.random()*8000)+1000) + "M";
+        this.trainNo = this.game.ops.deadheadNo();
         this.dutyName = this.trainNo;
         this.game.spawner.activeTrainNos.add(this.trainNo);
         this.nextAction = "depot";
         this.isFinalStop = false;
-        
+        // 回送は外側線(列車線)を走らせる。内側線にいれば次の待避駅で転線する。
+        this.rerouteToOuter = true;
+
         if (this.dir === nextDir) {
             // 方向が同じならそのまま延長
             this.state = "running";
@@ -214,37 +241,33 @@ Train.prototype.tryConvertDeadhead = function (stName) {
             this.hasStoppedAtCurrent = false;
             this.timer = 15;
             return true;
-        } else {
-            // 方向が逆になる場合は折り返し転線を試みる
-            let newTrackId = this.trackId.includes("Down") ? this.trackId.replace("Down", "Up") : this.trackId.replace("Up", "Down");
-            if ((currentIdx < STATION_MAP["西明石"] || currentIdx > STATION_MAP["草津"]) && newTrackId.includes("In")) {
-                newTrackId = newTrackId.replace("In", "Out");
-            }
-            const blks = this.game.trackMgr.blocks[this.trackId];
-            const blk = blks[this.currBlockIndex];
-            const targetBlks = this.game.trackMgr.blocks[newTrackId];
-            const newB = targetBlks ? targetBlks.find(b => Math.abs(b.x - blk.x) < 5) : null;
-            
-            if (newB) {
-                let tl = this.findFreeLane(newB);
-                if (tl !== -1) {
-                    blk.lanes[this.lane] = null;
-                    this.trackId = newTrackId;
-                    this.dir = nextDir;
-                    this.currBlockIndex = newB.index;
-                    this.lane = tl;
-                    newB.lanes[tl] = this;
-                    this.state = "waiting_start";
-                    this.timer = 15;
-                    this.stuckTime = 0;
-                    this.hasStoppedAtCurrent = false;
-                    this.hasDeparted = false;
-                    return true;
-                } else {
-                    this.timer = 15; // 満線の場合は待機して再試行
-                    return true; 
-                }
-            }
         }
-        return false;
+        // 方向が逆になる場合は折り返し転線を試みる
+        let newTrackId = this.trackId.includes("Down") ? this.trackId.replace("Down", "Up") : this.trackId.replace("Up", "Down");
+        if ((currentIdx < STATION_MAP["西明石"] || currentIdx > STATION_MAP["草津"]) && newTrackId.includes("In")) {
+            newTrackId = newTrackId.replace("In", "Out");
+        }
+        const blks = this.game.trackMgr.blocks[this.trackId];
+        const blk = blks[this.currBlockIndex];
+        const targetBlks = this.game.trackMgr.blocks[newTrackId];
+        const newB = targetBlks ? targetBlks.find(b => Math.abs(b.x - blk.x) < 5) : null;
+        if (!newB) return false;
+
+        let tl = this.findFreeLane(newB);
+        if (tl !== -1) {
+            blk.lanes[this.lane] = null;
+            this.trackId = newTrackId;
+            this.dir = nextDir;
+            this.currBlockIndex = newB.index;
+            this.lane = tl;
+            newB.lanes[tl] = this;
+            this.state = "waiting_start";
+            this.timer = 15;
+            this.stuckTime = 0;
+            this.hasStoppedAtCurrent = false;
+            this.hasDeparted = false;
+            return true;
+        }
+        this.timer = 15;   // 満線なら待機して再試行
+        return true;
 };

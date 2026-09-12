@@ -118,7 +118,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
 
             if (canSpawn) {
                 this.game.addTrain({type:type, dir:1, trackId:"Fukuchi_Up", dest:dest, startName:"新三田", nextAction:"depot"});
-                this.nextFukuchiUp += (isRapid ? 800 : 650) * timeFactor;
+                this.nextFukuchiUp += (isRapid ? 700 : 500) * timeFactor;
             } else {
                 this.nextFukuchiUp += 180;
             }
@@ -212,7 +212,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
 
             if (canSpawn) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Fukuchi_Down", dest:dest, startName:"尼崎", nextAction:"depot"});
-                this.nextFukuchiDown += (type === "快速" ? 700 : 520) * timeFactor;
+                this.nextFukuchiDown += (type === "快速" ? 620 : 430) * timeFactor;
             } else {
                 this.nextFukuchiDown += 180;
             }

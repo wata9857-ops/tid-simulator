@@ -74,7 +74,7 @@ const DEPOT_DUTIES = [
     { depot: "新三田", windows: [
         { h: [4.5, 9.0],  every: 1200, dir: 1, via: "新三田", as: "普通", dest: ["尼崎", "大阪", "松井山手"], ratio: 1.0 },
         { h: [4.5, 9.0],  every: 2400, dir: 1, via: "新三田", as: "快速", dest: ["大阪"], ratio: 0.9 },
-        { h: [9.0, 16.0], every: 2400, dir: 1, via: "新三田", as: "普通", dest: ["尼崎", "四条畷"], ratio: 0.8 },
+        { h: [9.0, 16.0], every: 1500, dir: 1, via: "新三田", as: "普通", dest: ["尼崎", "四条畷", "大阪"], ratio: 0.9 },
         { h: [16.0, 22.0], every: 2100, dir: 1, via: "新三田", as: "普通", dest: ["尼崎", "大阪"], ratio: 0.9 }
     ]},
     // --- 米原派出所
@@ -171,6 +171,14 @@ class OperationsManager {
         const serviceNo = this.game.spawner.generateTrainNumber(
             w.as, w.dir, via, w.dir === 1 ? "Up_In" : "Down_In");
 
+        /* ★車両は「出区してすぐ入る営業運用」の条件で選ぶ。
+           回送の条件で選ぶと、例えば向日町操から京都へ送り込む回送に
+           京都支所の221系が付いてしまい、京都で本線の普通に変わるときに
+           わざわざ差し替えることになっていた。 */
+        const serviceTrack = (w.dir === 1 ? "Up_In" : "Down_In");
+        const vs = this.game.fleet.assign(depotName, w.as, serviceTrack, dest, serviceNo);
+        if (!vs || !vs.length) return false;
+
         // 車両所と始発駅が同じなら、送り込み回送は要らない
         const sameSpot = (via === depotName);
         let cfg;
@@ -185,10 +193,13 @@ class OperationsManager {
                     serviceChange: { at: via, type: w.as, dest: dest, name: serviceNo } };
         }
 
+        cfg.vehicles = vs;
         if (this.game.addTrain(cfg)) {
             this.stats.depotOut++;
             return true;
         }
+        // 生成できなかったら車両を留置場へ戻す
+        this.game.fleet.release(depotName, vs);
         return false;
     }
 
@@ -244,12 +255,25 @@ class OperationsManager {
         const h = (ct / 3600) % 24;
         if (h < 9.5 || h >= 21.0) return;         // 昼間〜夕方のみ
         if (ct < this.gapNext) return;
-        this.gapNext = ct + 240;                  // 4分おきに点検
+        this.gapNext = ct + 180;                  // 3分おきに点検
 
-        const MAX_GAP_STATIONS = 3.5;             // これ以上空いたら増発
+        const MAX_GAP_STATIONS = 3.0;             // これ以上空いたら増発
+        /* 点検する区間と、増発に使う車両所。
+           depots は「その方向の後ろ側にある車両所」を近い順に並べる。
+           type/dest はそこから出す列車の種別と行先。 */
         const scan = [
-            { trackId: "Up_In",   dir: 1,  from: "西明石", to: "京都",   depots: ["西明石", "宮原操", "高槻"] },
-            { trackId: "Down_In", dir: -1, from: "京都",   to: "西明石", depots: ["高槻", "宮原操", "西明石"] }
+            { trackId: "Up_In",   dir: 1,  from: "西明石", to: "京都",
+              depots: ["西明石", "宮原操", "高槻"], dest: "京都" },
+            { trackId: "Down_In", dir: -1, from: "京都",   to: "西明石",
+              depots: ["高槻", "宮原操", "西明石"], dest: "西明石" },
+            // JR宝塚線 (尼崎〜新三田)
+            { trackId: "Fukuchi_Down", dir: -1, from: "尼崎", to: "新三田",
+              depots: ["宮原操"], dest: "新三田" },
+            { trackId: "Fukuchi_Up",   dir: 1,  from: "新三田", to: "尼崎",
+              depots: ["新三田"], dest: "尼崎" },
+            // JR東西線 (尼崎〜放出)
+            { trackId: "Tozai_Down",   dir: -1, from: "放出",  to: "尼崎",
+              depots: ["放出"], dest: "尼崎" }
         ];
 
         for (const sc of scan) {
@@ -280,14 +304,19 @@ class OperationsManager {
             for (const dname of sc.depots) {
                 const depot = DEPOTS[dname];
                 if (!depot || depot.trains.length >= depot.capacity) continue;
-                if (this.game.fleet.poolAt(dname).length < 3) continue;
-                const dest = (sc.dir === 1) ? "京都" : "西明石";
+                if (this.game.fleet.poolAt(dname).length < 2) continue;
+                const dest = sc.dest;
                 if (this.dirFromTo(dname, dest) !== sc.dir) continue;
                 const no = this.game.spawner.generateTrainNumber("普通", sc.dir, dname, sc.trackId);
+                // 車両は行先の運用の条件で選ぶ (東西線なら207系/321系 など)
+                const vs = this.game.fleet.assign(dname, "普通", sc.trackId, dest, no);
+                if (!vs || !vs.length) continue;
                 const ok = this.game.addTrain({
-                    type: "普通", dir: sc.dir, trackId: sc.trackId,
-                    dest: dest, startName: dname, name: no, nextAction: "turnback"
+                    type: "普通", dir: sc.dir, trackId: depotTrackId(dname, sc.dir, "普通"),
+                    dest: dest, startName: dname, name: no, nextAction: "turnback",
+                    vehicles: vs
                 });
+                if (!ok) this.game.fleet.release(dname, vs);
                 if (ok) {
                     this.stats.gapFill++;
                     this.game.ui.updateBanner(
@@ -375,3 +404,89 @@ class OperationsManager {
         return cands[0];
     }
 }
+
+/* ------------------------------------------------------------------ 折り返し優先
+   終点に着いた列車は、まず「その場で折り返して次の列車になる」ことを試す。
+   実際の運用でも、京都・高槻・西明石などに着いた列車の大半は
+   すぐ折り返して次の運用に入り、車両所へ戻るのは運用の最後だけ。
+*/
+OperationsManager.prototype.preferTurnback = function (train, stName) {
+    const h = (this.game.currentTime / 3600) % 24;
+
+    // 深夜は入区させる (折り返しても走る先が無い)
+    if (h >= 22.0 || h < 4.5) return false;
+    // 大きく遅れている列車は運用を切って車両所へ戻す
+    if (train.delayTime > 1800) return false;
+    // 回送・貨物・特急はここでは扱わない
+    if (["回送", "貨物", "特急"].includes(train.type)) return false;
+
+    const newDir = train.dir * -1;
+    // 折り返し先の線路を決める
+    let newTrackId;
+    if (train.trackId.indexOf("Kosei") === 0)        newTrackId = newDir === 1 ? "Kosei_Up" : "Kosei_Down";
+    else if (train.trackId.indexOf("Fukuchi") === 0) newTrackId = newDir === 1 ? "Fukuchi_Up" : "Fukuchi_Down";
+    else if (train.trackId.indexOf("Tozai") === 0)   newTrackId = newDir === 1 ? "Tozai_Up" : "Tozai_Down";
+    else if (train.trackId.indexOf("Hoppo") >= 0)    newTrackId = newDir === 1 ? "Up_Out" : "Down_Out";
+    else newTrackId = (newDir === 1 ? "Up_" : "Down_") + (train.trackId.indexOf("In") >= 0 ? "In" : "Out");
+
+    const hereIdx = STATION_MAP[stName];
+    if (hereIdx !== undefined && newTrackId.indexOf("In") >= 0 &&
+        (hereIdx < STATION_MAP["西明石"] || hereIdx > STATION_MAP["草津"])) {
+        newTrackId = newTrackId.replace("In", "Out");
+    }
+
+    const blks = this.game.trackMgr.blocks[train.trackId];
+    const blk = blks[train.currBlockIndex];
+    const targetBlks = this.game.trackMgr.blocks[newTrackId];
+    if (!targetBlks) return false;
+    const newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000);
+    if (!newB) return false;
+
+    /* 折り返し先の番線が空いていなければ、少し待ってから試し直す。
+       実際にも、到着した列車は反対方向のホームが空くのを待って折り返す。
+       何度待っても空かないときだけ車両所へ回送する。 */
+    const lane = train.findFreeLane(newB);
+    if (lane === -1) {
+        train.turnbackWait = (train.turnbackWait || 0) + 1;
+        if (train.turnbackWait <= 5) { train.timer = 60; return true; }
+        train.turnbackWait = 0;
+        return false;
+    }
+    train.turnbackWait = 0;
+
+    // 折り返した先の行先を決める
+    let nextDest = this.game.spawner.getDestination(train.type, newDir, stName);
+    if (nextDest === stName) nextDest = this.game.spawner.fallbackTerminal(newDir, stName);
+
+    // いまの編成でその運用に入れるかを確かめ、駄目なら差し替える
+    const nextNo = this.game.spawner.generateTrainNumber(train.type, newDir, stName, newTrackId);
+    const vs = this.game.fleet.reassign(stName, train.type, newTrackId, nextDest, nextNo, train.vehicles);
+    if (!vs || !vs.length) return false;
+    train.vehicles = vs;
+
+    // 本線から外して折り返し先へ
+    blk.lanes[train.lane] = null;
+    train.trackId = newTrackId;
+    train.dir = newDir;
+    train.currBlockIndex = newB.index;
+    train.lane = lane;
+    newB.lanes[lane] = train;
+
+    this.game.spawner.activeTrainNos.delete(train.trainNo);
+    train.trainNo = nextNo;
+    train.dutyName = nextNo;
+    this.game.spawner.activeTrainNos.add(nextNo);
+    train.startName = stName;
+    train.dest = nextDest;
+    train.nextAction = "turnback";
+    train.updateKoseiRoute();
+    train.state = "waiting_start";
+    train.timer = 15;
+    train.stuckTime = 0;
+    train.hasStoppedAtCurrent = false;
+    train.hasDeparted = false;
+    train.isFinalStop = false;
+    train.carryOverDelay(180);   // 折り返しの余裕分だけ回復し、残りは持ち越す
+    this.stats.turnback = (this.stats.turnback || 0) + 1;
+    return true;
+};

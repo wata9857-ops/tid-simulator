@@ -117,9 +117,13 @@ class GameSystem {
            手前の車両所からの送り込み回送に置き換える。
            置き換えたときは、その回送が当駅で営業列車に変わるので
            ここでの生成は行わない。 */
-        if (this.ops && this.ops.backOrigin(config)) return true;
+        //   (すでに編成が決まっている場合は、その編成のための列車なので置き換えない)
+        if (!config.vehicles && this.ops && this.ops.backOrigin(config)) return true;
 
-        if (config.type !== "貨物" && !needsOwnStock && DEPOTS[actualStart]) {
+        /* 留置場に出区予定の無い予備車がいれば、それを次の運用に充てる。
+           ★呼び出し側がすでに編成を用意している場合は、この道を通ると
+             その編成が行き場を失って在庫から消えてしまうので通さない。 */
+        if (config.type !== "貨物" && !needsOwnStock && !config.vehicles && DEPOTS[actualStart]) {
             let depot = DEPOTS[actualStart];
             let reserveTrain = depot.trains.find(t => !t.depotOutConfig && t.timer === -1);
             if (reserveTrain) {

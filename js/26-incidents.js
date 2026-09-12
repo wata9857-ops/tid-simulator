@@ -232,28 +232,43 @@ class IncidentSystem {
                     const b = this.game.trackMgr.blocks[t.trackId][t.currBlockIndex];
                     return b && (b.isStation || b.hoppoStationName) && t.state === "stopped";
                 });
+                // 停車中の列車が見つからなければ、駅にいる列車まで広げる
+                if (!pool.length) pool = running.filter(t => {
+                    const b = this.game.trackMgr.blocks[t.trackId][t.currBlockIndex];
+                    return b && (b.isStation || b.hoppoStationName);
+                });
             } else {
                 pool = running.filter(t => t.state === "running");
+                if (!pool.length) pool = running;
             }
             if (!pool.length) return null;
             const t = pool[Math.floor(Math.random() * pool.length)];
             return { train: t, trackId: t.trackId, index: t.currBlockIndex };
         }
-        // 当該列車が要らない障害は、列車が走っている線区のどこかで起こす
+        /* 当該列車が要らない障害は、列車が走っている線区のどこかで起こす。
+           1回で決まらないことがある (線路の無いブロックに当たる等) ので、
+           走っている列車を何本か試す。 */
         if (!running.length) return null;
-        const t = running[Math.floor(Math.random() * running.length)];
-        const blks = this.game.trackMgr.blocks[t.trackId];
-        let idx = t.currBlockIndex + t.dir * (3 + Math.floor(Math.random() * 12));
-        idx = Math.max(0, Math.min(blks.length - 1, idx));
-        if (type.atStation) {
-            // 近くの駅ブロックへ寄せる
-            for (let k = 0; k < 6; k++) {
-                if (blks[idx + k] && blks[idx + k].isStation && blks[idx + k].x !== -1000) { idx = idx + k; break; }
-                if (blks[idx - k] && blks[idx - k].isStation && blks[idx - k].x !== -1000) { idx = idx - k; break; }
+        for (let tryN = 0; tryN < 12; tryN++) {
+            const t = running[Math.floor(Math.random() * running.length)];
+            const blks = this.game.trackMgr.blocks[t.trackId];
+            if (!blks) continue;
+            let idx = t.currBlockIndex + t.dir * (3 + Math.floor(Math.random() * 12));
+            idx = Math.max(0, Math.min(blks.length - 1, idx));
+            if (type.atStation) {
+                // 近くの駅ブロックへ寄せる
+                let found = -1;
+                for (let k = 0; k < 8 && found < 0; k++) {
+                    if (blks[idx + k] && blks[idx + k].isStation && blks[idx + k].x !== -1000) found = idx + k;
+                    else if (blks[idx - k] && blks[idx - k].isStation && blks[idx - k].x !== -1000) found = idx - k;
+                }
+                if (found < 0) continue;
+                idx = found;
             }
+            if (blks[idx].x === -1000) continue;
+            return { train: null, trackId: t.trackId, index: idx };
         }
-        if (blks[idx].x === -1000) return null;
-        return { train: null, trackId: t.trackId, index: idx };
+        return null;
     }
 
     /** その場所の呼び名 */
