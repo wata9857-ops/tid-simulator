@@ -11,6 +11,11 @@ function ok(label, cond, detail) {
 }
 function head(s) { console.log('\n=== ' + s + ' ==='); }
 
+/* 遅延計算・指令パッドの検証なので、輸送障害はここでは起こさない
+   (障害が起きていると全列車が停止して、検証対象が見つからないことがある)。 */
+game.incidents.clearAll('検証');
+game.incidents.nextAt = Infinity;
+
 // 列車が本線上を走り出すまで進める
 __run(2 * 3600);
 const running = game.trains.filter(t => t.state !== 'in_depot' && t.state !== 'finished');

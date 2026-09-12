@@ -76,6 +76,13 @@ const TOZAI_EAST_IDX = 46;
 const TOZAI_THROUGH_DESTS = ["同志社前", "松井山手", "四条畷", "木津", "京田辺",
                              "奈良", "長尾", "放出", "鴫野", "京橋"];
 
+/* 尼崎より東 (大阪・京都方面) の本線の主要駅。
+   JR宝塚線からここへ直通する列車は丹波路快速などで、
+   宮原の223系/225系が受け持つ、という判定に使う。 */
+const MAINLINE_EAST_OF_AMAGASAKI = ["大阪", "新大阪", "東淀川", "吹田", "岸辺", "千里丘",
+    "茨木", "JR総持寺", "摂津富田", "高槻", "島本", "山崎", "長岡京",
+    "向日町", "桂川", "西大路", "京都", "山科", "草津", "野洲", "米原"];
+
 /* 尼崎から JR宝塚線(福知山線)へ入る行先。同上。 */
 const FUKUCHI_THROUGH_DESTS = ["塚口", "新三田", "三田", "道場", "宝塚",
                                "篠山口", "福知山", "豊岡", "城崎温泉"];
@@ -121,6 +128,31 @@ const TOTAL_WIDTH = (STATIONS.length * UNITS_PER_STATION * BLOCK_WIDTH) + 200;
 const CANVAS_HEIGHT = 1300;
 const INTERVALS = { "普通": 650, "快速": 1250, "新快速": 1100, "特急": 5400, "貨物": 1600, "回送": 7200 };
 const PRIORITY = { "回送":7, "貨物":6, "特急":5, "臨時":4, "新快速":5, "快速":3, "普通":2 };
+
+/**
+ * ブロックが表している駅の名前を返す。
+ *
+ * ★重要: 湖西線・JR宝塚線・JR東西線・北方貨物線のブロックは、
+ *   本線と同じインデックス空間を共有している。そのため
+ *   stationIdx から STATIONS[] を引くと本線の駅名になってしまう。
+ *   分岐線の駅名は hoppoStationName に入っているので、必ずそちらを先に見る。
+ *   (以前は逆の順で見ていたため、湖西線の列車が「能登川にいる」ことになり、
+ *    そこから本線の行先が割り当てられて経路が破綻していた)
+ */
+function blockStationName(blk) {
+    if (!blk) return "";
+    if (blk.hoppoStationName) return blk.hoppoStationName;
+    if (blk.stationIdx >= 0 && STATIONS[blk.stationIdx]) return STATIONS[blk.stationIdx].name;
+    return "";
+}
+
+/** そのブロックが実在の停車できる駅か (湖西線通過などのダミーを除く) */
+function isRealStationBlock(blk) {
+    if (!blk || blk.x === -1000) return false;
+    if (!blk.isStation && !blk.hoppoStationName) return false;
+    const n = blockStationName(blk);
+    return !!n && n.indexOf("通過") < 0;
+}
 
 const timeToSec = (h, m, s) => h*3600 + m*60 + s;
 const EXTRA_TRAINS = [

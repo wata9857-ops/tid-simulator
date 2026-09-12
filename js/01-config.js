@@ -12,6 +12,11 @@ const CONFIG = {
     TICK_SEC: 15
 };
 
+/* 湖西線・JR宝塚線・JR東西線の3線区あわせての在線上限。
+   本線の上限とは別枠にして、本線が混んでいても分岐線の列車が
+   生成され続けるようにしている。 */
+const BRANCH_MAX_TRAINS = 110;
+
 const BLOCK_WIDTH = 120;
 const BLOCKS_PER_STATION_GAP = 2; 
 const UNITS_PER_STATION = 1 + BLOCKS_PER_STATION_GAP;

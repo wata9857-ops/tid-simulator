@@ -4,6 +4,16 @@ Train.prototype.checkHold = function (isStarting) {
         const blks = this.game.trackMgr.blocks[this.trackId];
         const nextIdx = this.currBlockIndex + this.dir;
         let targetTrackId = this.trackId; // ★変数のスコープを関数全体に広げてエラーを防止
+
+        /* ★信号現示による停止判定 (js/25-signals.js)。
+           転てつ器故障・信号故障など、進路が構成できない障害が
+           前方にある場合はここで止まる。
+           在線・見合わせによる停止は下の従来の判定と同じ結果になるので、
+           ここでは障害の分だけを見る (既存の動きを変えないため)。 */
+        if (this.game.signals && this.game.signals.hasFault(this.trackId, nextIdx)) {
+            this.signalAspect = "R";
+            return true;
+        }
         
         if (nextIdx >= 0 && nextIdx < blks.length) {
             let nextBlk = blks[nextIdx];

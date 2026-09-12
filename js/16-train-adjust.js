@@ -29,19 +29,22 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
             
             // 下り高槻駅での特別処理（行先変更なしで普通に降格）
             if (this.dir === -1 && stationName === "高槻") {
-                if (distAhead <= 15 && distBehind <= 15) {
+                if (distAhead <= 15 && distBehind <= 15 && this.canChangeTypeTo("普通", stationName)) {
                     this.game.spawner.activeTrainNos.delete(this.trainNo);
                     this.type = "普通";
                     this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
+                    this.dutyName = this.trainNo;
                     this.game.ui.updateBanner(`【種別変更】高槻駅にて快速列車の近接(3連続)を検知。${this.trainNo}(普通)に変更しました(行先変更なし)。`, "banner-orange");
                     return;
                 }
             }
 
-            if (distAhead <= 15 && distBehind <= 15 && ahead.stuckTime > 10) {
+            if (distAhead <= 15 && distBehind <= 15 && ahead.stuckTime > 10 &&
+                this.canChangeTypeTo("普通", stationName)) {
                 this.game.spawner.activeTrainNos.delete(this.trainNo);
                 this.type = "普通";
                 this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
+                this.dutyName = this.trainNo;
                 let extraMsg = "";
                 // 上りの場合のみ行先を草津に短縮する制限
                 if (this.dir === 1 && STATION_MAP[this.dest] > STATION_MAP["草津"]) {
@@ -382,6 +385,18 @@ Train.prototype.checkLateNightDestination = function () {
                 
                 let stIdx = STATION_MAP[stName];
                 if (stIdx === undefined) continue;
+
+                /* ★重要: 分岐線(湖西線・JR宝塚線・JR東西線)の駅は、本線の駅と
+                   同じインデックスを共有している。インデックスだけで探すと、
+                   本線を走っている列車に「塚口行き」「放出行き」のような
+                   たどり着けない行先を付けてしまう。
+                   いま走っている線路のブロックの駅名が一致するものだけを候補にする。 */
+                let cand = blks.find(x => x.stationIdx === stIdx && x.x !== -1000);
+                if (!cand || blockStationName(cand) !== stName) continue;
+
+                // いまの編成でその区間の運用に入れるものだけを候補にする
+                if (!this.game.fleet.canServe(this.vehicles, stName, this.type,
+                        this.trackId, stName, this.dutyName)) continue;
                 
                 // 普段終着駅かつ停車駅（大阪駅は例外で可能）となっているものに限定
                 let isAllowedTerminal = (stName === "大阪");
@@ -398,10 +413,8 @@ Train.prototype.checkLateNightDestination = function () {
                 
                 let stInfo = STATIONS[stIdx];
                 if (!this.shouldStop(stInfo)) continue;
-                
-                let b = blks.find(x => x.stationIdx === stIdx);
-                if (!b) continue;
 
+                let b = cand;
                 let distToCand = (b.index - this.currBlockIndex) * this.dir;
                 // 現在地より先で、かつ目的地より手前にある駅を探す
                 if (distToCand > 0 && distToCand < distToDest) {

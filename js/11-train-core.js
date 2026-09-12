@@ -68,39 +68,62 @@ class Train {
         this.skipHimejiFreight = Math.random() < 0.5;
         this.skipKyotoFreight = Math.random() < 0.5;
 
-        // ★追加: 湖西線ルートかどうかの決定と保持
         this.isKoseiRoute = false;
-        if (this.type === "新快速") {
-            const koseiStsOnly = ["近江今津", "永原", "マキノ", "近江中庄", "新旭", "安曇川", "近江高島", "北小松", "近江舞子", "堅田", "おごと温泉", "比叡山坂本", "大津京"];
-            if (this.dir === 1) {
-                if (koseiStsOnly.includes(this.dest)) {
-                    this.isKoseiRoute = true;
-                } else if (["敦賀", "近江塩津"].includes(this.dest)) {
-                    // 敦賀・近江塩津行きは琵琶湖線経由と湖西線経由を交互にする
-                    this.isKoseiRoute = this.game.spawner.nextKoseiRouteUp;
-                    this.game.spawner.nextKoseiRouteUp = !this.game.spawner.nextKoseiRouteUp;
-                }
-            } else if (this.dir === -1) {
-                if (koseiStsOnly.includes(this.startName)) {
-                    this.isKoseiRoute = true;
-                } else if (["敦賀", "近江塩津"].includes(this.startName)) {
-                    // 敦賀・近江塩津発は琵琶湖線経由と湖西線経由を交互にする
-                    this.isKoseiRoute = this.game.spawner.nextKoseiRouteDown;
-                    this.game.spawner.nextKoseiRouteDown = !this.game.spawner.nextKoseiRouteDown;
-                }
-            }
-        } else if (this.trackId.includes("Kosei")) {
-            this.isKoseiRoute = true;
-        } else if (this.type === "特急") {
-            if (this.dir === 1 && ["敦賀", "近江塩津"].includes(this.dest)) this.isKoseiRoute = true;
-            if (this.dir === -1 && ["敦賀", "近江塩津"].includes(this.startName)) this.isKoseiRoute = true;
-        } else {
-            const koseiStsAll = ["敦賀", "近江塩津", "近江今津", "永原", "マキノ", "近江中庄", "新旭", "安曇川", "近江高島", "北小松", "近江舞子", "堅田", "おごと温泉", "比叡山坂本", "大津京", "富山タ"];
-            if (this.dir === 1 && koseiStsAll.includes(this.dest)) this.isKoseiRoute = true;
-            if (this.dir === -1 && koseiStsAll.includes(this.startName)) this.isKoseiRoute = true;
-        }
+        this.updateKoseiRoute();
 
         this.initPosition();
+    }
+
+    /**
+     * 湖西線経由かどうかを決める。
+     * 折り返して行先が変わったときにも呼び直す必要があるので、
+     * コンストラクタから切り出してメソッドにした。
+     * (以前はコンストラクタでしか決めていなかったため、
+     *  「敦賀発 京都行き(湖西線経由)」が折り返し後に「米原行き」へ
+     *  変わっても湖西線に入り続け、終点にたどり着けなくなっていた)
+     */
+    updateKoseiRoute() {
+            /* ★湖西線経由かどうかの決定と保持。
+               敦賀・近江塩津を発着する列車は、湖西線経由と琵琶湖線経由の2通りがある。
+               ただし、行先(または始発)が米原・野洲など琵琶湖線内の駅なら
+               湖西線を通ってもそこへは行けないので、必ず琵琶湖線経由にする。
+               (以前はこの判定が無く、「敦賀発 米原行き」が湖西線に入って
+                終点にたどり着けなくなっていた) */
+            const viaKoseiPossible = (other) => {
+                const i = STATION_MAP[other];
+                return (i === undefined) || (i <= STATION_MAP["山科"]);
+            };
+            // 折り返しのたびに呼ぶので、いったん初期値に戻してから決め直す
+            this.isKoseiRoute = false;
+            if (this.type === "新快速") {
+                const koseiStsOnly = ["近江今津", "永原", "マキノ", "近江中庄", "新旭", "安曇川", "近江高島", "北小松", "近江舞子", "堅田", "おごと温泉", "比叡山坂本", "大津京"];
+                if (this.dir === 1) {
+                    if (koseiStsOnly.includes(this.dest)) {
+                        this.isKoseiRoute = true;
+                    } else if (["敦賀", "近江塩津"].includes(this.dest) && viaKoseiPossible(this.startName)) {
+                        // 敦賀・近江塩津行きは琵琶湖線経由と湖西線経由を交互にする
+                        this.isKoseiRoute = this.game.spawner.nextKoseiRouteUp;
+                        this.game.spawner.nextKoseiRouteUp = !this.game.spawner.nextKoseiRouteUp;
+                    }
+                } else if (this.dir === -1) {
+                    if (koseiStsOnly.includes(this.startName)) {
+                        this.isKoseiRoute = true;
+                    } else if (["敦賀", "近江塩津"].includes(this.startName) && viaKoseiPossible(this.dest)) {
+                        // 敦賀・近江塩津発は琵琶湖線経由と湖西線経由を交互にする
+                        this.isKoseiRoute = this.game.spawner.nextKoseiRouteDown;
+                        this.game.spawner.nextKoseiRouteDown = !this.game.spawner.nextKoseiRouteDown;
+                    }
+                }
+            } else if (this.trackId.includes("Kosei")) {
+                this.isKoseiRoute = true;
+            } else if (this.type === "特急") {
+                if (this.dir === 1 && ["敦賀", "近江塩津"].includes(this.dest) && viaKoseiPossible(this.startName)) this.isKoseiRoute = true;
+                if (this.dir === -1 && ["敦賀", "近江塩津"].includes(this.startName) && viaKoseiPossible(this.dest)) this.isKoseiRoute = true;
+            } else {
+                const koseiStsAll = ["敦賀", "近江塩津", "近江今津", "永原", "マキノ", "近江中庄", "新旭", "安曇川", "近江高島", "北小松", "近江舞子", "堅田", "おごと温泉", "比叡山坂本", "大津京", "富山タ"];
+                if (this.dir === 1 && koseiStsAll.includes(this.dest) && viaKoseiPossible(this.startName)) this.isKoseiRoute = true;
+                if (this.dir === -1 && koseiStsAll.includes(this.startName) && viaKoseiPossible(this.dest)) this.isKoseiRoute = true;
+            }
     }
 
     initPosition() {
@@ -156,7 +179,8 @@ class Train {
                 // ★修正: 出区前のもう少し早い段階から表示するため、基本の待機時間を 5〜8分(300〜480秒) に延ばす
                 this.timer = Math.max(300 + Math.random() * 180, maxTimer + 180); 
                 
-                this.depotOutConfig = { type: this.type, dest: this.dest, trainNo: this.trainNo, dir: this.dir };
+                this.depotOutConfig = { type: this.type, dest: this.dest, trainNo: this.trainNo,
+                                        dir: this.dir, dutyName: this.dutyName };
                 depotAdd(actualStart, this);   // ★二重登録を防ぐためヘルパー経由にする
                 return;
             }
@@ -294,7 +318,7 @@ class Train {
 
         const blks = this.game.trackMgr.blocks[this.trackId];
         const currentBlock = blks[this.currBlockIndex];
-        const currentStName = (currentBlock.stationIdx >= 0) ? STATIONS[currentBlock.stationIdx].name : (currentBlock.hoppoStationName || "");
+        const currentStName = blockStationName(currentBlock);
 
         // ★追加: 駅停車中の旅客対応トラブル (荷物挟まり / 急病人)
         if (this.state === "stopped" && this.hasStoppedAtCurrent && this.timer > 0 && this.timer < 30) {
@@ -423,8 +447,22 @@ class Train {
                                         }
                                     }
                                     // 条件: 後方に3本以上詰まっていて、10%の確率で発動
-                                    if (congestedTrains >= 3 && Math.random() < 0.1) {
-                                        this.dest = cb.hoppoStationName || STATIONS[cb.stationIdx].name;
+                                    /* ★折り返せる駅でしか折り返さない。
+                                       以前は「湖西線通過」のようなダミーブロックや、
+                                       その列車が通過する駅を行先にしてしまい、
+                                       たどり着けない行先が生まれていた。 */
+                                    const turnName = blockStationName(cb);
+                                    /* 折り返せる駅で、かつ、いまの編成でその区間の
+                                       運用に入れることが条件。
+                                       (例: 東西線直通の207系が、打ち切りによって
+                                        本線の姫路口の運用に化けてしまうのを防ぐ) */
+                                    const canTurnHere = isRealStationBlock(cb) &&
+                                        (SWITCHABLE_STATIONS.includes(turnName) ||
+                                         OVERTAKE_STATIONS.includes(turnName)) &&
+                                        this.game.fleet.canServe(this.vehicles, turnName, this.type,
+                                            this.trackId, turnName, this.dutyName);
+                                    if (congestedTrains >= 3 && canTurnHere && Math.random() < 0.1) {
+                                        this.dest = turnName;
                                         this.nextAction = "turnback";
                                         this.state = "turning_back";
                                         this.timer = 60;
@@ -625,13 +663,13 @@ class Train {
         }
 
         if (this.trackChangeReservation && this.trackChangeReservation.status === "pending") {
-             const stName = (blk.stationIdx >= 0) ? STATIONS[blk.stationIdx].name : "";
+             const stName = blockStationName(blk);
              if (stName === this.trackChangeReservation.stationName) this.attemptTrackSwitch(this.trackChangeReservation.targetTrackId);
         }
 
         if (this.type === "回送" && this.trackId.includes("In")) this.rerouteToOuter = true;
         if (this.rerouteToOuter && this.trackId.includes("In")) {
-            const stName = (blk.stationIdx >= 0) ? STATIONS[blk.stationIdx].name : "";
+            const stName = blockStationName(blk);
             if (OVERTAKE_STATIONS.includes(stName)) this.attemptTrackSwitch(this.trackId.replace("In", "Out"));
         }
     }

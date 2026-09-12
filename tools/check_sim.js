@@ -148,11 +148,15 @@ __run(HOURS * 3600, (g) => {
     tickCount++;
     g.trains.forEach(t => {
         if (t.state === 'finished') return;
-        if (!seen.has(t.id)) {
-            seen.add(t.id);
+        /* ★数え方を「列車オブジェクト」から「列車(列車番号)」に変えた。
+           留置場へ入った編成を次の運用に充てるようになったため、
+           1つのオブジェクトが日に何本もの列車を受け持つ。
+           オブジェクト単位で数えると本数が実態より少なく出てしまう。 */
+        const svc = t.id + '|' + (t.trainNo || '?');
+        if (t.trainNo && t.state !== 'in_depot' && !seen.has(svc)) {
+            seen.add(svc);
             stats.spawned++;
             stats.byType[t.type] = (stats.byType[t.type] || 0) + 1;
-            const key = (t.trackId || '?').replace(/_(Up|Down|In|Out)$/, '');
             stats.byTrack[t.trackId] = (stats.byTrack[t.trackId] || 0) + 1;
         }
         inspect(t);

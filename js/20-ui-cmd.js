@@ -343,7 +343,8 @@ UIManager.prototype.executeDepotOutForce = function () {
         if (t.trainNo) this.game.spawner.activeTrainNos.delete(t.trainNo);
         t.trainNo = this.game.spawner.generateTrainNumber(t.type, t.dir, depotName, tempTrack);
 
-        t.depotOutConfig = { type: t.type, dest: t.dest, trainNo: t.trainNo, dir: t.dir };
+        t.dutyName = t.trainNo;
+        t.depotOutConfig = { type: t.type, dest: t.dest, trainNo: t.trainNo, dir: t.dir, dutyName: t.trainNo };
         
         t.timer = delayMin * 60;
         t.forceDepotOut = true; // ★改善: タイマー実行時にも強制出区フラグを持たせる

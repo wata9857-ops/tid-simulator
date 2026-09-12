@@ -17,6 +17,13 @@ class GameSystem {
         this.nextMinorTroubleTime = this.currentTime + (Math.random() * 5400 + 3600);
 
         this.trackMgr = new TrackManager();
+        // 信号機と閉塞の管理 (js/25-signals.js)。
+        // ブロックの在線から現示を組み立て、列車の発車・進入・速度を決める。
+        this.signals = new SignalSystem(this);
+        // 輸送障害 (js/26-incidents.js)。事故・故障を線路と信号の状態として起こす。
+        this.incidents = new IncidentSystem(this);
+        // 運用計画 (js/27-operations.js)。出区・送り込み・増発・復旧回送。
+        this.ops = new OperationsManager(this);
         this.trains = [];
         this.fleet = new FleetManager(this);   // 編成(車両)の在庫と運用規則
         this.spawner = new Spawner(this);
@@ -105,6 +112,13 @@ class GameSystem {
         const needsOwnStock = (config.type === "特急") ||
             (typeof expressKeyFromName === "function" && !!expressKeyFromName(dutyName));
 
+        /* ★始発の裏付け (js/27-operations.js)。
+           留置場の無い駅 (須磨・三ノ宮など) が始発の列車は、
+           手前の車両所からの送り込み回送に置き換える。
+           置き換えたときは、その回送が当駅で営業列車に変わるので
+           ここでの生成は行わない。 */
+        if (this.ops && this.ops.backOrigin(config)) return true;
+
         if (config.type !== "貨物" && !needsOwnStock && DEPOTS[actualStart]) {
             let depot = DEPOTS[actualStart];
             let reserveTrain = depot.trains.find(t => !t.depotOutConfig && t.timer === -1);
@@ -124,9 +138,11 @@ class GameSystem {
                 reserveTrain.trackId = config.trackId;
                 reserveTrain.startName = config.startName;
                 reserveTrain.trainNo = config.name || this.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId);
+                reserveTrain.dutyName = dutyName || reserveTrain.trainNo;
                 reserveTrain.nextAction = config.nextAction || "turnback";
                 
-                reserveTrain.depotOutConfig = { type: reserveTrain.type, dest: reserveTrain.dest, trainNo: reserveTrain.trainNo, dir: reserveTrain.dir };
+                reserveTrain.depotOutConfig = { type: reserveTrain.type, dest: reserveTrain.dest,
+                    trainNo: reserveTrain.trainNo, dir: reserveTrain.dir, dutyName: reserveTrain.dutyName };
                 
                 let maxTimer = 0;
                 depot.trains.forEach(t => {
@@ -185,9 +201,11 @@ class GameSystem {
         this.currentTime += CONFIG.TICK_SEC;
         // ★追加: 消滅済み・出区済みの列車を留置場の在線リストから掃除する
         depotPrune();
+        this.trackMgr.pruneSpeedRestrictions(this.currentTime);
         this.checkEmergency();
-        this.checkMinorTrouble();
+        this.incidents.update();          // 輸送障害の発生・進行・復旧
         this.spawner.update(this.currentTime);
+        this.ops.update(this.currentTime); // 出区計画・間隔の穴埋め
         this.trains = this.trains.filter(t => t.state !== "finished");
         this.trains.sort((a,b)=>PRIORITY[b.type]-PRIORITY[a.type]);
         this.trains.forEach(t => t.update());
@@ -205,152 +223,68 @@ class GameSystem {
         }
     }
 
+    /**
+     * 防護無線の自動解除だけをここで見る。
+     * 事故・故障そのものの進行と復旧は IncidentSystem (js/26-incidents.js) が持つ。
+     * 以前はこのメソッドが「区間の見合わせ・復旧・メッセージ」まで全部抱えていたため、
+     * 事故の種類を増やすたびにここが膨らみ、実際の線路の状態とも噛み合わなくなっていた。
+     */
     checkEmergency() {
-        // 防護無線の自動解除処理
-        if(this.isEmergency) {
-            this.radioTimer -= CONFIG.TICK_SEC;
-            if (this.radioTimer <= 0) {
-                this.isEmergency = false;
-                document.getElementById("emg-control").style.display = "none";
-                document.getElementById("emergency-banner").style.display = "none";
-                this.ui.updateBanner(`【防護無線解除】周辺の安全が確認されたため、当該区間以外は運転を再開します。`, "banner-orange");
-            }
-        }
-        
-        // トラブル区間の復旧タイマー処理
-        if (this.emergencyState.timer > 0) {
-            this.emergencyState.timer -= CONFIG.TICK_SEC;
-            const rem = Math.ceil(this.emergencyState.timer / 60);
-            if (this.emergencyState.type === "human") {
-                // 1200秒(20分)をベースにタイムライン進行
-                let elapsed = 1200 - this.emergencyState.timer;
-                let msg = "";
-                let source = "🚨[警察・消防]";
-                if (elapsed < 300) {
-                    msg = "警察・消防手配中。現場への到着を待っています。";
-                    source = "🚉[駅係員]";
-                } else if (elapsed < 600) {
-                    msg = "警察・消防が到着し、救護活動および現場検証を開始しました。";
-                } else if (elapsed < 900) {
-                    msg = "救護活動完了。引き続き警察による実況見分および車両の床下点検中です。";
-                    source = "🚧[保線区]";
-                } else {
-                    msg = "現場検証終了。現在、運転再開に向けた最終安全確認を行っています。";
-                    source = "🚉[駅係員]";
-                }
-                
-                if (this.emergencyState.timer <= 0) {
-                    this.ui.updateBanner(`🟢[指令] ${this.emergencyState.location}での人身事故の安全確認が全て完了しました。当該区間の運転を順次再開してください。`, "banner-red");
-                    this.trackMgr.manualSuspensions = [];
-                } else {
-                    this.ui.updateBanner(`${source} ${this.emergencyState.location} 人身事故 - ${msg} (再開見込:${rem}分)`, "banner-red");
-                }
-            } else {
-                if (this.emergencyState.timer <= 0) {
-                    this.ui.updateBanner(`🟢[指令] ${this.emergencyState.location}付近の安全確認が完了しました。運転を再開してください。`, "banner-red");
-                    this.trackMgr.manualSuspensions = [];
-                } else {
-                    this.ui.updateBanner(`🚧[保線区] ${this.emergencyState.location}付近 - 沿線異常検知、安全確認中 (再開見込:約${rem}分)`, "banner-red");
-                }
-            }
-        } else if (!this.isEmergency && this.currentTime > this.nextEmergencyTime) {
-            this.triggerEmergency();
+        if (!this.isEmergency) return;
+        this.radioTimer -= CONFIG.TICK_SEC;
+        if (this.radioTimer <= 0) {
+            this.isEmergency = false;
+            const el = document.getElementById("emg-control");
+            if (el) el.style.display = "none";
+            const eb = document.getElementById("emergency-banner");
+            if (eb) eb.style.display = "none";
+            this.ui.updateBanner(
+                "【防護無線解除】周辺の安全が確認されたため、当該区間以外は運転を再開します。" +
+                "（当該区間は引き続き運転を見合わせます）", "banner-orange");
         }
     }
-    triggerEmergency() {
-        this.isEmergency = true;
-        this.radioTimer = 180; // 3分で防護無線(一斉停止)は自動解除
-        document.getElementById("emg-control").style.display = "block";
-        const st = STATIONS[Math.floor(Math.random() * STATIONS.length)].name;
-        const stIdx = STATION_MAP[st];
 
-        // 1. 運転見合わせ区間の算出（最低5駅程度確保、主要駅・待避駅間）
-        const MAJOR_STATIONS = [...new Set([...SWITCHABLE_STATIONS, ...OVERTAKE_STATIONS])];
-        let sIdx = stIdx;
-        let eIdx = stIdx;
-
-        // 上り方面（インデックス減少方向）へ主要駅を探索（最低3駅分以上）
-        for (let i = stIdx - 3; i >= 0; i--) {
-            if (MAJOR_STATIONS.includes(STATIONS[i].name)) {
-                sIdx = i;
-                break;
-            }
-        }
-        if (sIdx === stIdx) sIdx = 0; // 見つからなかった場合は端点まで
-
-        // 下り方面（インデックス増加方向）へ主要駅を探索（最低3駅分以上）
-        for (let i = stIdx + 3; i < STATIONS.length; i++) {
-            if (MAJOR_STATIONS.includes(STATIONS[i].name)) {
-                eIdx = i;
-                break;
-            }
-        }
-        if (eIdx === stIdx) eIdx = STATIONS.length - 1; // 見つからなかった場合は端点まで
-
-        // 1文字駅の場合は左右に全角スペースを挿入するフォーマット
-        const sNameText = STATIONS[sIdx].name.length === 1 ? ` ${STATIONS[sIdx].name} ` : STATIONS[sIdx].name;
-        const eNameText = STATIONS[eIdx].name.length === 1 ? ` ${STATIONS[eIdx].name} ` : STATIONS[eIdx].name;
-        
-        // バナーに「⇄」を用いて見合わせ区間を表示
-        if (Math.random() < 0.3) {
-            this.emergencyState = { type: "human", timer: 1200, location: st };
-            this.ui.updateBanner(`🚨[緊急] ${st}にて人身事故発生。直ちに停車してください。（見合わせ：${sNameText}⇄${eNameText}）`, "banner-red");
-        } else {
-            this.emergencyState = { type: "vehicle", timer: 300+Math.random()*1500, location: st };
-            this.ui.updateBanner(`🚧[保線区] ${st}付近でインフラ異常検知。停車してください。（見合わせ：${sNameText}⇄${eNameText}）`, "banner-red");
-        }
-
-        // 2. ズレの解消：駅インデックスではなく、各路線の「実際のブロックインデックス」を取得して抑止設定
-        const targetTracks = ["Up_In", "Up_Out", "Down_In", "Down_Out", "Kosei_Up", "Kosei_Down", "Fukuchi_Up", "Fukuchi_Down", "Tozai_Up", "Tozai_Down"];
-        targetTracks.forEach(tid => {
-            let blks = this.trackMgr.blocks[tid];
-            if (!blks) return;
-            
-            // 対象路線のブロック配列内から指定駅のブロックを検索
-            let sBlock = blks.find(b => b.stationIdx === sIdx);
-            let eBlock = blks.find(b => b.stationIdx === eIdx);
-            
-            if (sBlock && eBlock) {
-                // ★修正: 両端の駅ブロックを見合わせ区間から除外し、駅への進入および折り返しを可能にする
-                let minIdx = Math.min(sBlock.index, eBlock.index) + 1;
-                let maxIdx = Math.max(sBlock.index, eBlock.index) - 1;
-                if (minIdx <= maxIdx) {
-                    this.trackMgr.manualSuspensions.push({
-                        trackId: tid,
-                        start: minIdx,
-                        end: maxIdx
-                    });
-                }
-            }
-        });
-
-        // 固定時間からランダムな長めのインターバルへ変更
-        this.nextEmergencyTime = this.currentTime + (Math.random() * 14400 + 18000);
+    /** 指令パッドなどから任意の輸送障害を起こす (検証・訓練用) */
+    triggerEmergency(typeId) {
+        return this.incidents.trigger(typeId || "jinshin");
     }
+
+    /** 車両故障など、列車に付く輸送障害を1件起こす (検証・訓練用) */
     checkMinorTrouble() {
         if (this.currentTime > this.nextMinorTroubleTime) {
-            const run = this.trains.filter(t => t.state === "running");
-            if (run.length) run[Math.floor(Math.random()*run.length)].triggerMinorTrouble();
-            // 固定時間からランダムな長めのインターバルへ変更
+            this.incidents.trigger();
             this.nextMinorTroubleTime = this.currentTime + (Math.random() * 5400 + 3600);
         }
     }
+
+    /**
+     * 指令による防護無線・見合わせの全解除。
+     * 起きている輸送障害もまとめて打ち切る (指令の判断による強制再開)。
+     * 列車の位置や遅れには手を触れないので、溜まった遅れはそのまま残る。
+     */
     clearEmergency() {
-        if (this.emergencyState.timer > 0 && !confirm("安全確認未了です。防護無線及び見合わせ区間を強制解除しますか？")) return;
+        const live = this.incidents.active.length;
+        if (live > 0 && typeof confirm === "function" &&
+            !confirm("安全確認未了です。防護無線及び見合わせ区間を強制解除しますか？")) return;
         this.isEmergency = false;
         this.radioTimer = 0;
         this.emergencyState = { type: "none", timer: 0 };
-        document.getElementById("emg-control").style.display = "none";
-        document.getElementById("emergency-banner").style.display = "none";
-        document.getElementById("info-banner").style.display = "none";
+        this.incidents.clearAll("指令による強制解除");
+        const hide = (id) => { const e = document.getElementById(id); if (e) e.style.display = "none"; };
+        hide("emg-control"); hide("emergency-banner"); hide("info-banner");
         this.trackMgr.manualSuspensions = [];
-        this.trains.forEach(t => { t.isManuallySuspended = false; if(t.state==="holding"){t.state="running"; t.timer=15;} });
-        alert("防護無線・見合わせ解除。全線運転再開。");
+        this.signals.clearFaults();
+        this.trains.forEach(t => {
+            t.isManuallySuspended = false;
+            t.minorTrouble = false;
+            t.troubleInfo = { active: false, cause: "", status: "" };
+            if (t.state === "holding") { t.state = "running"; t.timer = 15; }
+        });
+        this.ui.updateBanner("【指令】防護無線・運転見合わせを全て解除しました。全線運転を再開します。", "banner-orange");
+        if (typeof alert === "function") alert("防護無線・見合わせ解除。全線運転再開。");
     }
 }
 
-// 起動処理
-const game = new GameSystem();
-window.onload = () => game.init();
-
-window.onerror = function(msg) { console.error(msg); };
+/* 起動処理は js/39-boot.js に移した。
+   GameSystem がこのファイルより後に読み込む仕組み (信号・障害・出入区計画) を
+   使うため、インスタンスの生成を最後のファイルまで遅らせている。 */

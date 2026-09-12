@@ -146,10 +146,12 @@ const lost = [];
 for (const key in EXPRESS_FLEET) {
     const inUse = new Set();
     game.trains.forEach(t => (t.vehicles || []).forEach(v => { if (v.expressKey === key) inUse.add(v); }));
-    const have = ServiceRules.expressPool.idleCount(key) + inUse.size;
-    if (have !== EXPRESS_FLEET[key].ids.length) {
-        lost.push(`${key}: ${have}/${EXPRESS_FLEET[key].ids.length}`);
-    }
+    // 増結用の編成 (addon) も同じ expressKey を持つので、両方を数える
+    const total = EXPRESS_FLEET[key].ids.length +
+        (EXPRESS_FLEET[key].addon ? EXPRESS_FLEET[key].addon.ids.length : 0);
+    const have = ServiceRules.expressPool.idleCount(key) +
+        ServiceRules.expressPool.addons[key].length + inUse.size;
+    if (have !== total) lost.push(`${key}: ${have}/${total}`);
 }
 ok('特急編成が失われていない', lost.length === 0, lost.join(' '));
 

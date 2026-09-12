@@ -20,7 +20,9 @@ const DEPOTS = {
     "野洲": { capacity: 6, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "野洲〜篠原間" },
     "米原": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "米原〜坂田間" },
     // ★追加: JR東西線・片町線(学研都市線)の車両を受け持つ放出の電留線
-    "放出": { capacity: 6, trains: [], drawOffset: { x: -0.5, y: 0 }, display: "放出〜徳庵間", line: "Tozai" }
+    "放出": { capacity: 6, trains: [], drawOffset: { x: -0.5, y: 0 }, display: "放出〜徳庵間", line: "Tozai" },
+    // ★追加: JR宝塚線の始発を受け持つ新三田の電留線
+    "新三田": { capacity: 6, trains: [], drawOffset: { x: -0.5, y: 0 }, display: "新三田〜広野間", line: "Fukuchi" }
 };
 
 /* 留置場の在線リスト (DEPOTS[x].trains) の管理。
@@ -33,6 +35,36 @@ const DEPOTS = {
           入区できずに消滅する列車が増える原因にもなっていた。
           登録・削除・掃除をここに集約する。
 */
+
+/**
+ * その留置場から出区するときに乗る線路を決める。
+ *
+ * ★留置場は本線だけでなく、JR東西線(放出)や北方貨物線(宮原操)にも面している。
+ *   以前は一律に本線(Up_In/Down_In)を返していたため、
+ *   放出の電留線から出た列車が本線の摂津富田付近に置かれようとして失敗し、
+ *   出区のたびに消滅していた。
+ */
+function depotTrackId(depotName, dir, type) {
+    const dep = DEPOTS[depotName];
+    const line = dep && dep.line;
+    if (line === "Tozai")   return (dir === 1) ? "Tozai_Up" : "Tozai_Down";
+    if (line === "Fukuchi") return (dir === 1) ? "Fukuchi_Up" : "Fukuchi_Down";
+    if (line === "Kosei")   return (dir === 1) ? "Kosei_Up" : "Kosei_Down";
+    if (depotName === "宮原操") return (dir === 1) ? "Up_Hoppo" : "Down_Hoppo";
+
+    // --- 本線。優等・回送・貨物は外側線、普通・快速は内側線から出る。
+    let tid = (dir === 1) ? "Up_In" : "Down_In";
+    if (["貨物", "回送", "臨時", "特急", "新快速"].includes(type)) {
+        tid = tid.replace("In", "Out");
+    }
+    // 複々線 (西明石〜草津) の外はすべて外側線扱い
+    const idx = STATION_MAP[depotName];
+    if (idx === undefined || idx < STATION_MAP["西明石"] || idx > STATION_MAP["草津"]) {
+        tid = tid.replace("In", "Out");
+    }
+    if (depotName === "向日町操" && dir === -1) tid = "Down_Out";
+    return tid;
+}
 
 /** 留置場へ列車を登録する。すでに入っている場合は何もしない。 */
 function depotAdd(depotName, train) {
@@ -307,6 +339,34 @@ const DEPOT_LAYOUTS = {
                 { label: "南3", cars: 7, kind: "stabling" },
                 { label: "南4", cars: 4, kind: "stabling" },
                 { label: "南5", cars: 4, kind: "stabling" }
+            ]},
+            { name: "洗浄線", tracks: [
+                { label: "洗浄", cars: 8, kind: "wash" }
+            ]}
+        ]
+    },
+
+    "新三田": {
+        title: "新三田 電留線 (網干総合車両所宮原支所 新三田派出)",
+        owner: "網干総合車両所宮原支所",
+        leftLabel: "三田・宝塚・尼崎方",
+        rightLabel: "広野・篠山口方",
+        note: "新三田駅の北側に広がる電留線群。JR宝塚線の朝の始発列車を受け持つ。" +
+              "配線略図のとおり、下り本線の東側に櫛状の留置線が並び、" +
+              "新三田駅の1〜4番のりばへつながる。",
+        groups: [
+            { name: "出入区線", tracks: [
+                { label: "出入1", cars: 8, kind: "siding" }
+            ]},
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 8, kind: "stabling" },
+                { label: "電2", cars: 8, kind: "stabling" },
+                { label: "電3", cars: 8, kind: "stabling" },
+                { label: "電4", cars: 8, kind: "stabling" },
+                { label: "電5", cars: 7, kind: "stabling" },
+                { label: "電6", cars: 7, kind: "stabling" },
+                { label: "電7", cars: 6, kind: "stabling" },
+                { label: "電8", cars: 6, kind: "stabling" }
             ]},
             { name: "洗浄線", tracks: [
                 { label: "洗浄", cars: 8, kind: "wash" }

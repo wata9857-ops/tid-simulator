@@ -3,7 +3,7 @@
 Train.prototype.executeTurnBack = function () {
         const blks = this.game.trackMgr.blocks[this.trackId];
         const blk = blks[this.currBlockIndex];
-        const stName = (blk.stationIdx >= 0) ? STATIONS[blk.stationIdx].name : (blk.hoppoStationName || "");
+        const stName = blockStationName(blk);
 
         // ★事象2対応: 運用変更(特急化など)がある場合は、他の折り返し/入庫ロジックより最優先で処理する
         if (this.serviceChange && this.serviceChange.at === stName) {
@@ -122,7 +122,10 @@ Train.prototype.executeTurnBack = function () {
         }
 
         // ★追加: 22:15以降の折り返しは優等種別を普通に降格し、遠距離走行を防ぐ
-        if (hOfDay >= 22.25 && ["新快速", "快速"].includes(this.type)) {
+        //   ただし、いまの編成でその線区の普通運用に入れない場合は降格しない。
+        //   (湖西線の普通は京都支所の車両のみ、という規則を壊さないため)
+        if (hOfDay >= 22.25 && ["新快速", "快速"].includes(this.type) &&
+            this.canChangeTypeTo("普通", stName)) {
             this.type = "普通";
         }
 
@@ -148,7 +151,8 @@ Train.prototype.executeTurnBack = function () {
                 this.game.spawner.activeTrainNos.delete(this.trainNo);
                 let nextNo = this.game.spawner.generateTrainNumber(this.type, newDir, stName, this.trackId);
                 
-                this.depotOutConfig = { type: this.type, dest: nextDest, trainNo: nextNo, dir: newDir };
+                this.depotOutConfig = { type: this.type, dest: nextDest, trainNo: nextNo,
+                                        dir: newDir, dutyName: nextNo };
             
                 // ★車両を留置場へ返却 (返却先は車両所グループに応じてFleetManagerが決める)
                 this.game.fleet.release(stName, this.vehicles);
@@ -393,6 +397,8 @@ Train.prototype.executeTurnBack = function () {
                     this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
                     this.trainNo =this.game.spawner.generateTrainNumber(this.type, this.dir, stName, this.trackId);
                     this.dutyName = this.trainNo;   // 一般の営業列車は運用名=列車番号
+                    // 行先が変わったので、湖西線経由かどうかを決め直す
+                    this.updateKoseiRoute();
                     // ★折り返して別の列車になったので、始発駅もこの駅に更新する。
                     //   以前は最初に出区した駅のままだったため、
                     //   「草津発の列車が宝塚線を走っている」ように見え、
@@ -416,7 +422,13 @@ Train.prototype.executeTurnBack = function () {
 
                 this.state = "waiting_start"; this.timer = 15; this.stuckTime = 0; this.hasStoppedAtCurrent = false; 
                 this.hasDeparted = false;
-                this.delayTime = 0; 
+                /* ★遅れの引き継ぎ。
+                   以前は折り返すたびに遅れを0に戻していたため、輸送障害で
+                   大きく遅れた列車も、折り返した瞬間に定時に戻っていた。
+                   実際には折り返し時間の余裕(3分程度)しか回復できないので、
+                   その分だけ差し引いて残りを持ち越す。
+                   これで障害の影響がダイヤ全体へ自然に波及する。 */
+                this.carryOverDelay(180);
                 this.isFinalStop = false; // ★修正: 折り返し発車時のフラグリセット
                 
                 if (this.nextAction === "stop_opposite_home") {
@@ -520,8 +532,13 @@ Train.prototype.handleMinorTrouble = function () {
         this.minorTroubleTimer -= CONFIG.TICK_SEC;
         this.troubleInfo.timer = this.minorTroubleTimer;
         const rem = Math.ceil(this.minorTroubleTimer / 60);
-        if (rem > 15) this.troubleInfo.status = "係員手配中";
-        else if (rem > 5) this.troubleInfo.status = "現場確認中"; else this.troubleInfo.status = "点検終了・再開準備";
+        // 輸送障害 (js/26-incidents.js) が付いている場合は、復旧作業の段階を
+        // あちらが書き込んでいるので上書きしない。
+        if (!this.troubleInfo.incidentId) {
+            if (rem > 15) this.troubleInfo.status = "係員手配中";
+            else if (rem > 5) this.troubleInfo.status = "現場確認中";
+            else this.troubleInfo.status = "点検終了・再開準備";
+        }
         
         if (this.minorTroubleTimer <= 0) {
             // ジャッジ状態へ移行
@@ -531,6 +548,28 @@ Train.prototype.handleMinorTrouble = function () {
         } else {
             this.game.ui.updateBanner(`【${this.troubleInfo.cause}】${this.troubleInfo.location} ${this.trainNo} - ${this.troubleInfo.status} (再開見込:約${rem}分)`, "banner-orange");
         }
+};
+
+/**
+ * 折り返しなどで遅れを引き継ぐ。
+ * margin は「折り返しの余裕時分」で、そのぶんだけ回復できる。
+ * 0 にはせず、残りを持ち越すことで遅れがダイヤ全体に波及する。
+ */
+/**
+ * いまの編成のまま、その種別に変えられるか。
+ * 運転整理で種別を上げ下げする前に必ず確かめる。
+ * (207系を快速にする、網干の223系を湖西線の普通にする、といった
+ *  規則違反を運転整理から起こさないための関門)
+ */
+Train.prototype.canChangeTypeTo = function (newType, atName) {
+    const where = atName || this.startName;
+    return this.game.fleet.canServe(this.vehicles, where, newType,
+        this.trackId, this.dest, this.dutyName);
+};
+
+Train.prototype.carryOverDelay = function (margin) {
+    const m = (margin === undefined) ? 180 : margin;
+    this.delayTime = Math.max(0, this.delayTime - m);
 };
 
 Train.prototype.getPriority = function () {
@@ -614,8 +653,21 @@ Train.prototype.calcTravelTime = function () {
             }
         }
 
-        // 両方の減速係数のうち、大きい方（より遅くなる方）を適用する
-        suspendSlowdown = Math.max(suspendSlowdown, troubleSlowdown);
+        // ★信号現示による減速 (js/25-signals.js)。
+        //   注意・減速現示なら所要時間が延びる。
+        //   もとの協調追従ロジックが出す減速率と比べて遅い方を採用するので、
+        //   既存の動きが速くなってしまうことはない。
+        let signalSlowdown = 1.0;
+        if (this.game.signals) {
+            this.signalAspect = this.game.signals.aspectAhead(this);
+            signalSlowdown = SIGNAL_TIME_FACTOR[this.signalAspect] || 1.0;
+        }
+
+        // ★徐行 (輸送障害からの復旧後の速度規制)
+        const restrictFactor = this.game.trackMgr.speedFactor(this.trackId, this.currBlockIndex);
+
+        // 各減速係数のうち、いちばん大きい方（より遅くなる方）を適用する
+        suspendSlowdown = Math.max(suspendSlowdown, troubleSlowdown, signalSlowdown, restrictFactor);
         // 【追加終了】
 
         const maxScan = UNITS_PER_STATION * 10;

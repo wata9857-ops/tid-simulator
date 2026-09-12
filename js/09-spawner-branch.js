@@ -182,10 +182,16 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             }
         }
 
-        // 3. 尼崎発 下り (福知山線 宝塚・新三田方面)
+        /* 3. 尼崎発 下り (福知山線 宝塚・新三田方面)
+              ★実際のJR宝塚線は、尼崎折り返しの宝塚・新三田行き普通が主体で、
+                篠山口・福知山まで行くのは丹波路快速など一部。
+                以前は篠山口・福知山行きしか作っていなかったので、
+                線内の本数が足りず間隔が大きく空いていた。 */
         if (ct >= this.nextFukuchiDown) {
-            let type = Math.random() < 0.45 ? "快速" : "普通";
-            let destOptions = [{d:"篠山口",w:70}, {d:"福知山",w:30}];
+            let type = Math.random() < 0.35 ? "快速" : "普通";
+            let destOptions = (type === "快速")
+                ? [{d:"篠山口",w:60}, {d:"福知山",w:20}, {d:"新三田",w:20}]
+                : [{d:"新三田",w:45}, {d:"宝塚",w:35}, {d:"篠山口",w:15}, {d:"塚口",w:5}];
             let dest = this.weightedRandom(destOptions);
             
             let canSpawn = true;
@@ -195,7 +201,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 if (startB) {
                     let freeLanes = startB.lanes.filter(l => l === null).length;
                     let existingSameRoute = startB.lanes.filter(l => l !== null && l.trackId === "Fukuchi_Down").length;
-                    if (freeLanes <= 2 || existingSameRoute >= 1) canSpawn = false;
+                    if (freeLanes < 2 || existingSameRoute >= 2) canSpawn = false;
                 }
             }
 
@@ -206,7 +212,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
 
             if (canSpawn) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Fukuchi_Down", dest:dest, startName:"尼崎", nextAction:"depot"});
-                this.nextFukuchiDown += (type === "快速" ? 800 : 650) * timeFactor;
+                this.nextFukuchiDown += (type === "快速" ? 700 : 520) * timeFactor;
             } else {
                 this.nextFukuchiDown += 180;
             }
@@ -226,7 +232,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 if (startB) {
                     let freeLanes = startB.lanes.filter(l => l === null).length;
                     let existingSameRoute = startB.lanes.filter(l => l !== null && l.trackId === "Tozai_Up").length;
-                    if (freeLanes <= 2 || existingSameRoute >= 1) canSpawn = false;
+                    if (freeLanes < 2 || existingSameRoute >= 2) canSpawn = false;
                 }
             }
 

@@ -109,12 +109,31 @@ Spawner.prototype.update = function (currentTime) {
         else if (hOfDay >= 17 && hOfDay < 19.5) { maxTrains = 350; } 
         else if (hOfDay >= 9.5 && hOfDay < 10) { maxTrains = 230; }
 
-        if (this.game.trains.length > maxTrains) return;
+        /* ★上限の掛け方を線区ごとに分けた。
+           以前は在線本数が上限を超えると、この時点で丸ごと打ち切っていたため、
+           本線が混んでいるあいだ湖西線・JR宝塚線・JR東西線の列車が
+           まったく生成されなくなっていた。
+           (車両所からの計画出区が増えて本線の在線が増えたことで表面化した)
+           分岐線には別の枠を持たせ、本線の混雑に巻き込まれないようにする。 */
+        const trains = this.game.trains;
+        const isBranch = (t) => t.trackId.indexOf("Kosei") === 0 ||
+                                t.trackId.indexOf("Fukuchi") === 0 ||
+                                t.trackId.indexOf("Tozai") === 0;
+        let branchCount = 0;
+        for (const t of trains) if (isBranch(t)) branchCount++;
+        const mainCount = trains.length - branchCount;
+
         this.checkFixedSpawns(currentTime);
-        this.checkIntervalSpawns(currentTime);
         this.checkExtraSpawns(currentTime);
-        this.checkKoseiSpawns(currentTime);
-        this.checkFukuchiTozaiSpawns(currentTime);
+
+        // 本線 (琵琶湖線・JR京都線・JR神戸線・北陸線)
+        if (mainCount <= maxTrains) this.checkIntervalSpawns(currentTime);
+
+        // 分岐線。3線区あわせて BRANCH_MAX_TRAINS 本まで。
+        if (branchCount <= BRANCH_MAX_TRAINS) {
+            this.checkKoseiSpawns(currentTime);
+            this.checkFukuchiTozaiSpawns(currentTime);
+        }
 };
 
 Spawner.prototype.checkFixedSpawns = function (ct) {

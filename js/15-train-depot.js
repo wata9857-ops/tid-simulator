@@ -42,6 +42,7 @@ Train.prototype.enterDepot = function (stName) {
         let oldNo = this.trainNo;
         this.type = "回送";
         this.trainNo = "";
+        this.dutyName = "";     // 前の運用の名前を持ち越さない
         depotAdd(stName, this);   // ★二重登録を防ぐためヘルパー経由にする
         this.game.spawner.activeTrainNos.delete(oldNo);
         this.game.ui.updateBanner(`【入区】${oldNo} は ${stName}留置場に入区し、待機状態に入りました。`, "banner-orange");
@@ -66,17 +67,10 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
         if (actualStart === "向日町操") tempStIdx = 51;
         const startStIdx = tempStIdx !== undefined ? tempStIdx : (this.depotOutConfig.dir===1?0:(STATIONS.length-1));
         
-        // ★修正: trackIdが旧方向のままになっているため、dirと種別に基づいて適切なtrackIdを再生成する
-        let targetTrackId = (this.depotOutConfig.dir === 1) ? "Up_In" : "Down_In";
-        if (["貨物", "回送", "臨時", "特急"].includes(this.depotOutConfig.type)) {
-            targetTrackId = targetTrackId.replace("In", "Out");
-        }
-        
-        if ((startStIdx < STATION_MAP["西明石"] || startStIdx > STATION_MAP["草津"]) && targetTrackId.includes("In") && !targetTrackId.includes("Hoppo")) {
-            targetTrackId = targetTrackId.replace("In", "Out");
-        }
-        if (actualStart === "向日町操" && !targetTrackId.includes("Hoppo") && this.depotOutConfig.dir === -1) targetTrackId = "Down_Out";
-        if (actualStart === "宮原操") targetTrackId = (this.depotOutConfig.dir === 1) ? "Up_Hoppo" : "Down_Hoppo";
+        /* ★出区する線路は留置場が面している線区から決める (js/04-depots.js)。
+           放出のように本線以外に面した留置場があるため、
+           一律に本線を使うと出区できずに列車が消えてしまう。 */
+        let targetTrackId = depotTrackId(actualStart, this.depotOutConfig.dir, this.depotOutConfig.type);
         
         const blks = this.game.trackMgr.blocks[targetTrackId];
         if (!blks) {
@@ -156,6 +150,10 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
                     this.type = this.depotOutConfig.type;
                     this.dest = this.depotOutConfig.dest;
                     this.trainNo = this.depotOutConfig.trainNo;
+                    // ★運用名も更新する。更新しないと、以前この編成が担当していた
+                    //   特急の名前が残り、通勤形なのに「はまかぜの運用」と
+                    //   判定されてしまう。
+                    this.dutyName = this.depotOutConfig.dutyName || this.trainNo;
                     this.dir = this.depotOutConfig.dir;
                     this.trackId = targetTrackId;
                     
@@ -163,6 +161,7 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
                     this.lane = freeLane;
                     startBlock.lanes[this.lane] = this;
                     
+                    this.updateKoseiRoute();   // 出区時の行先で経路を決め直す
                     this.state = "waiting_start";
                     this.timer = 15;
                     this.hasDeparted = false;
@@ -203,6 +202,7 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         this.type = "回送";
         this.dest = targetDest;
         this.trainNo = "回" + (Math.floor(Math.random()*8000)+1000) + "M";
+        this.dutyName = this.trainNo;
         this.game.spawner.activeTrainNos.add(this.trainNo);
         this.nextAction = "depot";
         this.isFinalStop = false;

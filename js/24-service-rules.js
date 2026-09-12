@@ -172,10 +172,23 @@ const SERVICE_RULES = [
     {
         id: "kosei-local",
         label: "湖西線の普通 (京都支所の221系/223系のみ)",
-        when: (c) => c.isKosei && c.type !== "新快速" && c.type !== "快速",
+        when: (c) => c.isKosei && c.type === "普通",
         profile: () => ({ groups: ["KYOTO"],
                           pred: (v) => VEH.isKyoto(v) && (VEH.is221(v) || VEH.is223(v)),
                           minCars: 1, label: "湖西線普通" })
+    },
+    {
+        id: "deadhead",
+        label: "回送・臨時 (車両の送り込み・返却)",
+        /* 回送は「車両を動かすこと」そのものが目的なので、
+           営業列車のような車両所の縛りは掛けない。
+           ただし、東西線 (207系/321系のみ) と湖西線の普通の規則は
+           この上にあるので、そちらが先に効く。
+           以前はこの規則が無く、向日町操へ戻る京都支所の221系が
+           「本線の回送」と見なされて弾かれていた。 */
+        when: (c) => c.type === "回送" || c.type === "臨時",
+        profile: () => ({ groups: ["AKASHI", "ABOSHI", "MIYAHARA", "KYOTO"],
+                          pred: () => true, minCars: 1, label: "回送" })
     },
     {
         id: "special-rapid",
@@ -188,6 +201,10 @@ const SERVICE_RULES = [
     {
         id: "fukuchiyama",
         label: "JR宝塚線 (223系/225系)",
+        /* JR宝塚線を走る列車は宮原・網干の223系/225系。
+           大阪方面へ直通する丹波路快速もここに含まれる。
+           (東西線から直通してくる207系/321系は、上の東西線の規則で
+            先に判定されるのでここへは来ない) */
         when: (c) => c.isFukuchi,
         profile: () => ({ groups: ["MIYAHARA", "ABOSHI"],
                           pred: (v) => VEH.is223(v) || VEH.is225(v),
@@ -210,16 +227,23 @@ const SERVICE_RULES = [
     },
     {
         id: "urban-local",
-        label: "京都〜西明石の普通 (明石の207系/321系。不足時は網干・宮原で代走)",
+        label: "西明石〜米原の普通 (都市圏。明石の207系/321系と網干の223系/225系)",
         // 宮原の223系/225系6000番台は本来JR宝塚線の運用だが、
         //   ・宝塚線から尼崎で本線へ直通した列車がそのまま京都方へ延長される
         //   ・明石・網干の車両が足りないときの代走
         // という形で本線の普通に入ることがあるため、第3候補として許可する。
         // (京都支所の車両は本線運用に入れない、という規則は pred で担保している)
         when: (c) => c.startIdx !== null &&
-                     c.startIdx >= STATION_MAP["西明石"] && c.startIdx <= STATION_MAP["京都"],
-        profile: () => ({ groups: ["AKASHI", "ABOSHI", "MIYAHARA"], pred: (v) => !VEH.isKyoto(v),
-                          minCars: 6, label: "都市圏普通" })
+                     c.startIdx >= STATION_MAP["西明石"] && c.startIdx <= STATION_MAP["米原"],
+        // 京都より東 (琵琶湖線) は網干の223系/225系が主力、
+        // 京都より西 (JR京都線・JR神戸線) は明石の207系/321系が主力。
+        // 車両所の優先順だけを区間で入れ替える。
+        profile: (c) => ({
+            groups: (c.startIdx > STATION_MAP["京都"])
+                ? ["ABOSHI", "AKASHI", "MIYAHARA"]
+                : ["AKASHI", "ABOSHI", "MIYAHARA"],
+            pred: (v) => !VEH.isKyoto(v),
+            minCars: 6, label: "都市圏普通" })
     },
     {
         id: "local",

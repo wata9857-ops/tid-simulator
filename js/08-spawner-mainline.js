@@ -491,7 +491,12 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
                         // ★修正: 尼崎以西で生成される下り列車(西へ向かう)が、東の駅(大阪・神戸等)を目指すと逆走バグで詰まるため削除
                         return [{d:"西明石",w:70}, {d:"須磨",w:30}];
                     } else {
-                        // 尼崎より東から出発する下り列車
+                        // 尼崎より東から出発する下り列車。
+                        // ★宝塚方面への直通は高槻以西の始発に限る。
+                        //   琵琶湖線(草津・米原)から宝塚線へ直通する普通は実在しない。
+                        if (stIdx !== undefined && stIdx > STATION_MAP["高槻"]) {
+                            return [{d:"西明石",w:55}, {d:"須磨",w:27}, {d:"大阪",w:9}, {d:"神戸",w:5}, {d:"尼崎",w:4}];
+                        }
                         return [{d:"西明石",w:50}, {d:"須磨",w:25}, {d:"宝塚方面",w:14}, {d:"大阪",w:5}, {d:"神戸",w:3}, {d:"尼崎",w:2}, {d:"甲子園口",w:1}];
                     }
                 }
@@ -645,9 +650,29 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
 Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type) {
     if (!dest) return dest;
 
-    // --- 分岐線の行先は、走る向きが決まっている
-    if (FUKUCHI_THROUGH_DESTS.includes(dest)) return (dir === -1) ? dest : this.fallbackTerminal(dir, startName);
-    if (TOZAI_THROUGH_DESTS.includes(dest))   return (dir === 1)  ? dest : this.fallbackTerminal(dir, startName);
+    /* --- 分岐線の行先は、走る向きも、分岐駅(尼崎)との位置関係も決まっている。
+           JR東西線へは、尼崎より西から上り(dir=1)で来た列車か、
+           すでに東西線内にいる列車しか入れない。
+           JR宝塚線へは、尼崎より東から下り(dir=-1)で来た列車か、
+           すでに宝塚線内にいる列車しか入れない。
+           これを見ないと「草津発 放出行き」のように、
+           物理的にたどり着けない行先が割り当てられていた。 */
+    const amaIdx = STATION_MAP["尼崎"];
+    const sIdx0 = STATION_MAP[startName];
+    if (TOZAI_THROUGH_DESTS.includes(dest)) {
+        // JR東西線へ直通するのは、西明石〜尼崎 の神戸線内から上ってきた列車。
+        // 姫路など西明石より西からの直通は無い (207系/321系の走る範囲外)。
+        const okSide = TOZAI_PLACES.indexOf(startName) >= 0 ||
+                       (sIdx0 !== undefined && sIdx0 >= STATION_MAP["西明石"] && sIdx0 <= amaIdx);
+        return (dir === 1 && okSide) ? dest : this.fallbackTerminal(dir, startName);
+    }
+    if (FUKUCHI_THROUGH_DESTS.includes(dest)) {
+        // JR宝塚線へ直通するのは、高槻〜尼崎 の京都線内から下ってきた列車。
+        // 琵琶湖線(草津・米原)からの直通は無い。
+        const okSide = FUKUCHI_PLACES.indexOf(startName) >= 0 ||
+                       (sIdx0 !== undefined && sIdx0 >= amaIdx && sIdx0 <= STATION_MAP["高槻"]);
+        return (dir === -1 && okSide) ? dest : this.fallbackTerminal(dir, startName);
+    }
 
     // --- 貨物駅・操車場は本線のインデックスで測れないものがあるので触らない
     const destIdx = STATION_MAP[dest];

@@ -11,6 +11,10 @@ class TrackManager {
         this.trackY = {};
         this.manualSuspensions = [];
         this.suspendedSections = { "Up_Out":[], "Up_In":[], "Down_In":[], "Down_Out":[], "Up_Hoppo":[], "Down_Hoppo":[] };
+        /* 徐行 (速度規制)。
+           輸送障害から復旧したあと、しばらく現場付近を低速で通す。
+           { trackId, start, end, factor, reason, until } */
+        this.speedRestrictions = [];
         this.initLayout();
         this.initBlocks();
     }
@@ -174,6 +178,40 @@ class TrackManager {
                 if (amaB) amaB.lanes = amaDownLanes;
             }
         });
+    }
+
+    /** 徐行を置く。until はゲーム内時刻(秒)。 */
+    addSpeedRestriction(trackId, start, end, factor, reason, until) {
+        this.speedRestrictions.push({
+            trackId: trackId, start: Math.min(start, end), end: Math.max(start, end),
+            factor: factor, reason: reason || "徐行", until: until
+        });
+    }
+
+    /** 期限切れの徐行を片付ける。毎Tick呼ぶ。 */
+    pruneSpeedRestrictions(now) {
+        for (let i = this.speedRestrictions.length - 1; i >= 0; i--) {
+            if (this.speedRestrictions[i].until <= now) this.speedRestrictions.splice(i, 1);
+        }
+    }
+
+    /** そのブロックの所要時間の倍率 (徐行がなければ 1.0) */
+    speedFactor(trackId, idx) {
+        let f = 1.0;
+        for (const r of this.speedRestrictions) {
+            if (r.trackId === trackId && idx >= r.start && idx <= r.end) {
+                if (r.factor > f) f = r.factor;
+            }
+        }
+        return f;
+    }
+
+    /** そのブロックにかかっている徐行の理由 (画面表示用) */
+    speedReason(trackId, idx) {
+        for (const r of this.speedRestrictions) {
+            if (r.trackId === trackId && idx >= r.start && idx <= r.end) return r.reason;
+        }
+        return "";
     }
 
     isSuspended(trackId, idx) {
