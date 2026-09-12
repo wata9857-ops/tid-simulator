@@ -126,10 +126,14 @@ class FleetManager {
         this.baseIndex = {};    // 留置場名 -> 駅インデックス
         this.borrowCount = 0;   // 借り出し回数 (デバッグ用)
         this.reserveCount = 0;  // 増備した本数 (デバッグ用)
+        this.rejected = 0;      // 検証で弾いた回数 (デバッグ用)
+        this.lastReject = "";   // 直近に弾いた理由
     }
 
     /** 起動時: 全編成を生成し、留置場へランダムに配置する */
     init() {
+        // 特急編成・機関車の在庫を作る (js/24-service-rules.js)
+        ServiceRules.init();
         this.pools = {};
         this.all = [];
         this.baseIndex = {};
@@ -193,66 +197,13 @@ class FleetManager {
      *   minCars   : 最低両数 (連結してでも満たす)
      *   exactCars : 指定があればその両数ぴったりに組む
      */
-    profileFor(startName, type, trackId, dest) {
-        trackId = trackId || "";
-        const startIdx = fleetIndexOf(startName);
-        const isTozai = trackId.indexOf("Tozai") >= 0 ||
-            TOZAI_PLACES.indexOf(startName) >= 0 || TOZAI_PLACES.indexOf(dest) >= 0;
-        const isKosei = trackId.indexOf("Kosei") >= 0 ||
-            KOSEI_PLACES.indexOf(startName) >= 0 || KOSEI_PLACES.indexOf(dest) >= 0;
-        const isFukuchi = trackId.indexOf("Fukuchi") >= 0 ||
-            FUKUCHI_PLACES.indexOf(startName) >= 0 || FUKUCHI_PLACES.indexOf(dest) >= 0;
-
-        // --- JR東西線内を走る列車は 207系 / 321系 のみ (宝塚線直通も含む)
-        if (isTozai) {
-            return { groups: ["AKASHI"], pred: (v) => VEH.is207(v) || VEH.is321(v),
-                     minCars: 6, label: "東西線" };
-        }
-
-        // --- 湖西線の普通は京都支所の 221系 / 223系 のみ。両数制限なし。
-        //     (湖西線経由の新快速・快速は網干の223系/225系なので、普通だけが対象)
-        if (isKosei && type !== "新快速" && type !== "快速") {
-            return { groups: ["KYOTO"], pred: (v) => VEH.isKyoto(v) && (VEH.is221(v) || VEH.is223(v)),
-                     minCars: 1, label: "湖西線普通" };
-        }
-
-        // --- 新快速は必ず8両+4両の12両。221/207/321/6000番台/京都支所は不可。
-        if (type === "新快速") {
-            return { groups: ["ABOSHI"],
-                     pred: (v) => VEH.isAboshi(v) && !VEH.is6000(v) && (VEH.is223(v) || VEH.is225(v)),
-                     pair: [8, 4], minCars: 12, label: "新快速" };
-        }
-
-        // --- JR宝塚線(福知山線)。大阪方面直通は 223系 / 225系。
-        if (isFukuchi) {
-            return { groups: ["MIYAHARA", "ABOSHI"],
-                     pred: (v) => VEH.is223(v) || VEH.is225(v),
-                     minCars: 6, label: "宝塚線" };
-        }
-
-        // --- 本線の快速。221/207/321/6000番台/京都支所は不可。
-        if (type === "快速") {
-            return { groups: ["ABOSHI"],
-                     pred: (v) => VEH.isAboshi(v) && !VEH.is6000(v) && (VEH.is223(v) || VEH.is225(v)),
-                     minCars: 6, label: "快速" };
-        }
-
-        // --- 米原〜敦賀間 (北陸本線) は4両でも可
-        if (startIdx !== null && startIdx >= STATION_MAP["米原"]) {
-            return { groups: ["ABOSHI"], pred: (v) => VEH.isAboshi(v),
-                     minCars: 1, label: "北陸線" };
-        }
-
-        // --- 京都〜西明石の普通は 207系/321系 が本来の担当。
-        //     足りなければ網干の223系/225系で代走する(実際にも間合い運用がある)。
-        if (startIdx !== null && startIdx >= STATION_MAP["西明石"] && startIdx <= STATION_MAP["京都"]) {
-            return { groups: ["AKASHI", "ABOSHI"],
-                     pred: (v) => !VEH.isKyoto(v),
-                     minCars: 6, label: "都市圏普通" };
-        }
-
-        // --- それ以外(姫路口・琵琶湖線内)の普通は網干の223系/225系
-        return { groups: ["ABOSHI"], pred: (v) => VEH.isAboshi(v), minCars: 6, label: "普通" };
+    /**
+     * 運用の条件は js/24-service-rules.js のデータ表 (SERVICE_RULES) に集約した。
+     * ここは呼び出しの入口だけを残す。規則を足したいときは
+     * SERVICE_RULES に1項目足せばよく、このファイルを触る必要はない。
+     */
+    profileFor(startName, type, trackId, dest, trainNo) {
+        return ServiceRules.profileFor(startName, type, trackId, dest, trainNo);
     }
 
     // -------------------------------------------------------------- 取り出し
@@ -345,25 +296,21 @@ class FleetManager {
     assign(startName, type, trackId, dest, trainNo) {
         trainNo = trainNo || "";
 
-        // 特急・貨物は専用の編成/機関車を都度作る (留置場の在庫とは無関係)
-        if (type === "特急") {
-            const num = Math.floor(Math.random() * 99) + 1;
-            let id;
-            if (trainNo.indexOf("サンダーバード") >= 0) id = (Math.random() > 0.5 ? "V" : "W") + num;
-            else if (trainNo.indexOf("はまかぜ") >= 0) id = "H" + num;
-            else if (trainNo.indexOf("はるか") >= 0) id = "HA" + num;
-            else id = "FA" + num;
-            return [new Vehicle(type, id, 6, "特急編成", "無限", "EXPRESS")];
+        const prof = this.profileFor(startName, type, trackId, dest, trainNo);
+
+        // --- 特急: 列車名ごとに決まった専用編成を在庫から借りる。
+        //     (「はるか」は日根野の281系 HA601〜、のようにデータで縛られている)
+        if (prof.express) {
+            const set = ServiceRules.takeExpress(prof.express, trainNo);
+            if (!set) return null;             // 在庫切れ = その特急は運休
+            return set;
         }
-        if (type === "貨物") {
-            let locos = ["EF210", "EF65", "EF66"];
-            if (dest === "富山タ" || startName === "富山タ") locos = ["EF510"];
-            const loco = locos[Math.floor(Math.random() * locos.length)] + "-" + (Math.floor(Math.random() * 300) + 1);
-            return [new Vehicle(type, loco, 20, "貨物列車", "無限", "FREIGHT")];
+        // --- 貨物: 機関車を在庫から借りる
+        if (prof.freight) {
+            return ServiceRules.takeFreight(startName, dest);
         }
 
         const home = fleetHomeOf(startName);
-        const prof = this.profileFor(startName, type, trackId, dest);
         const vehicles = [];
 
         // --- 新快速など、両数の組み合わせが決まっている運用
@@ -406,24 +353,50 @@ class FleetManager {
             cars += pair[0].cars;
         }
 
-        return vehicles.length ? vehicles : null;
+        if (!vehicles.length) return null;
+
+        // ★最後の関門: あり得ない組み合わせをここで弾く。
+        //   (規則表を通っていても、増結の結果として条件を外れることがある)
+        const check = ServiceRules.validate(startName, type, trackId, dest, vehicles, trainNo);
+        if (!check.ok) {
+            this.rejected++;
+            this.lastReject = check.reason;
+            this.release(home, vehicles);
+            return null;
+        }
+        return vehicles;
     }
 
     /**
      * いまの編成でその運用に入れるか。
      * 運転整理で種別を格上げする前の確認に使う (207系で快速は組めない等)。
+     * ★修正: 以前は特急・貨物を無条件で true にしていたため、
+     *        通勤形のまま特急に格上げできてしまっていた。
+     *        いまは特急・貨物も専用編成かどうかを見る。
      */
-    canServe(vehicles, startName, type, trackId, dest) {
-        if (type === "特急" || type === "貨物") return true;
-        return this.satisfies(vehicles, this.profileFor(startName, type, trackId, dest));
+    canServe(vehicles, startName, type, trackId, dest, trainNo) {
+        return this.satisfies(vehicles, this.profileFor(startName, type, trackId, dest, trainNo));
     }
 
     /** いま組んでいる編成が、その運用の条件を満たしているか */
     satisfies(vehicles, prof) {
         if (!vehicles || !vehicles.length) return false;
+
+        // --- 特急運用: その列車名の専用編成でなければ不可
+        if (prof.express) {
+            return vehicles.every(v => v.expressKey === prof.express);
+        }
+        // --- 貨物運用: 機関車でなければ不可
+        if (prof.freight) {
+            return vehicles.every(v => !!v.freightKey);
+        }
+        // --- 特急形・機関車がそのまま回送で走る運用は成立する
+        if (ServiceRules.isStockDeadhead(prof, vehicles)) return true;
+        // --- 旅客運用: 特急形・機関車は不可
         let cars = 0;
         for (let i = 0; i < vehicles.length; i++) {
             const v = vehicles[i];
+            if (v.expressKey || v.freightKey) return false;
             if (v.isFreight || v.isExpress) return false;
             if (prof.groups.indexOf(v.group) < 0) return false;
             if (!prof.pred(v)) return false;
@@ -445,10 +418,8 @@ class FleetManager {
      * 満たさないときだけ留置場へ返して別の編成を割り当てる。
      */
     reassign(stName, type, trackId, dest, trainNo, current) {
-        if (type !== "特急" && type !== "貨物") {
-            const prof = this.profileFor(stName, type, trackId, dest);
-            if (this.satisfies(current, prof)) return current;
-        }
+        const prof = this.profileFor(stName, type, trackId, dest, trainNo);
+        if (this.satisfies(current, prof)) return current;
         this.release(stName, current);
         return this.assign(stName, type, trackId, dest, trainNo);
     }
@@ -476,7 +447,12 @@ class FleetManager {
     release(nearName, vehicles) {
         if (!vehicles || !vehicles.length) return;
         vehicles.forEach(v => {
-            if (!v || v.isFreight || v.isExpress) return;
+            if (!v) return;
+            // ★特急編成・機関車は専用の在庫へ返す。
+            //   以前は返却していなかったため、同じ編成番号が使い捨てになり、
+            //   運用中の本数を数えられなくなっていた。
+            if (ServiceRules.giveBack(v)) return;
+            if (v.isFreight || v.isExpress) return;
             const loc = this.homeForVehicle(v, nearName);
             if (loc && this.pools[loc]) this.pools[loc].push(v);
         });

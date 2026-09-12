@@ -11,9 +11,25 @@ Train.prototype.executeTurnBack = function () {
             this.type = this.serviceChange.type;
             this.dest = this.serviceChange.dest;
             this.trainNo = this.serviceChange.name;
+            // ★運用名も引き継ぐ。特急を終えて回送に変わる場合は、直前の特急名を
+            //   運用名として残し、特急編成がそのまま車両所へ戻れるようにする。
+            this.dutyName = this.serviceChange.dutyName ||
+                (this.type === "特急" ? this.trainNo : this.dutyName);
             this.game.spawner.activeTrainNos.add(this.trainNo); // ★追加
             const toDepot = (this.dest === "向日町操");
             this.serviceChange = null;
+
+            // ★運用が変わったので、いまの編成でその運用に入れるか確かめる。
+            //   (通勤形のまま特急「はまかぜ」になってしまう不具合の対策)
+            const swapped = this.game.fleet.reassign(stName, this.type, this.trackId,
+                this.dest, this.dutyName, this.vehicles);
+            if (!swapped || swapped.length === 0) {
+                this.game.ui.updateBanner(
+                    `【運休】${stName}駅 車両手配がつかないため、${this.trainNo} は運休となります。`, "banner-orange");
+                this.remove();
+                return;
+            }
+            this.vehicles = swapped;
             this.state = "waiting_start";
             this.timer = 15; this.hasStoppedAtCurrent = false;
             this.nextAction = toDepot ? "depot" : "turnback";
@@ -110,8 +126,10 @@ Train.prototype.executeTurnBack = function () {
             this.type = "普通";
         }
 
-        // ★修正: 留置場がある駅での折り返しは、一旦留置場へ入庫させる (貨物は除く)
-            if (this.type !== "貨物" && DEPOTS[stName] && DEPOTS[stName].trains.length < DEPOTS[stName].capacity) {
+        // ★修正: 留置場がある駅での折り返しは、一旦留置場へ入庫させる
+        //   (貨物は除く。特急も専用編成なので、通勤形用の電留線には入れない)
+            if (this.type !== "貨物" && this.type !== "特急" &&
+                DEPOTS[stName] && DEPOTS[stName].trains.length < DEPOTS[stName].capacity) {
                 let depot = DEPOTS[stName];
                 const newDir = this.dir * -1;
                 let nextDest = this.game.spawner.getDestination(this.type, newDir, stName);
@@ -368,6 +386,7 @@ Train.prototype.executeTurnBack = function () {
 
                     this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
                     this.trainNo =this.game.spawner.generateTrainNumber(this.type, this.dir, stName, this.trackId);
+                    this.dutyName = this.trainNo;   // 一般の営業列車は運用名=列車番号
                 }
                 if (stName === "向日町操" && this.dest === "向日町操") this.dest = (this.dir===1) ? "京都" : "大阪";
                 
@@ -376,7 +395,7 @@ Train.prototype.executeTurnBack = function () {
                 //        足りなくなって列車が生成されなくなっていた。
                 //        実際の運用と同じく、折り返し後の運用条件を満たす編成なら
                 //        そのまま続投させ、満たさないときだけ差し替える。
-                let newVehicles = this.game.fleet.reassign(stName, this.type, newTrackId, this.dest, this.trainNo, this.vehicles);
+                let newVehicles = this.game.fleet.reassign(stName, this.type, newTrackId, this.dest, this.dutyName || this.trainNo, this.vehicles);
                 if (!newVehicles || newVehicles.length === 0) {
                     this.game.ui.updateBanner(`【運休】${stName}駅 車両枯渇のため、折り返し予定の ${this.trainNo} は運休(消滅)となります。`, "banner-orange");
                     this.remove();

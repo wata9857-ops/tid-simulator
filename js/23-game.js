@@ -96,7 +96,16 @@ class GameSystem {
         if (["松井山手", "四条畷"].includes(actualStart)) actualStart = "尼崎";
         else if (["網干", "播州赤穂", "上郡"].includes(actualStart)) actualStart = "姫路";
 
-        if (config.type !== "貨物" && DEPOTS[actualStart]) {
+        // 車両選定に使う運用名 (送り込み回送などで列車番号と運用が食い違う場合の対策)
+        const dutyName = config.dutyName ||
+            (config.serviceChange && config.serviceChange.type === "特急" && config.serviceChange.name
+                ? config.serviceChange.name : config.name);
+
+        // 特急・特急の送り込み回送は留置場の予備車では代替できない (専用編成のため)
+        const needsOwnStock = (config.type === "特急") ||
+            (typeof expressKeyFromName === "function" && !!expressKeyFromName(dutyName));
+
+        if (config.type !== "貨物" && !needsOwnStock && DEPOTS[actualStart]) {
             let depot = DEPOTS[actualStart];
             let reserveTrain = depot.trains.find(t => !t.depotOutConfig && t.timer === -1);
             if (reserveTrain) {
@@ -105,7 +114,7 @@ class GameSystem {
                 //        本線に出てしまっていた (新快速が4両になる等)。
                 //        新しい種別・行先で条件を満たすか確認し、駄目なら差し替える。
                 let assigned = this.fleet.reassign(actualStart, config.type, config.trackId,
-                    config.dest, config.name, reserveTrain.vehicles);
+                    config.dest, dutyName, reserveTrain.vehicles);
                 if (!assigned || assigned.length === 0) return false;
                 reserveTrain.vehicles = assigned;
 
@@ -130,8 +139,9 @@ class GameSystem {
         }
         
         if (!config.vehicles) {
-            // 第5引数に config.name を渡し、特急名などを判定できるようにする
-            let assigned = this.spawner.assignVehicles(config.startName, config.type, config.trackId, config.dest, config.name);
+            // 第5引数は「運用名」。送り込み回送のように列車番号と運用が違う場合でも
+            // 正しい車両 (はるか=281系 など) を選べるようにする。
+            let assigned = this.spawner.assignVehicles(config.startName, config.type, config.trackId, config.dest, dutyName);
             if (!assigned || assigned.length === 0) return false;
             config.vehicles = assigned;
         }

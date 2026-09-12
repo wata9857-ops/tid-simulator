@@ -16,7 +16,16 @@ class Train {
         this.startName = config.startName;
         this.dest = config.dest || game.spawner.getDestination(this.type, this.dir, config.startName);
         this.trainNo = config.name ? config.name : game.spawner.generateTrainNumber(this.type, this.dir, config.startName, this.trackId);
-        
+
+        /* 運用名 (dutyName)。
+           車両の選定に使う「この列車が担当している運用の名前」。
+           送り込み回送のように列車番号と運用が食い違う場合、
+           列車番号ではなく運用名で車両を選ばないと
+           「はまかぜの送り込み回送に通勤形が入る」ことになってしまう。 */
+        this.dutyName = config.dutyName ||
+            (config.serviceChange && config.serviceChange.type === "特急" && config.serviceChange.name
+                ? config.serviceChange.name : this.trainNo);
+
         this.state = "initializing"; 
         this.currBlockIndex = -1;
         this.lane = 0;
@@ -166,7 +175,7 @@ class Train {
             //        結果として宝塚線・東西線などの列車が生成されなくなっていた。
             //        すでに編成が付いている場合はそれをそのまま使う。
             if (!this.vehicles || this.vehicles.length === 0) {
-                this.vehicles = this.game.spawner.assignVehicles(actualStart, this.type, this.trackId, this.dest, this.trainNo);
+                this.vehicles = this.game.spawner.assignVehicles(actualStart, this.type, this.trackId, this.dest, this.dutyName);
             }
             if (!this.vehicles || this.vehicles.length === 0) {
                 this.state = "finished";
