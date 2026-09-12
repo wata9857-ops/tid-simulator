@@ -12,14 +12,14 @@ Train.prototype.move = function () {
 // 尼崎駅への直接進入判定（目標路線の決定）
         if (nextBlock && nextBlock.stationIdx === STATION_MAP["尼崎"]) {
             if (this.dir === 1 && this.trackId === "Fukuchi_Up") {
-                targetTrackId = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(this.dest) ?
+                targetTrackId = TOZAI_THROUGH_DESTS.includes(this.dest) ?
 "Tozai_Up" : "Up_In";
-            } else if (this.dir === 1 && !this.trackId.includes("Tozai") && ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(this.dest)) {
+            } else if (this.dir === 1 && !this.trackId.includes("Tozai") && TOZAI_THROUGH_DESTS.includes(this.dest)) {
                 targetTrackId = "Tozai_Up";
-            } else if (this.dir === -1 && !this.trackId.includes("Fukuchi") && ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(this.dest)) {
+            } else if (this.dir === -1 && !this.trackId.includes("Fukuchi") && FUKUCHI_THROUGH_DESTS.includes(this.dest)) {
                 targetTrackId = "Fukuchi_Down";
             } else if (this.dir === -1 && this.trackId === "Tozai_Down") {
-                targetTrackId = ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(this.dest) ?
+                targetTrackId = FUKUCHI_THROUGH_DESTS.includes(this.dest) ?
 "Fukuchi_Down" : "Down_In";
             }
         }
@@ -152,7 +152,11 @@ Train.prototype.move = function () {
                 this.state = "stopped";
                 this.timer = 60; this.nextAction = "depot"; this.isFinalStop = true; this.hasStoppedAtCurrent = true; return;
             }
-            if (st.name === "京橋" && ["木津", "同志社前", "京田辺", "奈良", "四条畷", "松井山手", "長尾", "放出"].includes(this.dest) && this.dir === 1) {
+            // 学研都市線の放出以東 (松井山手・四条畷など) へ向かう列車は、
+            // 描画範囲の東端である放出まで走らせてから運転を打ち切る。
+            // ★以前は京橋で打ち切っていたが、実際には京橋から放出まで走るため
+            //   放出まで延ばした (JR東西線の放出延伸)。
+            if (st.name === "放出" && (KATAMACHI_BEYOND.includes(this.dest) || this.dest === "放出") && this.dir === 1) {
                 this.state = "stopped";
                 this.timer = 60; this.nextAction = "depot"; this.isFinalStop = true; this.hasStoppedAtCurrent = true; return;
             }

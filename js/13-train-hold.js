@@ -13,14 +13,14 @@ Train.prototype.checkHold = function (isStarting) {
                 // 尼崎駅への直接進入判定
                 if (nextBlk.stationIdx === STATION_MAP["尼崎"]) {
                     if (this.dir === 1 && this.trackId === "Fukuchi_Up") {
-                        targetTrackId = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(this.dest) ?
+                        targetTrackId = TOZAI_THROUGH_DESTS.includes(this.dest) ?
                             "Tozai_Up" : "Up_In";
-                    } else if (this.dir === 1 && !this.trackId.includes("Tozai") && ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(this.dest)) {
+                    } else if (this.dir === 1 && !this.trackId.includes("Tozai") && TOZAI_THROUGH_DESTS.includes(this.dest)) {
                         targetTrackId = "Tozai_Up";
-                    } else if (this.dir === -1 && !this.trackId.includes("Fukuchi") && ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(this.dest)) {
+                    } else if (this.dir === -1 && !this.trackId.includes("Fukuchi") && FUKUCHI_THROUGH_DESTS.includes(this.dest)) {
                         targetTrackId = "Fukuchi_Down";
                     } else if (this.dir === -1 && this.trackId === "Tozai_Down") {
-                        targetTrackId = ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(this.dest) ?
+                        targetTrackId = FUKUCHI_THROUGH_DESTS.includes(this.dest) ?
                             "Fukuchi_Down" : "Down_In";
                     }
                 }
@@ -203,13 +203,13 @@ Train.prototype.checkHold = function (isStarting) {
                                               }
                                     } else if (currentStName === "尼崎") {
                                      if (l.dir === 1 && l.trackId === "Fukuchi_Up") {
-                                              otherTarget = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(l.dest) ? "Tozai_Up" : "Up_In";
-                                              } else if (l.dir === 1 && !l.trackId.includes("Tozai") && ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(l.dest)) {
+                                              otherTarget = TOZAI_THROUGH_DESTS.includes(l.dest) ? "Tozai_Up" : "Up_In";
+                                              } else if (l.dir === 1 && !l.trackId.includes("Tozai") && TOZAI_THROUGH_DESTS.includes(l.dest)) {
                                               otherTarget = "Tozai_Up";
-                                              } else if (l.dir === -1 && !l.trackId.includes("Fukuchi") && ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(l.dest)) {
+                                              } else if (l.dir === -1 && !l.trackId.includes("Fukuchi") && FUKUCHI_THROUGH_DESTS.includes(l.dest)) {
                                               otherTarget = "Fukuchi_Down";
                                               } else if (l.dir === -1 && l.trackId === "Tozai_Down") {
-                                              otherTarget = ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(l.dest) ? "Fukuchi_Down" : "Down_In";
+                                              otherTarget = FUKUCHI_THROUGH_DESTS.includes(l.dest) ? "Fukuchi_Down" : "Down_In";
                                             }
                                     }
                                      // 互いに「同じ線路に進入しようとしている場合」のみ干渉と判定する
@@ -330,13 +330,13 @@ Train.prototype.checkHold = function (isStarting) {
                                                }
                                              } else if (currentStName === "尼崎") {
                                                 if (l.dir === 1 && l.trackId === "Fukuchi_Up") {
-                                                otherTarget = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(l.dest) ? "Tozai_Up" : "Up_In";
-                                               } else if (l.dir === 1 && !l.trackId.includes("Tozai") && ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(l.dest)) {
+                                                otherTarget = TOZAI_THROUGH_DESTS.includes(l.dest) ? "Tozai_Up" : "Up_In";
+                                               } else if (l.dir === 1 && !l.trackId.includes("Tozai") && TOZAI_THROUGH_DESTS.includes(l.dest)) {
                                                         otherTarget = "Tozai_Up";
-                                                } else if (l.dir === -1 && !l.trackId.includes("Fukuchi") && ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(l.dest)) {
+                                                } else if (l.dir === -1 && !l.trackId.includes("Fukuchi") && FUKUCHI_THROUGH_DESTS.includes(l.dest)) {
                                                         otherTarget = "Fukuchi_Down";
                                                 } else if (l.dir === -1 && l.trackId === "Tozai_Down") {
-                                                  otherTarget = ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(l.dest) ? "Fukuchi_Down" : "Down_In";
+                                                  otherTarget = FUKUCHI_THROUGH_DESTS.includes(l.dest) ? "Fukuchi_Down" : "Down_In";
                                                   }
                                              }
 

@@ -54,11 +54,15 @@ class TrackManager {
             33: {name: "伊丹", lanes: 1}, 34: {name: "猪名寺", lanes: 1}, 
             35: {name: "塚口", lanes: 2}
         };
+        /* JR東西線 (尼崎[36] 〜 京橋[44]) と、そこから直通する
+           片町線(学研都市線) の 鴫野[45]・放出[46] まで。
+           放出は2面4線で待避・折り返しができる。 */
         const TOZAI_STATIONS = {
             37: {name: "加島", lanes: 1}, 38: {name: "御幣島", lanes: 1},
             39: {name: "海老江", lanes: 1}, 40: {name: "新福島", lanes: 1},
             41: {name: "北新地", lanes: 1}, 42: {name: "大阪天満宮", lanes: 1},
-            43: {name: "大阪城北詰", lanes: 1}, 44: {name: "京橋", lanes: 1}
+            43: {name: "大阪城北詰", lanes: 1}, 44: {name: "京橋", lanes: 2},
+            45: {name: "鴫野", lanes: 1}, 46: {name: "放出", lanes: 2}
         };
 
         TRACKS.forEach(trk => {
@@ -73,7 +77,7 @@ class TrackManager {
                 let isFukuchi = trk.id.includes("Fukuchi");
                 let validFukuchi = (i >= 23 && i <= 36);
                 let isTozai = trk.id.includes("Tozai");
-                let validTozai = (i >= 36 && i <= 44);
+                let validTozai = (i >= 36 && i <= TOZAI_EAST_IDX);
 
                 // ★修正: 範囲外はプレースホルダ(-1000)にする判定を拡張
                 if ((isHoppo && !validHoppo) || (isKosei && !validKosei) || (isFukuchi && !validFukuchi) || (isTozai && !validTozai)) {

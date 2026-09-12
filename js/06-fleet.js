@@ -49,7 +49,8 @@ const FLEET_BASES = [
     { name: "新三田",   groups: ["AKASHI", "MIYAHARA"],             weight: 9 },
     { name: "宮原操",   groups: ["ABOSHI", "AKASHI", "MIYAHARA"],   weight: 14 },
     { name: "大阪",     groups: ["AKASHI"],                         weight: 12 },
-    { name: "京橋",     groups: ["AKASHI"],                         weight: 17 },
+    { name: "京橋",     groups: ["AKASHI"],                         weight: 9 },
+    { name: "放出",     groups: ["AKASHI"],                         weight: 10 },
     { name: "高槻",     groups: ["ABOSHI", "AKASHI"],               weight: 9 },
     { name: "向日町操", groups: ["ABOSHI", "KYOTO"],                weight: 14 },
     { name: "草津",     groups: ["ABOSHI"],                         weight: 5 },
@@ -74,7 +75,12 @@ const FLEET_RESERVE = {
 // ------------------------------------------------------------------ 路線判定
 // JR東西線の駅・行先 (ここを走る列車は 207系/321系 に限る)
 const TOZAI_PLACES = ["京橋", "大阪城北詰", "大阪天満宮", "北新地", "新福島", "海老江",
-    "御幣島", "加島", "松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "放出", "奈良"];
+    "御幣島", "加島", "鴫野", "放出",
+    "松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "奈良"];
+
+/* 片町線(学研都市線)の、放出より東でシミュレーターの描画範囲外にある駅。
+   ここを行先にする列車は放出まで走らせ、放出で運転を打ち切る。 */
+const KATAMACHI_BEYOND = ["松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "奈良"];
 // 湖西線の駅・行先
 const KOSEI_PLACES = ["大津京", "唐崎", "比叡山坂本", "おごと温泉", "堅田", "小野", "和邇",
     "蓬莱", "志賀", "比良", "近江舞子", "北小松", "近江高島", "安曇川", "新旭", "近江今津",
@@ -86,9 +92,8 @@ const FUKUCHI_PLACES = ["塚口", "猪名寺", "伊丹", "北伊丹", "川西池
 /** 始発駅名から、車両を出す留置場の名前を求める */
 function fleetHomeOf(startName) {
     if (startName === "網干" || startName === "播州赤穂" || startName === "上郡") return "姫路";
-    if (startName === "松井山手" || startName === "四条畷" || startName === "同志社前" ||
-        startName === "木津" || startName === "京田辺" || startName === "長尾" ||
-        startName === "放出" || startName === "奈良") return "京橋";
+    // 学研都市線の放出以東から来る列車は放出の電留線が受け持つ
+    if (KATAMACHI_BEYOND.indexOf(startName) >= 0 || startName === "鴫野") return "放出";
     if (startName === "篠山口" || startName === "福知山") return "新三田";
     if (startName === "永原" || startName === "堅田" || startName === "大津京") return "近江今津";
     if (startName === "近江塩津") return "敦賀";

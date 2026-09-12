@@ -88,7 +88,8 @@ class Renderer {
             31: "川西池田", 32: "北伊丹", 33: "伊丹", 34: "猪名寺", 35: "塚口"
         };
         const TOZAI_STATIONS_MAP = {
-            37: "加島", 38: "御幣島", 39: "海老江", 40: "新福島", 41: "北新地", 42: "大阪天満宮", 43: "大阪城北詰", 44: "京橋"
+            37: "加島", 38: "御幣島", 39: "海老江", 40: "新福島", 41: "北新地",
+            42: "大阪天満宮", 43: "大阪城北詰", 44: "京橋", 45: "鴫野", 46: "放出"
         };
 
         STATIONS.forEach((st, i) => {
@@ -175,7 +176,7 @@ class Renderer {
             // ★追加: 東西線の直線を引く (尼崎[36]〜京橋[44])
             } else if (trk.id.includes("Tozai")) {
                 const sX = 100 + (36 * UNITS_PER_STATION) * BLOCK_WIDTH;
-                const eX = 100 + (44 * UNITS_PER_STATION) * BLOCK_WIDTH;
+                const eX = 100 + (TOZAI_EAST_IDX * UNITS_PER_STATION) * BLOCK_WIDTH;
                 bCtx.beginPath(); bCtx.moveTo(sX, y); bCtx.lineTo(eX, y); bCtx.stroke();
 
             } else {
@@ -274,7 +275,7 @@ class Renderer {
                 if(rule.lanes.length > 2) yPositions.push(upOutY);
             }
         } 
-        else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田"].includes(stationName)) {
+        else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田", "京橋", "放出"].includes(stationName)) {
             // ★湖西線・福知山線の待避可能駅 (2面4線)
             yPositions = [upOutY - 15, upOutY + 15, downOutY - 15, downOutY + 15];
         }
@@ -282,7 +283,7 @@ class Renderer {
             // ★福知山線の待避可能駅 (2面3線)
             yPositions = [upOutY - 15, upOutY + 15, downOutY];
         }
-        else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "京橋"].includes(stationName)) {
+        else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "鴫野"].includes(stationName)) {
             // ★湖西線・福知山線・東西線の待避なし駅 (2面2線)
             yPositions = [upOutY, downOutY];
         }

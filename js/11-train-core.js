@@ -452,10 +452,18 @@ class Train {
                                 this.trainNo = "回" + (Math.floor(Math.random()*8000)+1000);
                                 
                                 // 回送先を決定
+                                // ★回送先は必ず進行方向の前方から選ぶ
+                                //   (後方の駅を行先にすると終点に着けない)
+                                const cb0 = blks[this.currBlockIndex];
+                                const hereName = cb0.hoppoStationName ||
+                                    (cb0.stationIdx >= 0 ? STATIONS[cb0.stationIdx].name : this.startName);
+                                const hereIdx = STATION_MAP[hereName];
                                 if (this.dir === 1) {
-                                    this.dest = Math.random() < 0.5 ? "向日町操" : "京都";
+                                    this.dest = (hereIdx !== undefined && hereIdx < STATION_MAP["向日町操"] && Math.random() < 0.5)
+                                        ? "向日町操" : this.game.spawner.fallbackTerminal(1, hereName);
                                 } else {
-                                    this.dest = Math.random() < 0.5 ? "宮原操" : "姫路";
+                                    this.dest = (hereIdx !== undefined && hereIdx > STATION_MAP["宮原操"] && Math.random() < 0.5)
+                                        ? "宮原操" : this.game.spawner.fallbackTerminal(-1, hereName);
                                 }
                                 this.nextAction = "depot";
                                 

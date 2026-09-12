@@ -18,7 +18,9 @@ const DEPOTS = {
     "向日町操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "向日町操" },
     "草津": { capacity: 2, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "草津〜栗東間" },
     "野洲": { capacity: 6, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "野洲〜篠原間" },
-    "米原": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "米原〜坂田間" }
+    "米原": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "米原〜坂田間" },
+    // ★追加: JR東西線・片町線(学研都市線)の車両を受け持つ放出の電留線
+    "放出": { capacity: 6, trains: [], drawOffset: { x: -0.5, y: 0 }, display: "放出〜徳庵間", line: "Tozai" }
 };
 
 /* 留置場の在線リスト (DEPOTS[x].trains) の管理。
@@ -272,6 +274,42 @@ const DEPOT_LAYOUTS = {
             ]},
             { name: "入出区線", tracks: [
                 { label: "入出区", cars: 12, kind: "siding" }
+            ]}
+        ]
+    },
+
+    "放出": {
+        title: "放出 電留線 (網干総合車両所明石支所 放出派出)",
+        owner: "網干総合車両所明石支所",
+        leftLabel: "徳庵・京橋方 / 近畿車輛専用線",
+        rightLabel: "放出・おおさか東線 高井田中央方",
+        note: "放出駅の西方、徳庵との間に広がる電留線群。" +
+              "JR東西線・片町線(学研都市線)の207系・321系が夜間滞泊する。" +
+              "配線略図のとおり、本線南側に14本の留置線が櫛状に並び、" +
+              "東端で放出駅の1〜4番のりばへつながる。",
+        groups: [
+            { name: "出入区線", tracks: [
+                { label: "出入1", cars: 8, kind: "siding" },
+                { label: "出入2", cars: 8, kind: "siding" }
+            ]},
+            { name: "電留線 (北群)", tracks: [
+                { label: "北1", cars: 8, kind: "stabling" },
+                { label: "北2", cars: 8, kind: "stabling" },
+                { label: "北3", cars: 8, kind: "stabling" },
+                { label: "北4", cars: 7, kind: "stabling" },
+                { label: "北5", cars: 7, kind: "stabling" },
+                { label: "北6", cars: 7, kind: "stabling" },
+                { label: "北7", cars: 7, kind: "stabling" }
+            ]},
+            { name: "電留線 (南群)", tracks: [
+                { label: "南1", cars: 7, kind: "stabling" },
+                { label: "南2", cars: 7, kind: "stabling" },
+                { label: "南3", cars: 7, kind: "stabling" },
+                { label: "南4", cars: 4, kind: "stabling" },
+                { label: "南5", cars: 4, kind: "stabling" }
+            ]},
+            { name: "洗浄線", tracks: [
+                { label: "洗浄", cars: 8, kind: "wash" }
             ]}
         ]
     },

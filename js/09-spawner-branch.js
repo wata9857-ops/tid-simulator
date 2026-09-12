@@ -10,7 +10,7 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
         if (stIdx === undefined) return false;
 
         let isFukuchiStart = ["新三田","三田","道場","宝塚","川西池田","塚口"].includes(startName);
-        let isTozaiStart = ["京橋","大阪城北詰","大阪天満宮","北新地","新福島","海老江","御幣島","加島"].includes(startName);
+        let isTozaiStart = ["放出","鴫野","京橋","大阪城北詰","大阪天満宮","北新地","新福島","海老江","御幣島","加島"].includes(startName);
 
         // 尼崎までのブロック距離を計算
         let dist = 0;
@@ -31,9 +31,9 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
         // 行き先から、尼崎発車後にどの路線(Track)へ退出するかを判定
         let outTrack = "";
         if (dir === 1) {
-            outTrack = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出", "京橋"].includes(dest) ? "Tozai_Up" : "Up_In";
+            outTrack = TOZAI_THROUGH_DESTS.includes(dest) ? "Tozai_Up" : "Up_In";
         } else {
-            outTrack = ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(dest) ? "Fukuchi_Down" : "Down_In";
+            outTrack = FUKUCHI_THROUGH_DESTS.includes(dest) ? "Fukuchi_Down" : "Down_In";
         }
 
         // 新規生成しようとしている列車の到着予測時刻
@@ -46,9 +46,9 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
             // 比較対象の列車の退出路線を判定
             let tOutTrack = "";
             if (dir === 1) {
-                tOutTrack = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出", "京橋"].includes(t.dest) ? "Tozai_Up" : "Up_In";
+                tOutTrack = TOZAI_THROUGH_DESTS.includes(t.dest) ? "Tozai_Up" : "Up_In";
             } else {
-                tOutTrack = ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(t.dest) ? "Fukuchi_Down" : "Down_In";
+                tOutTrack = FUKUCHI_THROUGH_DESTS.includes(t.dest) ? "Fukuchi_Down" : "Down_In";
             }
             
             // 退出路線が異なる（例：西明石行きと宝塚行き）なら全く干渉しないためスキップ
@@ -124,7 +124,10 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             }
         }
 
-        // 2. 京橋発 下り (東西線 → 尼崎・宝塚・神戸線方面)
+        /* 2. 放出発 下り (学研都市線 → JR東西線 → 尼崎・宝塚・神戸線方面)
+              ★以前は京橋始発にしていたが、実際の東西線の列車はほぼ全て
+                学研都市線から直通してくる。放出の電留線を起点にすることで
+                「どこからともなく京橋に現れる」状態を解消した。 */
         if (ct >= this.nextTozaiDown) {
             let type = (Math.random() < (74 / 160)) ? "快速" : "普通";
             let destOptions = [];
@@ -151,12 +154,12 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             let canSpawn = true;
             let blks = this.game.trackMgr.blocks["Tozai_Down"];
             if (blks) {
-                let startB = blks.find(b => b.stationIdx === STATION_MAP["京橋"]);
+                let startB = blks.find(b => b.stationIdx === STATION_MAP["放出"]);
                 if (startB && startB.lanes.every(l => l !== null)) canSpawn = false;
             }
 
             // ★本線との高度ETA干渉チェック
-            if (canSpawn && this.willConflictAtAmagasaki("京橋", dest, type, -1)) {
+            if (canSpawn && this.willConflictAtAmagasaki("放出", dest, type, -1)) {
                 // 本線（西明石・甲子園口方面）への直通列車が合流干渉する場合、
                 // 生成を見送るのではなく、行先を尼崎または福知山線方面に変更して生成を続行する
                 if (type === "普通" && ["西明石", "甲子園口"].includes(dest)) {
@@ -172,7 +175,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             }
 
             if (canSpawn) {
-                this.game.addTrain({type:type, dir:-1, trackId:"Tozai_Down", dest:dest, startName:"京橋", nextAction:"depot"});
+                this.game.addTrain({type:type, dir:-1, trackId:"Tozai_Down", dest:dest, startName:"放出", nextAction:"depot"});
                 this.nextTozaiDown += (type === "快速" ? 750 : 600) * timeFactor;
             } else {
                 this.nextTozaiDown += 180;
@@ -212,7 +215,8 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         // 4. 尼崎発 上り (東西線 京橋・四条畷方面)
         if (ct >= this.nextTozaiUp) {
             let type = Math.random() < 0.45 ? "快速" : "普通";
-            let destOptions = [{d:"四条畷",w:40}, {d:"松井山手",w:40}, {d:"同志社前",w:15}, {d:"木津",w:5}];
+            let destOptions = [{d:"四条畷",w:34}, {d:"松井山手",w:34}, {d:"同志社前",w:13},
+                               {d:"木津",w:5}, {d:"放出",w:14}];
             let dest = this.weightedRandom(destOptions);
 
             let canSpawn = true;
@@ -285,7 +289,7 @@ Spawner.prototype.getAmagasakiRecentDestinations = function (startName, dir, typ
         let myEta = this.game.currentTime + (myDist * (type === "快速" ? 60 : 75));
         
         let upcomingTrains = [];
-        const tozaiDests = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出", "京橋"];
+        const tozaiDests = TOZAI_THROUGH_DESTS;
 
         for (let t of this.game.trains) {
             if (t.dir !== 1 || (t.type !== "普通" && t.type !== "快速")) continue;

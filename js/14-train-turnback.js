@@ -133,7 +133,13 @@ Train.prototype.executeTurnBack = function () {
                 let depot = DEPOTS[stName];
                 const newDir = this.dir * -1;
                 let nextDest = this.game.spawner.getDestination(this.type, newDir, stName);
-                if (nextDest === this.startName) nextDest = (newDir === 1) ? "京都" : "姫路";
+                // ★行先が始発駅と同じになった場合の代替。
+                //   以前は上り=京都/下り=姫路と決め打ちしていたため、
+                //   草津で上りに折り返した列車に「京都行き」(= 後方) が
+                //   割り当てられ、終点に着けないまま走り続けていた。
+                if (nextDest === this.startName) {
+                    nextDest = this.game.spawner.fallbackTerminal(newDir, stName);
+                }
                 if (stName === "向日町操" && nextDest === "向日町操") nextDest = (newDir===1) ? "京都" : "大阪";
                 
                 // ★追加: 次の情報で上書きされる前に旧情報を保存（黒背景・白文字用）
@@ -376,7 +382,7 @@ Train.prototype.executeTurnBack = function () {
                 if (!["回送","貨物","臨時","特急"].includes(this.type)) {
                     this.dest = this.game.spawner.getDestination(this.type, this.dir, stName);
                     if (this.dest === this.startName) {
-                        this.dest = (this.dir === 1) ? "京都" : "姫路";
+                        this.dest = this.game.spawner.fallbackTerminal(this.dir, stName);
                     }
                     
                     // ★追加: 近江塩津・敦賀からの下り普通は米原行きとする（琵琶湖線経由）
@@ -387,6 +393,11 @@ Train.prototype.executeTurnBack = function () {
                     this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
                     this.trainNo =this.game.spawner.generateTrainNumber(this.type, this.dir, stName, this.trackId);
                     this.dutyName = this.trainNo;   // 一般の営業列車は運用名=列車番号
+                    // ★折り返して別の列車になったので、始発駅もこの駅に更新する。
+                    //   以前は最初に出区した駅のままだったため、
+                    //   「草津発の列車が宝塚線を走っている」ように見え、
+                    //   車両の適合判定も間違った線区で行われていた。
+                    this.startName = stName;
                 }
                 if (stName === "向日町操" && this.dest === "向日町操") this.dest = (this.dir===1) ? "京都" : "大阪";
                 

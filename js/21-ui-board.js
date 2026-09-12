@@ -20,8 +20,8 @@ UIManager.prototype.showDepartureBoard = function (stName) {
             // 分岐する列車が、経路外となる本線の駅に誤って表示されるのを防ぐ
             const stIdx = STATION_MAP[actualStName];
             if (stIdx !== undefined) {
-                if (t.dir === 1 && ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出"].includes(t.dest) && stIdx > 36) return;
-                if (t.dir === -1 && ["塚口", "新三田", "三田", "道場", "宝塚", "篠山口", "福知山", "豊岡", "城崎温泉"].includes(t.dest) && stIdx < 36) return;
+                if (t.dir === 1 && TOZAI_THROUGH_DESTS.includes(t.dest) && stIdx > 36) return;
+                if (t.dir === -1 && FUKUCHI_THROUGH_DESTS.includes(t.dest) && stIdx < 36) return;
                 if (t.isKoseiRoute && stIdx > 56 && stIdx < 83) return;
             }
 

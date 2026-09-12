@@ -526,7 +526,7 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
                         // 尼崎ロジックで確定しなかった場合、須磨独自の交互調整ロジックを適用
                         let tozaiCount = 0;
                         let honsenCount = 0;
-                        const tozaiDests = ["同志社前", "松井山手", "四条畷", "木津", "京田辺", "奈良", "長尾", "放出", "京橋"];
+                        const tozaiDests = TOZAI_THROUGH_DESTS;
                         
                         let myBlks = this.game.trackMgr.blocks["Up_In"];
                         if (myBlks) {
@@ -584,7 +584,12 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
             dest = this.nextFukuchiLocalDest;
             this.nextFukuchiLocalDest = (this.nextFukuchiLocalDest === "新三田") ? "宝塚" : "新三田";
         }
-        
+
+        // ★進行方向の後ろにある駅が行先に選ばれていないか確かめる。
+        //   例: 草津で上りに折り返した列車に「京都行き」が割り当てられると、
+        //       京都は後方にあるため永久にたどり着けず、米原方向へ走り続けていた。
+        dest = this.sanitizeDestination(dest, dir, startName, type);
+
         let h = (ct / 3600) % 24;
         // ★改善: 22:00以降の終電間際における段階的な行き先短縮ロジック
         if (h >= 22.0 || h < 4.0) {
@@ -622,4 +627,54 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
             }
         }
         return dest;
+};
+
+/**
+ * 行先が進行方向の前方にあるかを確かめ、後方だったら手前の妥当な終着駅に直す。
+ *
+ * この判定が要る理由:
+ *   折り返しのたびに getDestination() を呼び直しているが、
+ *   もとの重み表は「その駅より先に行く列車」を前提に書かれている。
+ *   そのため、例えば草津で上り(米原方面)へ折り返した列車に
+ *   「京都行き」(= 後方) が割り当てられることがあった。
+ *   その列車はいつまでも終点に着かず、敦賀まで走り抜けて消えていた。
+ *
+ * 分岐線(JR東西線・JR宝塚線)は本線と同じインデックス空間を共有しているので、
+ * 行先の属する線区から進行方向を決める。
+ */
+Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type) {
+    if (!dest) return dest;
+
+    // --- 分岐線の行先は、走る向きが決まっている
+    if (FUKUCHI_THROUGH_DESTS.includes(dest)) return (dir === -1) ? dest : this.fallbackTerminal(dir, startName);
+    if (TOZAI_THROUGH_DESTS.includes(dest))   return (dir === 1)  ? dest : this.fallbackTerminal(dir, startName);
+
+    // --- 貨物駅・操車場は本線のインデックスで測れないものがあるので触らない
+    const destIdx = STATION_MAP[dest];
+    const startIdx = STATION_MAP[startName];
+    if (destIdx === undefined || startIdx === undefined) return dest;
+
+    // 前方(進行方向側)にあればそのまま
+    if ((destIdx - startIdx) * dir > 0) return dest;
+    // 当駅止まり(折り返し)は、終着として成立するのでそのまま
+    if (destIdx === startIdx) return dest;
+
+    return this.fallbackTerminal(dir, startName);
+};
+
+/** 進行方向の前方にある、いちばん近い主要な終着駅を返す */
+Spawner.prototype.fallbackTerminal = function (dir, startName) {
+    const startIdx = STATION_MAP[startName];
+    // 上り(米原方面) / 下り(姫路方面) それぞれの主要終着駅を、近い順に並べたもの
+    const UP   = ["高槻", "京都", "草津", "野洲", "米原", "長浜", "近江塩津", "敦賀"];
+    const DOWN = ["尼崎", "大阪", "神戸", "須磨", "西明石", "加古川", "姫路"];
+    const list = (dir === 1) ? UP : DOWN;
+    if (startIdx === undefined) return list[list.length - 1];
+    const ahead = list
+        .map(n => ({ n: n, i: STATION_MAP[n] }))
+        .filter(o => o.i !== undefined && (o.i - startIdx) * dir > 0)
+        .sort((a, b) => Math.abs(a.i - startIdx) - Math.abs(b.i - startIdx));
+    // 近すぎる駅ばかりにならないよう、前方の候補のうち2番目までから選ぶ
+    if (ahead.length === 0) return (dir === 1) ? "敦賀" : "姫路";
+    return ahead[Math.min(1, ahead.length - 1)].n;
 };
