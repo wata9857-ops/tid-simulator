@@ -101,13 +101,26 @@ Spawner.prototype.update = function (currentTime) {
         // ★22:45 (22.75H) から 4:00 までは新規列車の生成を停止
         if (hOfDay >= 22.75 || hOfDay < 4.0) return;
         
-        let maxTrains = 220; 
-        if (hOfDay >= 6.0 && hOfDay < 6.5) { maxTrains = 300; } 
-        else if (hOfDay >= 6.5 && hOfDay < 7.5) { maxTrains = 360; } 
-        else if (hOfDay >= 7.5 && hOfDay < 8.5) { maxTrains = 320; } 
-        else if (hOfDay >= 8.5 && hOfDay < 9.5) { maxTrains = 260; } 
-        else if (hOfDay >= 17 && hOfDay < 19.5) { maxTrains = 350; } 
-        else if (hOfDay >= 9.5 && hOfDay < 10) { maxTrains = 230; }
+        /* 在線本数の上限。
+           ★これは「暴走したときの保険」で、本数を決めるものではない。
+             本数は実際の駅時刻表から写したパターンダイヤ
+             (js/10-timetable.js) が決める。
+
+             以前は昼間の上限が 220本で、実際に必要な本数 (230〜250本) より
+             少なかった。そのため 11時を過ぎると上限に張り付いて
+             checkIntervalSpawns がまるごと止まり、昼間と夕ラッシュは
+             新規生成が一切行われていなかった。
+             残った列車の折り返しだけで走らせていたので、
+               ・朝にできた「普通ばかり」の偏りがそのまま一日続く
+               ・時刻表と関係なく間隔がばらつき、団子運転になる
+             という状態になっていた。
+             線区の実際の所要時間 (姫路〜敦賀で片道約3時間) と
+             時刻表の本数から見て必要な在線本数を通せるようにする。 */
+        let maxTrains = 430;
+        if (hOfDay >= 6.0 && hOfDay < 6.5) { maxTrains = 420; }
+        else if (hOfDay >= 6.5 && hOfDay < 9.5) { maxTrains = 520; }
+        else if (hOfDay >= 17 && hOfDay < 19.5) { maxTrains = 520; }
+        else if (hOfDay >= 22.0) { maxTrains = 330; }
 
         /* ★上限の掛け方を線区ごとに分けた。
            以前は在線本数が上限を超えると、この時点で丸ごと打ち切っていたため、

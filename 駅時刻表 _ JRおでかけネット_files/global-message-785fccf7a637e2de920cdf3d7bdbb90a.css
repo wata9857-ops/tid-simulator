@@ -1,0 +1,28 @@
+.global-message-wrap {
+    margin: 10px 0;
+}
+
+.global-message-wrap .global-message-box {
+    margin-bottom: 15px;
+    padding: 8px;
+    background-color: #f8d9d9;
+    border: 1px solid #bc3838;
+}
+
+.global-message-wrap .global-message-box .global-message-title {
+    font-weight: bold;
+}
+
+@media screen and (max-width: 767px) {
+    .global-message-wrap {
+        padding: 0 5px;
+    }
+
+    .global-message-wrap .global-message-box .global-message-title {
+        font-size: 14px;
+    }
+
+    .global-message-wrap .global-message-box .global-message-content {
+        font-size: 12px;
+    }
+}

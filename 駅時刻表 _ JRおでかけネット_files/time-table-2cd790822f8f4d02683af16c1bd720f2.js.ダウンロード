@@ -1,0 +1,130 @@
+window.addEventListener("unload", selectCalendar);
+window.addEventListener("load", selectCalendar);
+
+function selectCalendar() {
+    const url = new URL(window.location.href);
+    const d = url.searchParams.get("date");
+    const dateSelect = window.document.getElementById("date");
+
+    if (d === "") {
+        dateSelect.options[0].selected = true;
+        return;
+    }
+
+    for (let option of dateSelect.options) {
+        option.selected = option.value === d;
+    }
+}
+
+const elements = document.querySelectorAll('.js-acc-single-trigger');
+elements.forEach(trigger => trigger.addEventListener('click', toggleAccordion));
+function toggleAccordion() {
+    const items = document.querySelectorAll('.js-acc-item');
+    const thisItem = this.parentNode;
+
+    items.forEach(item => {
+        if (thisItem == item) {
+            thisItem.classList.toggle('is-open');
+            return;
+        }
+        item.classList.remove('is-open');
+    });
+}
+
+const dateSelect = window.document.getElementById("date");
+if (dateSelect) dateSelect.addEventListener("change", (event) => {
+    const value = event.target[event.target.selectedIndex].value;
+    location.href = (location.pathname + '?date=' + value);
+});
+
+const printButton = window.document.getElementById("print-button");
+if (printButton) printButton.addEventListener("click", _ => {
+    window.open(location.pathname + '/print?date=' + document.getElementById('date').value, '_blank')
+});
+
+var emergencyInfo = document.getElementById("emergencyInfo");
+if (emergencyInfo && emergencyInfo.children.length) {
+    for (let i = 0; i < emergencyInfo.children.length;) {
+        var data = emergencyInfo.children.item(i);
+
+        var start = new Date(parseInt(data.dataset.start, 10)).getTime();
+        var end = new Date(parseInt(data.dataset.end, 10)).getTime();
+        var now = new Date().getTime();
+
+        if (start > now || now > end) {
+            emergencyInfo.children[i].remove();
+        } else {
+            i++;
+        }
+    }
+    emergencyInfo.style.display = "block";
+
+}
+
+const timeElements = document.querySelectorAll('th.accordion-item.js-acc-item');
+setTimeout(function () {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!isMobile) {
+        return;
+    }
+
+    let currentHour = new Date().getHours();
+
+    let matchHour = ""
+    elements.forEach(element => {
+        let time = element.textContent.trim();
+        const chkhour = time.replace("時", "");
+        if (!matchHour && chkhour == "" + currentHour) {
+            matchHour = chkhour;
+        }
+    })
+    if (!matchHour) {
+        let lastHour = ""
+        if (currentHour >= 0 && currentHour <= 3) {
+            currentHour = 24;
+        }
+        elements.forEach(element => {
+            let time = element.textContent.trim();
+            const chkhour = time.replace("時", "");
+            lastHour = chkhour
+            if (!matchHour && chkhour > currentHour) {
+                console.log(">>>>", chkhour)
+                matchHour = chkhour;
+            }
+        })
+        if (!matchHour) {
+            matchHour = lastHour
+        }
+    }
+
+    // console.log("matchHour===>",matchHour)
+    if (matchHour) {
+        currentHour = matchHour;
+    }
+    console.log("currentHour===>",currentHour)
+    elements.forEach(element => {
+        let time = element.textContent.trim();
+        const hour = time.replace("時", "");
+        if (currentHour > 0 && currentHour <= 3) {
+            currentHour = 0;
+        }
+        // console.log(hour , "==", currentHour)
+        if (hour == "" + currentHour) {
+            element.classList.add("active");
+            const parent = element.parentElement;
+            parent.classList.add("is-open");
+
+            const base = document.querySelector(".route-wrap");
+            const targetY = parent.getBoundingClientRect().top + window.pageYOffset;
+            window.scrollTo({
+                top: targetY - base.offsetHeight - 3,
+                behavior: "smooth"
+            });
+
+        } else {
+            element.classList.remove("active"); // 念のため
+            const parent = element.parentElement;
+            parent.classList.remove("is-open");
+        }
+    })
+}, 100);

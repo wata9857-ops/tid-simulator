@@ -80,6 +80,10 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
 
 Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         let h = (ct / 3600) % 24;
+        /* 分岐線の普通だけは、折り返しで走り続けて実際の2倍以上になるので
+           在線本数の目安 (js/10-timetable.js) を見て抑える。
+           快速・区間快速は本数が足りていないので抑えない。 */
+        const budget = (ty) => ty !== "普通" || !ttOverBudget(this.game, "branch", "普通");
         let timeFactor = 0.83; 
         if ((h >= 6.0 && h < 8.5) || (h >= 17 && h < 19.5)) {
             timeFactor = 0.42;  
@@ -121,7 +125,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 canSpawn = false;
             }
 
-            if (canSpawn) {
+            if (canSpawn && budget(type)) {
                 this.game.addTrain({type:type, dir:1, trackId:"Fukuchi_Up", dest:dest, startName:"新三田", nextAction:"depot"});
                 this.nextFukuchiUp += (isRapid ? 700 : 500) * timeFactor;
             } else {
@@ -179,7 +183,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 }
             }
 
-            if (canSpawn) {
+            if (canSpawn && budget(type)) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Tozai_Down", dest:dest, startName:"放出", nextAction:"depot"});
                 this.nextTozaiDown += (type === "快速" ? 750 : 600) * timeFactor;
             } else {
@@ -215,7 +219,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 canSpawn = false;
             }
 
-            if (canSpawn) {
+            if (canSpawn && budget(type)) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Fukuchi_Down", dest:dest, startName:"尼崎", nextAction:"depot"});
                 this.nextFukuchiDown += (type === "快速" ? 620 : 430) * timeFactor;
             } else {
@@ -246,7 +250,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 canSpawn = false;
             }
 
-            if (canSpawn) {
+            if (canSpawn && budget(type)) {
                 this.game.addTrain({type:type, dir:1, trackId:"Tozai_Up", dest:dest, startName:"尼崎", nextAction:"depot"});
                 this.nextTozaiUp += (type === "快速" ? 750 : 600) * timeFactor;
             } else {
@@ -267,14 +271,15 @@ Spawner.prototype.checkKoseiSpawns = function (ct) {
             timeFactor = 0.75;  
         }
 
-        if (ct >= this.nextKoseiLocalUp) {
+        const koseiOk = !ttOverBudget(this.game, "branch", "普通");
+        if (ct >= this.nextKoseiLocalUp && koseiOk) {
             let destOptions = [{d:"近江今津", w:91}, {d:"永原", w:9}];
             let dest = this.weightedRandom(destOptions);
             // 京都発とし、山科で自動的に湖西線上りへ転線。終点で入庫(消滅)して独立スケジュールを保つ
             this.game.addTrain({type:"普通", dir:1, trackId:"Up_In", dest:dest, startName:"京都", nextAction: "depot"});
             this.nextKoseiLocalUp += 1200 * timeFactor;
         }
-        if (ct >= this.nextKoseiLocalDown) {
+        if (ct >= this.nextKoseiLocalDown && koseiOk) {
             let startOptions = [{n:"近江今津", w:91}, {n:"永原", w:9}];
             let start = this.weightedRandom(startOptions);
             // 湖西線を下り、京都で入庫(消滅)

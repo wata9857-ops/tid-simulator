@@ -360,6 +360,19 @@ class FleetManager {
 
         if (!vehicles.length) return null;
 
+        /* ★両数が足りないまま組成できなかった場合は、ここで諦める。
+           これは「あり得ない組み合わせを作ろうとした」のではなく
+           「増結相手の在庫が無かった」だけなので、
+           下の検証の回数 (rejected) には数えない。
+           (数えると、快速を時刻表どおりの本数に増やしたときに
+            在庫待ちの回数まで「不正な充当」として見えてしまう) */
+        if (cars < prof.minCars) {
+            this.shortCars = (this.shortCars || 0) + 1;
+            this.lastShort = type + " " + cars + "両 (必要 " + prof.minCars + "両) at " + startName;
+            this.release(home, vehicles);
+            return null;
+        }
+
         // ★最後の関門: あり得ない組み合わせをここで弾く。
         //   (規則表を通っていても、増結の結果として条件を外れることがある)
         const check = ServiceRules.validate(startName, type, trackId, dest, vehicles, trainNo);

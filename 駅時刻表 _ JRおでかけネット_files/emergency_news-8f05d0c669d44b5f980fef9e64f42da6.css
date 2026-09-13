@@ -1,0 +1,21 @@
+.emergency_news {
+    margin: 10px 0;
+}
+
+.emergency_news .emergency_news-warp {
+    margin-bottom: 15px;
+    padding: 8px;
+    background-color: #f8d9d9;
+    border: 1px solid #bc3838;
+}
+
+.emergency_news .emergency_news-warp .emergency_news_title {
+    font-weight: bold;
+}
+
+.emergency_news .emergency_news-warp .emergency_news_detail a {
+    color: #9a2414 !important;
+    background-color: #f8d9d9;
+    font-weight: bold;
+    border: 1px solid #f8d9d9;
+}

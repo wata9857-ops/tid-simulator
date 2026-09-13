@@ -120,9 +120,24 @@ class Train {
                 if (this.dir === 1 && ["敦賀", "近江塩津"].includes(this.dest) && viaKoseiPossible(this.startName)) this.isKoseiRoute = true;
                 if (this.dir === -1 && ["敦賀", "近江塩津"].includes(this.startName) && viaKoseiPossible(this.dest)) this.isKoseiRoute = true;
             } else {
+                /* ★湖西線の普通に入れるのは京都支所の221系・223系だけ。
+                   いまの編成でその条件を満たせないときは湖西線へ入れず、
+                   琵琶湖線 (米原) 経由にする。
+                   (以前は編成を見ずに経路を決めていたため、
+                    敦賀・近江塩津発の普通が網干の車両で湖西線を走り、
+                    編成の規則を破っていた) */
+                const stockOkForKosei = () => {
+                    if (this.type !== "普通") return true;
+                    if (!this.vehicles || !this.vehicles.length) return true;
+                    return this.game.fleet.canServe(
+                        this.vehicles, this.startName, "普通",
+                        this.dir === 1 ? "Kosei_Up" : "Kosei_Down", this.dest);
+                };
                 const koseiStsAll = ["敦賀", "近江塩津", "近江今津", "永原", "マキノ", "近江中庄", "新旭", "安曇川", "近江高島", "北小松", "近江舞子", "堅田", "おごと温泉", "比叡山坂本", "大津京", "富山タ"];
-                if (this.dir === 1 && koseiStsAll.includes(this.dest) && viaKoseiPossible(this.startName)) this.isKoseiRoute = true;
-                if (this.dir === -1 && koseiStsAll.includes(this.startName) && viaKoseiPossible(this.dest)) this.isKoseiRoute = true;
+                if (this.dir === 1 && koseiStsAll.includes(this.dest) &&
+                    viaKoseiPossible(this.startName) && stockOkForKosei()) this.isKoseiRoute = true;
+                if (this.dir === -1 && koseiStsAll.includes(this.startName) &&
+                    viaKoseiPossible(this.dest) && stockOkForKosei()) this.isKoseiRoute = true;
             }
     }
 
@@ -329,8 +344,16 @@ class Train {
             const ib = this.game.trackMgr.blocks[this.trackId];
             const icb = ib ? ib[this.currBlockIndex] : null;
             const si = icb ? icb.stationIdx : undefined;
+            const inb = ib ? ib[this.currBlockIndex + this.dir] : null;
+            /* 内側線がそこで終わっている (複々線の端の西明石・草津) 場合も、
+               外側線へ移らないと先へ進めない。
+               ★転線は move() の中で行っているが、前方が線路の無い区間だと
+                 checkHold が先に止めてしまい move() に入らない。
+                 そのため西明石で下り内側線の列車が永久に動かなくなり、
+                 その後ろに下り列車が延々と連なっていた。 */
+            const deadEnd = !inb || inb.x === -1000;
             if (si !== undefined &&
-                (si < STATION_MAP["西明石"] || si > STATION_MAP["草津"])) {
+                (deadEnd || si < STATION_MAP["西明石"] || si > STATION_MAP["草津"])) {
                 const outId = this.trackId.replace("In", "Out");
                 const ob = this.game.trackMgr.blocks[outId];
                 const onb = ob ? ob[this.currBlockIndex] : null;

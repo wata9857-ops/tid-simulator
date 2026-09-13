@@ -154,20 +154,20 @@ const TID_AREAS = [
 function buildTidTrackY(groups) {
     const want = groups || ["本線"];
     const y = { __rows: [] };
-    let cur = TID_GEO.topPad;
+    let cur = TID_GEO.topPad * TID_SCALE_Y;
     let lastGroup = null;
     TID_ROWS.forEach(row => {
         if (want.indexOf(row.group) < 0) return;
-        if (lastGroup !== null && row.group !== lastGroup) cur += TID_GEO.groupGap;
+        if (lastGroup !== null && row.group !== lastGroup) cur += TID_GEO.groupGap * TID_SCALE_Y;
         y[row.id] = cur;
         y.__rows.push(row);
         /* 実物と同じく間隔は一定ではない。内側線どうし (下り内〜上り内) は
            あいだにホームが入らないので狭く、外側線との間は
            ホーム帯と「N番のりば」の札が入るので広い。 */
-        cur += (row.gap || TID_GEO.rowGap);
+        cur += (row.gap || TID_GEO.rowGap) * TID_SCALE_Y;
         lastGroup = row.group;
     });
-    y.__height = cur + TID_GEO.bottomPad;
+    y.__height = cur + TID_GEO.bottomPad * TID_SCALE_Y;
     return y;
 }
 
@@ -202,7 +202,7 @@ function tidVirtualToY(v, refUpOutY, branch) {
     const rows = TID_ROWS;
     const gapOf = (id) => {
         const r = rows.find(x => x.id === id);
-        return (r && r.gap) || TID_GEO.rowGap;
+        return ((r && r.gap) || TID_GEO.rowGap) * TID_SCALE_Y;
     };
     // 上り外を基準に、上へ向かって積む (画面では上が下り側)
     let anchors;
@@ -253,8 +253,40 @@ function tidTrackRange(trackId) {
    Super-TID を描くときだけ左右を入れ替える。 */
 const TID_WORLD_W = 100 + ((STATIONS.length - 1) * UNITS_PER_STATION) * BLOCK_WIDTH + 100;
 
-/** シミュレーションの X を、Super-TID の画面の X に直す */
-function tidX(x) { return TID_WORLD_W - x; }
+/* 線路図を描く倍率。
+   ■ なぜ入れたか
+     シミュレーションの座標 (blk.x) は運行の処理と旅客向け画面が共有していて、
+     1駅 360px という間隔は変えられない。その間隔のままでは
+     大きな駅 (京都・大阪・尼崎) で番線・ホーム・分岐・列車表示が
+     重なって読めなかった。
+     そこで「シミュレーションの座標は変えず、線路図だけ拡大して描く」形にした。
+     縦も同じ倍率で広げるので、実物の Super-TID の縦横比
+     (線路の間隔 72:59:73、駅名札までの余白 113/84) はそのまま保たれる。
+
+   ■ 大きさ
+     1駅 360px × 2.2 = 792px、全線で約 68,500px。
+     キャンバスは画面ぶんだけ描いて余白は spacer の div が持つので、
+     iPad のキャンバス面積の上限には掛からない。 */
+const TID_SCALE   = 2.4;    // 横 (駅の間隔・閉塞の長さ)
+/* 縦の倍率は横より小さくする。
+   重なって読めなかったのは主に横方向 (駅の中に番線・ホーム・分岐・
+   列車表示が詰まる) で、縦は 72px でも足りていた。
+   縦を横と同じ 2.4倍にすると本線4本が画面に収まらず、
+   運転指令の画面としてかえって使いにくい。
+   線路の間隔の比 (72 : 59 : 73) はそのまま保たれる。 */
+const TID_SCALE_Y = 1.3;
+
+/** シミュレーションの X を、Super-TID の画面の X に直す (左右反転＋拡大) */
+function tidX(x) { return (TID_WORLD_W - x) * TID_SCALE; }
+
+/** 線路図の中の横幅 (閉塞の長さなど) を倍率に合わせる */
+function tidW(w) { return w * TID_SCALE; }
+
+/** 線路図の X を、シミュレーションの X に戻す (tidX の逆) */
+function tidInvX(X) { return TID_WORLD_W - X / TID_SCALE; }
+
+/** 線路図全体の横幅 (スクロールする幅) */
+function tidTotalWidth() { return TID_WORLD_W * TID_SCALE + 200; }
 
 /** 左右が入れ替わるので、「駅のどちら側か」の指定も入れ替える */
 function tidSide(side) { return side === "L" ? "R" : side === "R" ? "L" : side; }
@@ -376,7 +408,7 @@ function tidDrawPlate(ctx, name, cx, cy) {
  *   labelUpper / labelLower … それぞれの番線番号 (片面ホームなら片方を null)
  */
 function tidDrawPlatform(ctx, cx, yUpper, yLower, labelUpper, labelLower) {
-    const w = TID_GEO.platformW;
+    const w = tidW(TID_GEO.platformW);
     const x = cx - w / 2;
     const py = (yUpper + yLower) / 2 - 2;      // 2線のちょうど中間
     // 帯の落ち影 (実物は右下に2pxずれた濃い青灰色)
@@ -674,7 +706,7 @@ const TID_JUNCTIONS = {
 
 /** 渡り線 (片渡り・両渡り) を描く */
 function tidDrawCrossover(ctx, cx, yTop, yBot, shape) {
-    const w = BLOCK_WIDTH * 0.62;
+    const w = tidW(BLOCK_WIDTH) * 0.62;
     const draw = (x1, x2) => {
         ctx.strokeStyle = TID_COLORS.railEdge;
         ctx.lineWidth = 5;
@@ -694,7 +726,7 @@ function tidDrawCrossover(ctx, cx, yTop, yBot, shape) {
 
 /** 他線区との合流・分岐 (シミュレーター内に線路がある側) */
 function tidDrawJunction(ctx, cx, yMain, yBranch, mode) {
-    const w = BLOCK_WIDTH * 1.15;
+    const w = tidW(BLOCK_WIDTH) * 1.15;
     // 合流は分岐側が本線へ寄ってくる形、分岐はその逆
     const x1 = (mode === "in") ? cx - w : cx + w;
     ctx.strokeStyle = TID_COLORS.railEdge;
@@ -709,7 +741,7 @@ function tidDrawJunction(ctx, cx, yMain, yBranch, mode) {
 
 /** 画面の外へ出ていく線 (支線・車両所への引上線など) */
 function tidDrawStub(ctx, cx, y, goUp, label, side, order) {
-    const dx = (side === "L" ? -1 : 1) * (BLOCK_WIDTH * 0.8);
+    const dx = (side === "L" ? -1 : 1) * (tidW(BLOCK_WIDTH) * 0.8);
     const dy = (goUp ? -1 : 1) * (24 + order * 14);
     const x2 = cx + dx, y2 = y + dy;
     ctx.strokeStyle = TID_COLORS.railEdge;

@@ -25,7 +25,7 @@ const STATION_PLATFORM_RULES = {
     "宝殿": { labels:["上通","3","2","1"], lanes:[false,true,true,true] }, "加古川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "東加古川": { labels:["3","2","1"], lanes:[true,true,true] }, "土山": { labels:["3","2","1"], lanes:[true,true,true] }, "魚住": { labels:["2","1"], lanes:[true,true] },
     "大久保": { labels:["4","3","2","1","下通"], lanes:[true,true,true,true,false] }, "西明石": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "明石": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "朝霧": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "舞子": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "垂水": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "塩屋": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "須磨": { labels:["上外","4","3","2","1","下外"], lanes:[false,true,true,true,true,false] },
-    "須磨海浜公園": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "鷹取": { labels:["上外","2","1","下外","上待","下待"], lanes:[false,true,true,false,true,true] }, "新長田": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "兵庫": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    "須磨海浜公園": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "鷹取": { labels:["上外","2","1","下外","上待","下待"], lanes:[false,true,true,false,false,false] }, "新長田": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "兵庫": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "神戸": { labels:["5","4","3","2","1"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] },
     "灘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "六甲道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "住吉": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摂津本山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "甲南山手": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","2","1","下外"], lanes:[true,true,true,true,false] },
@@ -35,7 +35,7 @@ const STATION_PLATFORM_RULES = {
     "高槻": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "島本": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "山崎": { labels:["4","3","2","1","下待"], lanes:[true,true,true,true,false] }, "長岡京": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "向日町": { labels:["1","2","3","4","下待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["発1","発2"], lanes:[true,true], type:"freight_term" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1","京","タ"], lanes:[true,true,true,true,false,false] },
     "京都": { labels:["下通","0","2","3","4","5","6","7"], lanes:[false,true,true,true,true,true,true,true] },
-    "山科": { labels:["上通","3","2","下通"], lanes:[false,true,true,false] }, "大津": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "膳所": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "石山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "瀬田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    "山科": { labels:["上通","3","2","下通"], lanes:[false,true,true,false] }, "大津": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "膳所": { labels:["1","2","3","4","上待","下待"], lanes:[true,true,true,true,false,false] }, "石山": { labels:["4","3","2","1","上待","下待"], lanes:[true,true,true,true,false,false] }, "瀬田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "南草津": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "草津": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "栗東": { labels:["2","1"], lanes:[true,true] }, "守山": { labels:["2","1"], lanes:[true,true] }, "野洲": { labels:["3","2","1"], lanes:[true,true,true] },
     "篠原": { labels:["2","1"], lanes:[true,true] }, "近江八幡": { labels:["3","2","1"], lanes:[true,true,true] }, "安土": { labels:["3","2","1"], lanes:[true,true,true] }, "能登川": { labels:["3","2","1"], lanes:[true,true,true] }, "稲枝": { labels:["2","1"], lanes:[true,true] },
     "河瀬": { labels:["3","2","1"], lanes:[true,true,true] }, "南彦根": { labels:["2","1"], lanes:[true,true] }, "彦根": { labels:["2","1"], lanes:[true,true] }, "米原": { labels:["8","7","6","5","4","3","2","1"], lanes:[true,true,true,true,true,true,true,true] }, "坂田": { labels:["2","1"], lanes:[true,true] },
@@ -211,12 +211,19 @@ function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
     let yPositions = [];
 
     if (stationName === "ひめじ別所") {
-        yPositions = [upInY, downInY, upOutY - 40, downOutY + 40];
+        /* 姫路口は複線。ホーム2面と貨物待避線2本を上下線に割り当てる。
+           (以前は内側線の座標を使っていて、存在しない線路に番線が付いていた) */
+        yPositions = [upOutY, downOutY, upOutY - 30, downOutY + 30];
     }
     else if (stationName === "鷹取") {
         yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
     }
     else if (stationName === "西大路") {
+        yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
+    }
+    /* 膳所・石山 — 配線略図どおり、外側線のさらに外側に待避線がある。
+       (スクリーンショット(692).png の 石山: 本線4本＋待避線2本＋島式ホーム2面) */
+    else if (["膳所", "石山"].includes(stationName)) {
         yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
     }
     else if (stationName === "向日町") {
@@ -258,8 +265,11 @@ function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
         } else if (rule.lanes.length === 4) {
          yPositions = [upOutY, upInY, downInY, downOutY];
         } else if (stationName === "東姫路" || stationName === "御着") {
-         yPositions = [upInY, downInY];
-        if(rule.lanes.length > 2) yPositions.push(upOutY);
+         /* 姫路口は複線なので内側線が無い。上り線・下り線に割り当てる。
+            (以前は内側線の座標を使っていて、存在しない線路に
+             番線が付いていた) */
+         yPositions = [upOutY, downOutY];
+         if (rule.lanes.length > 2) yPositions.push(upOutY - 28);
         }
     } 
     else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田", "京橋", "放出"].includes(stationName)) {
@@ -276,11 +286,20 @@ function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
     }
     else {
         let stIdx = STATION_MAP[stationName];
-        if (stIdx !== undefined && stIdx > STATION_MAP["草津"]) {
+        /* 複線区間 (草津から東 / 西明石から西) は内側線が無いので、
+           番線はすべて上り線・下り線の2本に割り当てる。
+           ★以前は西明石から西も複々線として扱っていたため、
+             加古川・大久保などの番線が「存在しない内側線」に
+             割り当てられていた。 */
+        if (stIdx !== undefined &&
+            (stIdx > STATION_MAP["草津"] || stIdx < STATION_MAP["西明石"])) {
         // 複線区間のホーム配置
         if (rule.lanes.length === 1) yPositions = [upOutY];
         else if (rule.lanes.length === 2) yPositions = [upOutY, downOutY];
-        else if (rule.lanes.length === 3) yPositions = [upOutY, upInY, downOutY]; // 中線はInのY座標を流用
+        /* 中線 (上下どちらからも使える真ん中の線) は、上り線の2本目として持つ。
+           ★以前は内側線の座標 (upInY) を借りていたが、複線区間に内側線は
+             存在しないため、番線が「線路の無い所」に割り当てられていた。 */
+        else if (rule.lanes.length === 3) yPositions = [upOutY, upOutY + 40, downOutY];
         else {
             // 米原・長浜・敦賀などの大規模駅
             let half = Math.ceil(rule.lanes.length / 2);
@@ -298,4 +317,150 @@ function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
 
 
     return yPositions;
+}
+
+/* ------------------------------------------------------------------ 番線の対応表
+
+   ■ 何を解決するか
+     STATION_PLATFORM_RULES.labels は「駅全体で上から下へ並べた番線」で、
+     並びは stationLaneYPositions() が返す位置と同じ順になっている。
+     いっぽうシミュレーションの在線は「線路ID ごとのレーン」で持っている。
+
+     画面側はこの2つを突き合わせずに rule.labels[レーン番号] と引いていたため、
+     どの線路でも labels[0] になり、4本の線路すべてが「1番線」と表示されていた。
+     発車標は (lane + 1) という、配線とまったく関係のない数字を出していた。
+
+     ここで (駅, 線路ID, レーン番号) → 番線 の対応表を1か所で作り、
+     Super-TID の線路図・駅の在線表・列車情報・発車標が
+     すべて同じ配線データを見るようにする。
+
+   ■ どうやって対応づけるか
+     stationLaneYPositions() に、4本の線路の目印として
+     離れた数値 (0 / 1000 / 2000 / 3000) を渡す。
+     戻ってきた値を 1000 で割れば、その番線がどの線路に属するかが分かる。
+     同じ線路に複数あるときは、labels の並び順がそのままレーン番号になる。
+     (例: 石山の上り外は [0]="4"番線, [4]="上待"=待避線 の2レーン)
+*/
+const STATION_TRACK_ORDER = ["Up_Out", "Up_In", "Down_In", "Down_Out"];
+const _stationLaneMapCache = {};
+
+/** 仮想座標 (0/1000/2000/3000 を目印に渡したときの戻り値) から線路IDを引く */
+function _trackOfVirtual(v) {
+    let k = Math.round(v / 1000);
+    if (k < 0) k = 0;
+    if (k > 3) k = 3;
+    return k;
+}
+
+/**
+ * その駅の 線路ID → [{label, platform, virt}] (レーン番号順)。
+ *
+ *   label    … 番線名 ("4" / "上待" など)
+ *   platform … ホームがあるか
+ *   virt     … 縦位置の仮想座標 (上り外=0, 上り内=K, 下り内=2K, 下り外=3K)
+ *
+ * シミュレーションのレーン数のほうが多い駅では、余ったレーンを
+ * 待避線 (副本線) として自動で足す。配線略図でも、これらの駅の
+ * 外側線には駅の前後で分かれて戻る待避線が描かれている。
+ * こうすることで「番線名の付いていないレーン」が無くなり、
+ * 線路図・駅の在線表・列車情報・発車標がすべて同じ配線を見る。
+ */
+function stationLaneMap(stationName, trackMgr) {
+    const cached = _stationLaneMapCache[stationName];
+    if (cached) return cached;
+    const rule = STATION_PLATFORM_RULES[stationName];
+    const out = { Up_Out: [], Up_In: [], Down_In: [], Down_Out: [] };
+    if (!rule) return out;
+
+    const K = 1000;
+    const ys = stationLaneYPositions(stationName, 0, K, 2 * K, 3 * K);
+    for (let i = 0; i < ys.length && i < rule.labels.length; i++) {
+        const k = _trackOfVirtual(ys[i]);
+        out[STATION_TRACK_ORDER[k]].push({
+            label: rule.labels[i], platform: !!rule.lanes[i], virt: ys[i]
+        });
+    }
+
+    /* シミュレーションのレーン数に足りないぶんは待避線として足す。
+       (外側線の外側に置く。配線略図の待避線と同じ位置) */
+    const mgr = trackMgr || (typeof game !== "undefined" && game ? game.trackMgr : null);
+    if (mgr && STATION_MAP[stationName] !== undefined) {
+        STATION_TRACK_ORDER.forEach((tid, k) => {
+            const blks = mgr.blocks[tid];
+            if (!blks) return;
+            const b = blks.find(x => x.stationIdx === STATION_MAP[stationName] && x.x !== -1000);
+            if (!b) return;
+            const arr = out[tid];
+            const anchor = k * K;
+            const outward = (tid === "Up_Out") ? -1 : (tid === "Down_Out") ? +1 : +1;
+            let n = 1;
+            while (arr.length < b.lanes.length) {
+                arr.push({
+                    label: (tid.indexOf("Up") === 0 ? "上待" : "下待") + (n > 1 ? n : ""),
+                    platform: false,
+                    virt: anchor + outward * (30 + 20 * n)
+                });
+                n++;
+            }
+            // 定義のほうが多い場合は、実際に使えるレーンぶんだけ残す
+            if (arr.length > b.lanes.length) arr.length = b.lanes.length;
+        });
+    }
+    _stationLaneMapCache[stationName] = out;
+    return out;
+}
+
+/** 分岐線・北方貨物線の線路IDを、駅の配線での線路IDに読み替える */
+function _laneKeyOf(trackId) {
+    if (/^(Kosei|Fukuchi|Tozai)_Up$/.test(trackId)) return "Up_Out";
+    if (/^(Kosei|Fukuchi|Tozai)_Down$/.test(trackId)) return "Down_Out";
+    if (trackId === "Up_Hoppo") return "Up_Out";
+    if (trackId === "Down_Hoppo") return "Down_Out";
+    return trackId;
+}
+
+/** (駅, 線路ID, レーン番号) の番線名。無ければ null */
+function platformLabelOf(stationName, trackId, lane) {
+    const arr = stationLaneMap(stationName)[_laneKeyOf(trackId)];
+    if (!arr || !arr.length) return null;
+    const e = arr[Math.min(Math.max(lane, 0), arr.length - 1)];
+    return e ? e.label : null;
+}
+
+/** その番線にホームがあるか (側線・待避線なら false) */
+function isPlatformLane(stationName, trackId, lane) {
+    const arr = stationLaneMap(stationName)[_laneKeyOf(trackId)];
+    if (!arr || !arr.length) return false;
+    const e = arr[Math.min(Math.max(lane, 0), arr.length - 1)];
+    return e ? e.platform : false;
+}
+
+/** (駅, 線路ID, レーン番号) の縦位置の仮想座標。無ければ null */
+function laneVirtualY(stationName, trackId, lane) {
+    const arr = stationLaneMap(stationName)[_laneKeyOf(trackId)];
+    if (!arr || !arr.length) return null;
+    const e = arr[Math.min(Math.max(lane, 0), arr.length - 1)];
+    return e ? e.virt : null;
+}
+
+/** 番線の呼び方。数字なら「4番線」、「上待」などはそのまま */
+function platformText(label) {
+    if (label === null || label === undefined || label === "") return "";
+    return /^[0-9]+$/.test(String(label)) ? label + "番線" : String(label);
+}
+
+/**
+ * その列車がいま「駅に居る」なら番線を返す。駅間なら null。
+ * 画面に番線を出すときは必ずここを通す。
+ */
+function trainPlatformLabel(game, t) {
+    if (!t || t.state === "in_depot" || t.state === "finished") return null;
+    const blks = game.trackMgr.blocks[t.trackId];
+    if (!blks) return null;
+    const b = blks[t.currBlockIndex];
+    if (!b || b.x === -1000) return null;
+    if (!b.isStation && !b.hoppoStationName) return null;   // 駅間は出さない
+    const st = blockStationName(b);
+    if (!st) return null;
+    return platformLabelOf(st, t.trackId, t.lane);
 }

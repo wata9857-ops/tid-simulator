@@ -46,20 +46,34 @@ const tY = buildTidTrackY(['本線']);
 const rows = tY.__rows.map(r => r.id);
 ok('上から 下り外 → 下り内 → 上り内 → 上り外 の順である',
    rows.join(',') === 'Down_Out,Down_In,Up_In,Up_Out', rows.join(','));
-ok('下り外〜下り内 の間隔が ' + REF.gapDownOutToDownIn,
-   tY['Down_In'] - tY['Down_Out'] === REF.gapDownOutToDownIn,
-   String(tY['Down_In'] - tY['Down_Out']));
-ok('下り内〜上り内 の間隔が ' + REF.gapDownInToUpIn + ' (内側線どうしは狭い)',
-   tY['Up_In'] - tY['Down_In'] === REF.gapDownInToUpIn,
-   String(tY['Up_In'] - tY['Down_In']));
-ok('上り内〜上り外 の間隔が ' + REF.gapUpInToUpOut,
-   tY['Up_Out'] - tY['Up_In'] === REF.gapUpInToUpOut,
-   String(tY['Up_Out'] - tY['Up_In']));
+/* 線路図は実物より大きく描く (TID_SCALE 横 / TID_SCALE_Y 縦)。
+   大きな駅で番線・ホーム・分岐・列車表示が重なって読めなかったため。
+   絶対値ではなく「実物と同じ比」になっているかを見る。 */
+const g1 = tY['Down_In'] - tY['Down_Out'];
+const g2 = tY['Up_In'] - tY['Down_In'];
+const g3 = tY['Up_Out'] - tY['Up_In'];
+console.log('  線路の間隔: ' + g1 + ' / ' + g2 + ' / ' + g3 +
+            '  (実物 ' + REF.gapDownOutToDownIn + ' / ' + REF.gapDownInToUpIn +
+            ' / ' + REF.gapUpInToUpOut + ' を ' + TID_SCALE_Y + '倍)');
+const near = (a, b) => Math.abs(a - b) <= 1.5;
+ok('下り外〜下り内 の間隔が実物の比と合う',
+   near(g1, REF.gapDownOutToDownIn * TID_SCALE_Y), String(g1));
+ok('下り内〜上り内 の間隔が実物の比と合う (内側線どうしは狭い)',
+   near(g2, REF.gapDownInToUpIn * TID_SCALE_Y), String(g2));
+ok('上り内〜上り外 の間隔が実物の比と合う',
+   near(g3, REF.gapUpInToUpOut * TID_SCALE_Y), String(g3));
+ok('内側線どうしの間隔が外側との間隔より狭い (実物と同じ)', g2 < g1 && g2 < g3,
+   g1 + '/' + g2 + '/' + g3);
+ok('線路図を実物より大きく描いている (横 ' + TID_SCALE + '倍)', TID_SCALE >= 2.0,
+   String(TID_SCALE));
+ok('1駅の間隔が読みやすい幅になっている',
+   Math.abs(tidStationX(1) - tidStationX(0)) >= 700,
+   Math.round(Math.abs(tidStationX(1) - tidStationX(0))) + 'px');
 
 head('駅名札の余白');
-ok('上の札からいちばん上の線路まで ' + REF.plateTopGap,
+ok('上の札からいちばん上の線路までの余白が実物と同じ比 (' + REF.plateTopGap + ')',
    TID_GEO.plateTopGap === REF.plateTopGap, String(TID_GEO.plateTopGap));
-ok('下の札からいちばん下の線路まで ' + REF.plateBotGap,
+ok('下の札からいちばん下の線路までの余白が実物と同じ比 (' + REF.plateBotGap + ')',
    TID_GEO.plateBotGap === REF.plateBotGap, String(TID_GEO.plateBotGap));
 ok('駅名札の大きさが ' + REF.plateW + '×' + REF.plateH,
    TID_GEO.plateW === REF.plateW && TID_GEO.plateH === REF.plateH,

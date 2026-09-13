@@ -272,7 +272,8 @@ class TidUI {
             const blk = blks.find(b => blockStationName(b) === stName && b.x !== -1000);
             if (!blk) return;
             blk.lanes.forEach((_, li) => {
-                const label = (rule && rule.labels[li]) ? rule.labels[li] + "番線" : ("第" + (li + 1) + "線");
+                const lbl = platformLabelOf(stName, row.id, li);
+                const label = lbl ? platformText(lbl) : ("第" + (li + 1) + "線");
                 sel.innerHTML += `<option value="${row.id},${li}">${row.label} ${label}</option>`;
             });
         });
@@ -446,7 +447,16 @@ class TidUI {
             `<div class="tid-tno" style="background:${(TID_TYPE_COLORS[t.type] || {}).bg};color:${(TID_TYPE_COLORS[t.type] || {}).text}">` +
                 `${escapeLogHtml(t.trainNo || "—")}</div>` +
             `<div class="tid-tdest">${escapeLogHtml(t.type)} ${escapeLogHtml(t.dest || "")} ${cars ? cars + "両" : ""}</div>` +
-            row("在線", escapeLogHtml(where) + " / " + escapeLogHtml(t.trackId)) +
+            row("在線", escapeLogHtml(where) + " / " +
+                        escapeLogHtml((TID_ROWS.find(r => r.id === t.trackId) || {}).label || t.trackId)) +
+            /* ★番線は配線データから引く (js/03-stations.js の trainPlatformLabel)。
+               駅間にいる列車には番線を出さない。 */
+            row("番線", (function () {
+                const lbl = trainPlatformLabel(this.game, t);
+                if (lbl === null) return "駅間 (ホームには居ません)";
+                const plat = isPlatformLane(where, t.trackId, t.lane);
+                return escapeLogHtml(platformText(lbl)) + (plat ? "" : " <em>(側線・待避線)</em>");
+            }).call(this)) +
             row("状態", escapeLogHtml(stateText) + (t.isManuallySuspended ? " <em>抑止中</em>" : "")) +
             row("信号現示", asp ? `<span class="tid-asp tid-asp-${aspect}">${asp.name} (${aspect})</span>` : "—") +
             row("遅れ", Math.floor((t.delayTime || 0) / 60) + "分") +
@@ -511,11 +521,15 @@ class TidUI {
             if (!blks) return;
             const blk = blks.find(b => blockStationName(b) === name && b.x !== -1000);
             if (!blk) return;
+            /* ★番線は配線データから引く (js/03-stations.js)。
+               以前は rule.labels[レーン番号] と引いていたため、
+               どの線路でも labels[0] になり全部「1番線」と出ていた。 */
             blk.lanes.forEach((occ, li) => {
-                const label = (rule && rule.labels[li]) ? rule.labels[li] + "番線" : ("第" + (li + 1) + "線");
-                const isPlat = rule && rule.lanes[li];
+                const lbl = platformLabelOf(name, row.id, li);
                 rows.push({
-                    line: row.label, label: label, platform: !!isPlat,
+                    line: row.label,
+                    label: lbl ? platformText(lbl) : ("第" + (li + 1) + "線"),
+                    platform: isPlatformLane(name, row.id, li),
                     train: occ
                 });
             });

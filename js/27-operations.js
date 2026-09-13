@@ -263,7 +263,13 @@ class OperationsManager {
         if (ct < this.gapNext) return;
         this.gapNext = ct + 180;                  // 3分おきに点検
 
-        const MAX_GAP_STATIONS = 3.0;             // これ以上空いたら増発
+        /* これ以上空いたら増発。
+           ★実際の時刻表では、内側線 (電車線) は普通8本/時＋快速4本/時 で
+             約5分間隔、駅間約2分なので、同じ向きの列車は2〜3駅おきになる。
+             3駅を超えたら増発する、という目安は実物と合っている。
+             ただし種別の在線本数が目安を超えているときは増発しない
+             (増発で普通が増え続けると内側線が埋まってしまう)。 */
+        const MAX_GAP_STATIONS = 3.0;
         /* 点検する区間と、増発に使う車両所。
            depots は「その方向の後ろ側にある車両所」を近い順に並べる。
            type/dest はそこから出す列車の種別と行先。 */
@@ -319,6 +325,9 @@ class OperationsManager {
             }
             if (occupied.length === 0) worst = hi - lo;
             if (worst <= gapBlocks) continue;
+
+            // 普通が走りすぎているときは増発しない
+            if (ttOverBudget(this.game, "main", "普通")) continue;
 
             // 手前の車両所から1本出す
             for (const dname of sc.depots) {
@@ -524,6 +533,12 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     if (train.delayTime > 1800) return false;
     // 回送・貨物・特急はここでは扱わない
     if (["回送", "貨物", "特急"].includes(train.type)) return false;
+
+    /* 種別の偏りは生成側 (js/08-spawner-mainline.js の trySpawn) が
+       在線本数の目安を見て抑えている。ここで折り返しを止めると、
+       京都に着いた列車がほとんど向日町操へ回送されてしまい、
+       琵琶湖線 (京都〜野洲) の普通が走らなくなる。
+       折り返しは実際の運用どおり優先する。 */
 
     const newDir = train.dir * -1;
     // 折り返し先の線路を決める

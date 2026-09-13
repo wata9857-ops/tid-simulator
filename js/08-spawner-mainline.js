@@ -1,29 +1,35 @@
 /* このファイルは index.html から分割されたものです。
    Spawner: 東海道・山陽本線(琵琶湖線/京都線/神戸線)の列車生成 */
+/**
+ * 本線 (琵琶湖線・JR京都線・JR神戸線) の列車生成。
+ *
+ * ★実際の駅時刻表から写したパターンダイヤ (js/10-timetable.js) で決める。
+ *   以前は基準間隔に時間帯係数と種別係数を何段も掛けていて、
+ *   普通が実際の2倍・快速と新快速が実際の4分の1という偏りになり、
+ *   内側線だけが団子運転になっていた。
+ *   いまは「1時間に何本」を時間帯ごとに直接指定し、
+ *   毎時同じ分に発車させている。
+ */
 Spawner.prototype.checkIntervalSpawns = function (ct) {
-        let h = (ct / 3600) % 24;
-        let timeFactor = 0.58; 
-        if (h >= 6.0 && h < 6.5) { timeFactor = 0.35; } 
-        else if (h >= 6.5 && h < 7.5) { timeFactor = 0.20; } 
-        else if (h >= 7.5 && h < 8.5) { timeFactor = 0.40; } 
-        else if (h >= 8.5 && h < 9.5) { timeFactor = 0.70; } 
-        else if (h >= 9.5 && h < 10) { timeFactor = 0.90; } 
-        else if (h >= 10 && h < 17) { timeFactor = 1.8; } 
-        else if (h >= 17 && h < 19.5) { timeFactor = 0.35; } 
-        else if (h >= 19.5) { timeFactor = 0.8; }
-        
-        const isPeak = (h >= 6.5 && h < 7.5) || (h >= 17 && h < 19.5);
-        const isDaytime = (h >= 10 && h < 17);
-        const isMorningRush = (h >= 6.0 && h < 8.5);
+        const h = (ct / 3600) % 24;
+
         ["Up", "Down"].forEach(dirName => {
             const dir = (dirName === "Up") ? 1 : -1;
 
             for (let type in INTERVALS) {
+                // 下り特急のうち、はまかぜ・こうのとりは向日町からの出区で別に走らせる
                 if (dirName === "Down" && type === "特急") {
                     if (ct >= this.nextMukoHamakazeTime) { this.spawnTokkyu(dirName, "hamakaze"); this.nextMukoHamakazeTime += 5400; }
                     else if (ct >= this.nextMukoKounotoriTime) { this.spawnTokkyu(dirName, "kounotori"); this.nextMukoKounotoriTime += 5400; }
                 }
-                if (type === "快速" && h < 4.5) continue;
+
+                const per = ttPerHour("main", dirName, type, h);
+                const phase = ttPhase(type, dirName);
+                if (per <= 0) {
+                    // その時間帯は走らせない (深夜など)
+                    this.nextSpawnTime[dirName][type] = ttNextTime(ct, 1, phase);
+                    continue;
+                }
 
                 if (ct >= this.nextSpawnTime[dirName][type]) {
                     let spawned = true;
@@ -31,26 +37,12 @@ Spawner.prototype.checkIntervalSpawns = function (ct) {
                     else spawned = this.trySpawn(type, dir);
 
                     if (spawned === false) {
-                        this.nextSpawnTime[dirName][type] += 90;
+                        /* 車両が無い・番線が空いていないなどで出せなかった。
+                           発車の枠は捨てず、少し待ってから出す
+                           (実際のダイヤでも遅れて発車する)。 */
+                        this.nextSpawnTime[dirName][type] = ct + 45;
                     } else {
-                        let interval = INTERVALS[type] * timeFactor;
-                        if(type==="貨物") interval = (10+Math.random()*7)*60;
-                        
-                        // ★改善: 新快速の生成速度を全体的に落とす
-                        if (type === "新快速") interval = INTERVALS["新快速"] * (isPeak ? 0.9 : 1.5);
-                        if (dirName === "Down" && type === "快速" && Math.random() < 0.1) interval *= 0.6;
-
-                        if (type === "快速") {
-                            interval *= (1 / 0.75);
-                            if (!isPeak) interval *= 1.25; 
-                        }
-
-                        // ★改善: 普通列車の本数を全体的に少し増やす（昼間でも2.5駅ごとの本数をしっかり生成するため係数を引き上げ）
-                        if (type === "普通") {
-                            const boost = isPeak ? 3.5 : (isDaytime ? 3.0 : 2.8); 
-                            interval = interval / boost;
-                        }
-                        this.nextSpawnTime[dirName][type] += interval;
+                        this.nextSpawnTime[dirName][type] = ttNextTime(ct, per, phase);
                     }
                 }
             }
@@ -147,13 +139,11 @@ Spawner.prototype.trySpawn = function (type, dir) {
             if (hOfDay >= 23.0 && type === "特急") return false;   // 23:00以降 特急生成停止
         }
 
-        // ★追加: 新快速の生成本数を制限し、既存列車の折り返しに任せる
-        if (type === "新快速") {
-            let activeSR = this.game.trains.filter(t => t.type === "新快速" && t.state !== "finished").length;
-            if (activeSR >= 18) {
-                return false; // 上限に達していれば新規生成を見送る
-            }
-        }
+        /* 在線本数の目安を超えていたら作らない (js/10-timetable.js)。
+           ★以前は新快速だけ「18本まで」という決め打ちの上限があり、
+             実際の時刻表 (片道8本/時) に足りなかった。
+             いまは時刻表から出した本数を種別ごとに見ている。 */
+        if (ttOverBudget(this.game, "main", type)) return false;
         let trackId = "";
         if (type === "貨物" || type === "回送") trackId = (dir===1) ? "Up_Out" : "Down_Out";
         else trackId = (type==="普通"||type==="快速") ? (dir===1?"Up_In":"Down_In") : (dir===1?"Up_Out":"Down_Out");
@@ -205,34 +195,46 @@ Spawner.prototype.trySpawn = function (type, dir) {
         }
         if (candidates.length === 0) return false;
 
+        /* 始発駅でその列車を出せるかの判定。
+
+           ★以前は「同じ種別の列車が前後2駅以内に2本以上いたら出さない」
+             という大まかな見方だった。線路が少し混むとこの条件に引っかかり、
+             種別に関係なく生成がほとんど止まってしまう。
+             そのため昼間は時刻表どおりの本数が出せず、
+             残った列車の折り返しだけで走る状態になっていた。
+             (快速・新快速はほぼ0本、普通ばかりという偏りの原因)
+
+           いまは実際の駅と同じ物理的な条件で見る。
+             ① その駅の着発線 (ホーム) が空いているか
+             ② 進行方向のすぐ先の閉塞が空いているか (続行間隔)
+           どちらも「実際に線路がふさがっているか」なので、
+           混雑しているときは自然に発車が抑えられ、
+           空いていれば時刻表どおりに出る。 */
+        const headwayBlocks = (type === "新快速" || type === "特急") ? 3 : 2;
         let availableCandidates = [];
         for (let stName of candidates) {
             let checkTrackId = trackId;
             if (["姫路","加古川"].includes(stName)) checkTrackId = checkTrackId.replace("In", "Out");
-            let blks = this.game.trackMgr.blocks[checkTrackId];
-            let stIdx = STATION_MAP[stName]; // ★修正: STARTERSではなくSTATION_MAPを使用
-            
-            if (blks && stIdx !== undefined) {
-                let startBlk = blks.find(b => b.stationIdx === stIdx);
-                if (startBlk) {
-                    let count = 0;
-                  // ★改善点③: 新快速の生成時は探索範囲を広げ、近くにいる場合は生成を見送る
-                    let radius = (type === "新快速") ? Math.ceil(UNITS_PER_STATION * 5) : UNITS_PER_STATION * 2;
-                    let maxAllowed = (type === "新快速") ? 1 : 2; // 新快速は範囲内に1本でもいれば除外
+            const blks = this.game.trackMgr.blocks[checkTrackId];
+            const stIdx = STATION_MAP[stName];
+            if (!blks || stIdx === undefined) { availableCandidates.push(stName); continue; }
 
-                for (let k = -radius; k <= radius; k++) {
-                   let idx = startBlk.index + k;
-                   if (idx >= 0 && idx < blks.length) {
-                if (blks[idx].lanes.some(l => l !== null && l.type === type)) count++;
-                 }
-                }
-                if (count < maxAllowed) availableCandidates.push(stName); 
-                } else {
-                    availableCandidates.push(stName);
-                }
-            } else {
-                availableCandidates.push(stName);
+            const startBlk = blks.find(b => b.stationIdx === stIdx && b.x !== -1000);
+            if (!startBlk) { availableCandidates.push(stName); continue; }
+
+            // ① 着発線の空き
+            if (!startBlk.lanes.some(l => l === null)) continue;
+
+            // ② 進行方向のすぐ先が空いているか
+            let clear = true;
+            for (let k = 1; k <= headwayBlocks; k++) {
+                const idx = startBlk.index + dir * k;
+                if (idx < 0 || idx >= blks.length) break;
+                const b = blks[idx];
+                if (b.x === -1000) break;
+                if (b.lanes.some(l => l !== null)) { clear = false; break; }
             }
+            if (clear) availableCandidates.push(stName);
         }
 
         if (availableCandidates.length === 0) return false;
@@ -246,47 +248,21 @@ Spawner.prototype.trySpawn = function (type, dir) {
             }
         }
 
-        // ★事象1対応: 西明石以西（加古川・姫路・網干等）発の上り快速の生成スピードを現在の6割にする
-        if (dir === 1 && type === "快速" && ["姫路", "加古川", "網干", "播州赤穂", "上郡"].includes(startName)) {
-            // 4割の確率で生成をスキップしつつ、生成完了扱いにしてインターバルを進める
-            if (Math.random() < 0.4) {
-                return true; 
-            }
-        }
+        /* ★ここには以前、生成を抑えるための「決め打ちの間引き」が3つ入っていた。
+             ・姫路以西発の上り快速を4割の確率で捨てる
+             ・姫路〜西明石に上り列車が10本以上いたら生成しない
+             ・西明石の上り線の空き番線が2本未満なら生成しない
+           どれも実際の線路の都合ではなく本数を減らすための細工で、
+           時刻表どおりの本数 (姫路〜西明石は上り13本/時) を出すと
+           必ず引っかかるため、快速・新快速がほとんど生成されなかった。
 
-        // ★追加: 姫路～西明石間が詰まりすぎた場合、姫路・加古川などからの上り列車生成を一時中断
-        if (dir === 1 && ["姫路", "加古川", "網干", "播入赤穂", "上郡"].includes(startName)) {
-            let tCount = 0;
-            ["Up_Out", "Up_In"].forEach(tid => {
-                let checkBlks = this.game.trackMgr.blocks[tid];
-                if (checkBlks) {
-                    let sB = checkBlks.find(b => b.stationIdx === STATION_MAP["姫路"]);
-                    let eB = checkBlks.find(b => b.stationIdx === STATION_MAP["西明石"]);
-                    if (sB && eB) {
-                        for (let i = sB.index; i <= eB.index; i++) {
-                            if (checkBlks[i].lanes.some(l => l !== null && l.dir === 1)) tCount++;
-                        }
-                    }
-                }
-            });
-            // 区間内に一定数(例: 10本)以上の列車がいる場合は生成をキャンセルして次回に回す
-            if (tCount >= 10) return false;
-        }
+           混雑しているときに発車を抑えるのは、上で見ている
+             ・着発線 (ホーム) が空いているか
+             ・進行方向のすぐ先の閉塞が空いているか
+           という実際の線路の条件で足りる。混んでいれば自然に出られない。
 
-        // ★改善: 西明石駅始発の生成条件を厳格化 (上り線満線予測時は生成キャンセルの措置)
-        if (startName === "西明石") {
-            if (type !== "普通" && type !== "快速") return false;
-            let freeCount = 0;
-            ["Up_In", "Up_Out"].forEach(tid => {
-                let blks = this.game.trackMgr.blocks[tid];
-                if (blks) {
-                    let b = blks.find(blk => blk.stationIdx === STATION_MAP["西明石"]);
-                    if (b) freeCount += b.lanes.filter(l => l === null).length;
-                }
-            });
-            // 西明石の上り線空きレーンが2未満の場合は、既存列車の折り返しを優先するため生成をスキップ
-            if (freeCount < 2) return false;
-        }
+           西明石始発は普通と快速だけ、という点は実際のとおりなので残す。 */
+        if (startName === "西明石" && type !== "普通" && type !== "快速") return false;
 
         if (startName === "京都" && dir === -1 && Math.random() < 0.05 && (type==="回送")) startName = "向日町操";
         if (["姫路","加古川"].includes(startName)) trackId = trackId.replace("In", "Out");
@@ -494,10 +470,18 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                         // 尼崎より東から出発する下り列車。
                         // ★宝塚方面への直通は高槻以西の始発に限る。
                         //   琵琶湖線(草津・米原)から宝塚線へ直通する普通は実在しない。
+                        /* ★実際の時刻表では、JR京都線の普通は毎時8本あるが、
+                             そのまま神戸線へ直通して西明石まで行くのは毎時4本ほどで、
+                             残りは大阪・尼崎止まりで折り返す。
+                             以前は8割が西明石・須磨まで直通していたため、
+                             大阪の下り普通が実際の3倍になっていた。 */
                         if (stIdx !== undefined && stIdx > STATION_MAP["高槻"]) {
-                            return [{d:"西明石",w:55}, {d:"須磨",w:27}, {d:"大阪",w:9}, {d:"神戸",w:5}, {d:"尼崎",w:4}];
+                            return [{d:"大阪",w:34}, {d:"西明石",w:31}, {d:"須磨",w:16},
+                                    {d:"尼崎",w:11}, {d:"神戸",w:8}];
                         }
-                        return [{d:"西明石",w:50}, {d:"須磨",w:25}, {d:"宝塚方面",w:14}, {d:"大阪",w:5}, {d:"神戸",w:3}, {d:"尼崎",w:2}, {d:"甲子園口",w:1}];
+                        return [{d:"大阪",w:26}, {d:"西明石",w:30}, {d:"須磨",w:16},
+                                {d:"宝塚方面",w:14}, {d:"尼崎",w:8}, {d:"神戸",w:5},
+                                {d:"甲子園口",w:1}];
                     }
                 }
             } else {

@@ -1,0 +1,58 @@
+/*��*/
+.legendBlack {
+    color: #000000;
+}
+
+/*��*/
+.legendOrange {
+    color: #FF9900;
+}
+
+/*��*/
+.legendBlue {
+    color: #0000FF;
+}
+
+/*��*/
+.legendGreen {
+    color: #008000;
+}
+
+/*�u���[�O���[*/
+.legendBlueGray {
+    color: #597A94;
+}
+
+/*��*/
+.legendRed {
+    color: #FF0000;
+}
+
+/*����*/
+.legendYellowRed {
+    color: #FF8E1F;
+}
+
+/*����*/
+.legendPurpleRed {
+    color: #E1597E;
+}
+
+/*�s���N*/
+.legendPink {
+    color: #FF1493;
+}
+
+/*��*/
+.legendPurple {
+    color: #592088;
+}
+
+.legendYellowGreen {
+    color: #66cc00;
+}
+
+/*�Ύ�*/
+.legendItalic {
+    font-style: italic;
+}

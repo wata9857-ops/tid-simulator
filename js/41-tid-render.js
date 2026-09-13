@@ -73,7 +73,7 @@ class TidRenderer {
         this.height = this.trackY.__height;
         const spacer = document.getElementById("tid-spacer");
         if (spacer) {
-            spacer.style.width = TOTAL_WIDTH + "px";
+            spacer.style.width = tidTotalWidth() + "px";
             spacer.style.height = this.height + "px";
         }
         this.buildStationHits();
@@ -119,9 +119,10 @@ class TidRenderer {
     // ============================================================ 当たり判定
     buildStationHits() {
         this.hitStations = [];
-        const topY = TID_GEO.topPad - TID_GEO.plateTopGap;
+        const topY = (TID_GEO.topPad - TID_GEO.plateTopGap) * TID_SCALE_Y;
         const botY = this.height - TID_GEO.bottomPad -
-                     (TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap) + TID_GEO.plateBotGap;
+                     ((TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap)
+                      - TID_GEO.plateBotGap) * TID_SCALE_Y;
         const add = (name, x, y) => {
             const w = Math.max(TID_GEO.plateW, name.length * 15 + 22);
             this.hitStations.push({ name: name, x: x - w / 2, y: y - 11, w: w, h: 22 });
@@ -140,7 +141,7 @@ class TidRenderer {
         branch.forEach(([map, tid]) => {
             if (this.trackY[tid] === undefined) return;   // その線区を表示していない
             for (const k in map) {
-                add(map[k], tidStationX(Number(k)), this.trackY[tid] - 30);
+                add(map[k], tidStationX(Number(k)), this.trackY[tid] - 30 * TID_SCALE_Y);
             }
         });
     }
@@ -268,9 +269,10 @@ class TidRenderer {
                 const blk = blks[i];
                 if (blk.x === -1000) continue;
                 const bx = tidX(blk.x);
-                if (bx < xMin - BLOCK_WIDTH || bx > xMax + BLOCK_WIDTH) continue;
-                const x1 = bx - BLOCK_WIDTH / 2 + 2;
-                const x2 = bx + BLOCK_WIDTH / 2 - 2;
+                const bw = tidW(BLOCK_WIDTH);
+                if (bx < xMin - bw || bx > xMax + bw) continue;
+                const x1 = bx - bw / 2 + 2;
+                const x2 = bx + bw / 2 - 2;
 
                 /* ★在線は線路を塗らない。
                    実物の Super-TID は、線路の色は「進路が開通しているか」
@@ -302,7 +304,7 @@ class TidRenderer {
                    実物は境目ごとに白い丸が並ぶ。閉塞の区切りは
                    TrackManager のブロックそのものなので、
                    見た目だけの丸は足していない。 */
-                tidDrawCircuitMark(ctx, bx + BLOCK_WIDTH / 2, y);
+                tidDrawCircuitMark(ctx, bx + tidW(BLOCK_WIDTH) / 2, y);
             }
 
         });
@@ -311,9 +313,10 @@ class TidRenderer {
     /** 駅 (駅名札・番線・ホーム・分岐) */
     drawStations(ctx, xMin, xMax) {
         const tY = this.trackY;
-        const topY = TID_GEO.topPad - TID_GEO.plateTopGap;
+        const topY = (TID_GEO.topPad - TID_GEO.plateTopGap) * TID_SCALE_Y;
         const botY = this.height - TID_GEO.bottomPad -
-                     (TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap) + TID_GEO.plateBotGap;
+                     ((TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap)
+                      - TID_GEO.plateBotGap) * TID_SCALE_Y;
 
         STATIONS.forEach((st, i) => {
             const x = tidStationX(i);
@@ -432,7 +435,7 @@ class TidRenderer {
         const rule = STATION_PLATFORM_RULES[stName];
         if (!rule) return;
         const ys = tidStationLaneYs(stName, refUpOutY, branch);
-        const w = BLOCK_WIDTH * 0.95;
+        const w = tidW(BLOCK_WIDTH) * 0.95;
         // 本線 (そのまま真っ直ぐ通る線) の縦位置
         const mains = this.rows().map(r => this.trackY[r.id]);
         const isMain = (y) => mains.some(m => Math.abs(m - y) < 1.5);
@@ -503,7 +506,8 @@ class TidRenderer {
                 const b = blks[idx];
                 if (!b || b.x === -1000) return;
                 const bx = tidX(b.x);
-                tidDrawRail(ctx, bx - BLOCK_WIDTH / 2 + 2, bx + BLOCK_WIDTH / 2 - 2, y, TID_COLORS.route);
+                const rw = tidW(BLOCK_WIDTH);
+                tidDrawRail(ctx, bx - rw / 2 + 2, bx + rw / 2 - 2, y, TID_COLORS.route);
             });
         });
     }
@@ -514,8 +518,8 @@ class TidRenderer {
             const y = this.trackY[row.id];
             /* signalsInRange はシミュレーションの座標で範囲を受け取るので、
                画面の範囲を内部座標に戻してから渡す。 */
-            const wMin = Math.min(tidX(xMin), tidX(xMax));
-            const wMax = Math.max(tidX(xMin), tidX(xMax));
+            const wMin = Math.min(tidInvX(xMin), tidInvX(xMax));
+            const wMax = Math.max(tidInvX(xMin), tidInvX(xMax));
             const sigs = this.game.signals.signalsInRange(row.id, row.dir, wMin, wMax);
             sigs.forEach(s => tidDrawSignal(ctx, tidX(s.x), y, row.dir, s.aspect, s.kind));
         });
@@ -527,7 +531,8 @@ class TidRenderer {
             const dep = DEPOTS[name];
             const idx = (name === "宮原操") ? 39 : (name === "向日町操") ? 51 : STATION_MAP[name];
             if (idx === undefined) continue;
-            const x = tidStationX(idx) - (dep.drawOffset.x * BLOCK_WIDTH * UNITS_PER_STATION);
+            const x = tidStationX(idx) -
+                      tidW(dep.drawOffset.x * BLOCK_WIDTH * UNITS_PER_STATION);
             if (x < xMin - 200 || x > xMax + 200) continue;
 
             let y;
@@ -606,11 +611,18 @@ class TidRenderer {
                 ys = tidStationLaneYs(stName, tY["Up_Out"], false);
             }
             if (ys && ys.length) {
-                // その線路の本線に近い番線から順に、レーン番号ぶんずらす
-                const cand = ys.filter(v => Math.abs(v - baseY) <= TID_GEO.rowGap * 0.85);
-                if (cand.length) {
-                    cand.sort((a, b2) => Math.abs(a - baseY) - Math.abs(b2 - baseY));
-                    return cand[Math.min(t.lane, cand.length - 1)];
+                /* ★番線の縦位置は、番線名と同じ対応表から決める
+                   (js/03-stations.js の stationLaneMap)。
+                   以前は「本線に近い順」に並べ替えてレーン番号で引いていたため、
+                   画面に描く位置と、駅の在線表に出る番線名が食い違うことがあった。 */
+                const m = stationLaneMap(stName);
+                let key = t.trackId;
+                if (/^(Kosei|Fukuchi|Tozai)_Up$/.test(key)) key = "Up_Out";
+                else if (/^(Kosei|Fukuchi|Tozai)_Down$/.test(key)) key = "Down_Out";
+                const arr = m[key];
+                if (arr && arr.length) {
+                    const e = arr[Math.min(Math.max(t.lane, 0), arr.length - 1)];
+                    if (e && ys[e.index] !== undefined) return ys[e.index];
                 }
             }
         }

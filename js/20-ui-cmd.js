@@ -204,8 +204,20 @@ UIManager.prototype.updateTrackCandidates = function () {
             if(!blks) return;
             const blk = blks.find(b => b.stationIdx === STATION_MAP[stName]);
             if(blk) {
+                /* ★番線は配線データから引く (js/03-stations.js)。
+                   以前は "Lane:1" のようにレーン番号をそのまま出していて、
+                   実際の番線と対応していなかった。 */
                 blk.lanes.forEach((_, laneIdx) => {
-                    let op = document.createElement("option"); op.value = `${tid},${laneIdx}`; op.text = `${tid} Lane:${laneIdx+1}`; trSel.add(op);
+                    const lbl = platformLabelOf(stName, tid, laneIdx);
+                    /* 線名は旅客向け画面でも使うので、ここで持つ
+                       (TID_ROWS は Super-TID 画面だけが読み込むため参照しない) */
+                    const LINE_LABEL = { Up_Out: "上り外", Up_In: "上り内",
+                                         Down_In: "下り内", Down_Out: "下り外" };
+                    const op = document.createElement("option");
+                    op.value = `${tid},${laneIdx}`;
+                    op.text = (LINE_LABEL[tid] || tid) + " " +
+                              (lbl ? platformText(lbl) : "第" + (laneIdx + 1) + "線");
+                    trSel.add(op);
                 });
             }
         });

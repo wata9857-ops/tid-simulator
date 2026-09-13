@@ -1,0 +1,176 @@
+@charset "UTF-8";
+html, body {
+  font-family: "Lucida Grande", 'ヒラギノ角ゴ Pro W3', 'Hiragino Kaku Gothic Pro', "Meiryo UI", "メイリオ", Meiryo, Osaka, 'ＭＳ Ｐゴシック', "MS PGothic", sans-serif;
+  font-size: 14px; }
+
+body {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: #333; }
+
+img {
+  vertical-align: bottom; }
+
+.header {
+  width: 100%;
+  border-bottom: solid #bcbbbb 2px;
+  display: block; }
+  .header:after {
+    content: ".";
+    display: block;
+    height: 0;
+    clear: both;
+    visibility: hidden; }
+  .header p {
+    line-height: 1.0 !important;
+    margin: 0;
+    padding: 0; }
+  .header .logo {
+    float: left; }
+  .header .jr-west-logo {
+    float: right;
+    position: relative;
+    top: 0; }
+
+.footer {
+  margin-top: 8px;
+  line-height: 1.4;
+  font-size: 12px; }
+  .footer .exchange {
+    border-bottom: solid #bcbbbb 2px;
+    padding: 5px 10px; }
+  .footer .copy {
+    padding: 5px 10px; }
+
+.main {
+  padding: 0 15px; }
+  .main .page-ttl {
+    border-bottom: solid 1px #0e65a3; }
+    .main .page-ttl h1 {
+      padding: 10px 0;
+      font-size: 18px; }
+  .main .error-warp {
+    padding: 20px 10px; }
+    .main .error-warp .text {
+      text-align: center;
+      font-size: 18px; }
+
+@media screen and (max-width: 979px) {
+  /* 979px以下用（タブレット用）の記述 */ }
+@media screen and (max-width: 767px) {
+  /* 767px以下用（タブレット／スマートフォン用）の記述 */
+  .main {
+    font-size: 0.714285714rem;
+    padding: 0; }
+    .main .page-ttl {
+      border-bottom: none;
+      height: 67px;
+      padding: 0; }
+      .main .page-ttl h1 {
+        text-align: center;
+        line-height: 67px;
+        padding: 0; }
+    .main .emergency-info-wrap {
+      padding: 0 10px;
+      margin: 0 10px; }
+      .main .emergency-info-wrap ul li {
+        margin: 10px 0; }
+
+  .footer .exchange, .footer .copy {
+    font-size: 0.714285714rem;
+    padding: 5px; } }
+.center {
+  text-align: center; }
+
+.right {
+  text-align: right; }
+
+.left {
+  text-align: left; }
+
+.btn-wrap {
+  text-align: center;
+  padding: 20px 0; }
+  .btn-wrap .line-it-button.pc-none {
+    display: none; }
+  .btn-wrap button {
+    border: none; }
+  .btn-wrap .btn-print {
+    background-color: #0e65a3;
+    color: #fff;
+    border-radius: 5px;
+    padding: 4px 15px; }
+  .btn-wrap .btn-close {
+    background-color: #323333;
+    color: white;
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 5px;
+    width: 132px; }
+    .btn-wrap .btn-close img {
+      width: 15px;
+      height: auto;
+      margin-right: 3px;
+      vertical-align: -3px; }
+  .btn-wrap .btn-return {
+    background-color: #323333;
+    color: white;
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 5px;
+    width: 132px; }
+    .btn-wrap .btn-return img {
+      width: 15px;
+      height: auto;
+      margin-right: 3px;
+      vertical-align: -3px; }
+
+@media screen and (max-width: 979px) {
+  /* 979px以下用（タブレット用）の記述 */ }
+@media screen and (max-width: 767px) {
+  /* 767px以下用（タブレット／スマートフォン用）の記述 */
+  .btn-wrap {
+    text-align: center;
+    padding: 20px 0; }
+    .btn-wrap .line-it-button.pc-none {
+      display: block; }
+    .btn-wrap button {
+      border: none;
+      -webkit-appearance: none;
+      -moz-appearance: none; }
+    .btn-wrap .btn-close {
+      background-color: #323333;
+      color: white;
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 1.142857143rem;
+      width: 132px; }
+      .btn-wrap .btn-close img {
+        width: 15px;
+        height: auto;
+        margin-right: 3px;
+        vertical-align: -2px; }
+    .btn-wrap .btn-return {
+      background-color: #323333;
+      color: white;
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 1.142857143rem; }
+      .btn-wrap .btn-return img {
+        width: 15px;
+        height: auto;
+        margin-right: 3px;
+        vertical-align: -3px; } }
+.clickable {
+  cursor: pointer; }
+
+.link {
+  text-decoration: underline; }
+
+a {
+  color: #333; }
+
+/*# sourceMappingURL=style.css.map */

@@ -252,7 +252,13 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                         destStr = ` ${t.dest} `;
                     }
 
-                    let trackStr = (t.lane + 1).toString();
+                    /* ★番線は配線データから引く (js/03-stations.js)。
+                       以前は (レーン番号+1) をそのまま出していて、
+                       実際の番線とまったく対応していなかった。 */
+                    let trackStr = (function () {
+                        const lbl = trainPlatformLabel(this.game, t);
+                        return lbl !== null ? String(lbl) : "-";
+                    }).call(this);
 
                     let borderBottomStyle = (i === 0) ? 'none' : '2px solid #444';
                     
@@ -281,7 +287,13 @@ UIManager.prototype.showDepartureBoard = function (stName) {
             let h = Math.floor(firstData.eta / 3600) % 24;
             let m = Math.floor((firstData.eta % 3600) / 60);
             let timeStr = `${h}時${m.toString().padStart(2, '0')}分`;
-            let trackStr = (t.lane + 1).toString();
+            /* ★番線は配線データから引く (js/03-stations.js)。
+                       以前は (レーン番号+1) をそのまま出していて、
+                       実際の番線とまったく対応していなかった。 */
+                    let trackStr = (function () {
+                        const lbl = trainPlatformLabel(this.game, t);
+                        return lbl !== null ? String(lbl) : "-";
+                    }).call(this);
 
             let specialTrainMsg = "";
             if (t.type === "新快速" && t.dest === "野洲") {

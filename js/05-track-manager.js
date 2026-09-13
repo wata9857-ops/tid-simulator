@@ -82,9 +82,21 @@ class TrackManager {
                 let validFukuchi = (i >= 23 && i <= 36);
                 let isTozai = trk.id.includes("Tozai");
                 let validTozai = (i >= 36 && i <= TOZAI_EAST_IDX);
+                /* ★内側線 (電車線) があるのは複々線の西明石〜草津だけ。
+                   それより西・東は複線で、内側線という線路は存在しない。
+                   以前は全線にわたって内側線のブロックを作っていたため、
+                     ・配線略図に無い線路が線路図上に生まれる
+                     ・何かの経路でそこに入った列車が、線路の無い場所を走る
+                     ・駅の番線と線路の数が合わない (栗東・彦根など46駅)
+                   という食い違いが出ていた。
+                   湖西線などと同じく、範囲外はプレースホルダにする。 */
+                let isInner = trk.id.includes("In") && !isHoppo;
+                let validInner = (i >= STATION_MAP["西明石"] && i <= STATION_MAP["草津"]);
 
                 // ★修正: 範囲外はプレースホルダ(-1000)にする判定を拡張
-                if ((isHoppo && !validHoppo) || (isKosei && !validKosei) || (isFukuchi && !validFukuchi) || (isTozai && !validTozai)) {
+                if ((isHoppo && !validHoppo) || (isKosei && !validKosei) ||
+                    (isFukuchi && !validFukuchi) || (isTozai && !validTozai) ||
+                    (isInner && !validInner)) {
                     trackBlocks.push({ index: trackBlocks.length, trackId: trk.id, isStation: false, x: -1000, y: this.trackY[trk.id], lanes: [null] });
                     if (i < STATIONS.length - 1) {
                         for (let k = 1; k <= BLOCKS_PER_STATION_GAP; k++) {
@@ -140,6 +152,13 @@ class TrackManager {
                     else if (stName === "大久保") { laneCount = 2;
                     }
                     else if (["ひめじ別所", "鷹取", "西大路"].includes(stName) && trk.id.includes("Out")) { laneCount = 2;
+                    }
+                    /* ★配線略図 (スクリーンショット(692).png など) にある待避線。
+                       外側線の外側に、駅の前後で本線から分かれて戻る線があり、
+                       優等列車の待避に使われる。シミュレーターでは
+                       「外側線の2本目のレーン」として持たせる。
+                       線路図に描くだけでなく、実際に列車が入れる線になる。 */
+                    else if (["膳所", "石山"].includes(stName) && trk.id.includes("Out")) { laneCount = 2;
                     }
                     else if (["摩耶", "西宮", "茨木"].includes(stName)) { laneCount = 2; }
                 }

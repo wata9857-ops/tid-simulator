@@ -1,0 +1,10 @@
+const returnButtons = window.document.querySelectorAll(".btn-return");
+returnButtons.forEach(returnButton => {
+    returnButton.addEventListener("click", _ => history.back());
+});
+
+const closeButtons = window.document.querySelectorAll(".btn-close");
+closeButtons.forEach(closeButton => {
+    closeButton.addEventListener("click", _ => window.close());
+});
+

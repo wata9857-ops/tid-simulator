@@ -53,6 +53,22 @@ Train.prototype.executeTurnBack = function () {
             return;
         }
 
+        /* ★その種別が走りすぎているときは、超えているぶんに応じた割合だけ
+           折り返さずに運用を終える (入区させる)。
+           折り返しは種別を変えないので、何もしないと朝にできた
+           「普通ばかり」の偏りが一日中残り、内側線が普通で埋まって
+           快速・新快速が発車できなくなる。
+           全部止めると京都に着いた列車がすべて向日町操へ回送され、
+           琵琶湖線の普通がゼロになるので、割合で効かせる。
+           (js/10-timetable.js の ttRetireChance) */
+        if (this.nextAction !== "depot" && !this.serviceChange &&
+            ["普通", "快速"].indexOf(this.type) >= 0) {
+            const ttLine = ttIsBranch(this) ? "branch" : "main";
+            if (Math.random() < ttRetireChance(this.game, ttLine, this.type)) {
+                this.nextAction = "depot";
+            }
+        }
+
         if(this.nextAction === "depot") { 
             let h = (this.game.currentTime / 3600) % 24;
             let isDaytime = (h >= 9.5 && h < 17.0);
@@ -602,15 +618,21 @@ Train.prototype.getPriority = function () {
 };
 
 Train.prototype.calcTravelTime = function () {
-        let baseTime = (this.type === "普通") ? 75 : 60; // 既存の基本時間を取得
+        /* 1閉塞を走る基本時間。種別ごとの実際の表定速度から決める
+           (js/01-config.js の BLOCK_RUN_SEC)。
+           ★以前は「普通75秒・その他60秒」で、1駅あたり
+             普通3.75分・新快速3.0分という実際の1.3〜1.7倍の遅さだった。
+             遅いと列車が線路に長く居座るので、時刻表どおりの本数を出すと
+             線路が埋まって団子運転になる。 */
+        let baseTime = BLOCK_RUN_SEC[this.type] || BLOCK_RUN_SEC["普通"];
 
-        // 高槻～京都間内側線の既存特例処理は維持
+        // 高槻～京都間の内側線は駅間が短いので少し速い (実際のダイヤも同じ)
         const blks = this.game.trackMgr.blocks[this.trackId];
         if (blks && blks[this.currBlockIndex]) {
             const stIdx = blks[this.currBlockIndex].stationIdx;
             if (this.type === "普通" && (this.trackId === "Up_In" || this.trackId === "Down_In")) {
                 if (stIdx >= STATION_MAP["高槻"] && stIdx <= STATION_MAP["京都"]) {
-                    baseTime = 60;
+                    baseTime = Math.round(baseTime * 0.85);
                 }
             }
         }

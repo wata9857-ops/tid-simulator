@@ -134,6 +134,10 @@ ok('走行中の列車に不正な充当が無い', bads.length === 0, bads.join
 ok('特急編成が同時に2本の列車へ入っていない', dupSeen.length === 0, dupSeen.join(' / '));
 ok('列車生成時に検証で弾かれた回数が少ない', game.fleet.rejected < 50,
    game.fleet.rejected + '回' + (game.fleet.lastReject ? ' 直近: ' + game.fleet.lastReject : ''));
+/* 増結相手の在庫が無くて組成できなかった回数。
+   検証で弾いた回数とは意味が違うので分けて見る。 */
+console.log('  両数が足りず組成できなかった回数: ' + (game.fleet.shortCars || 0) +
+            (game.fleet.lastShort ? ' 直近: ' + game.fleet.lastShort : ''));
 
 head('特急編成の在庫');
 for (const key in EXPRESS_FLEET) {

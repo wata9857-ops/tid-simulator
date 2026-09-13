@@ -1,0 +1,9 @@
+const b = window.document.getElementById("line-button");
+if (b) b.addEventListener("click", lineOpen);
+function lineOpen() {
+    let url = location.href;
+    const elm = window.document.getElementById("line-url");
+    if (elm && elm.innerText !== "") url = elm.innerText;
+
+    location.href = "https://social-plugins.line.me/lineit/share?url=" + encodeURI(url);
+}
