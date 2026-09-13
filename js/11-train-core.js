@@ -14,7 +14,7 @@ class Train {
         this.dir = config.dir; 
         this.trackId = config.trackId;
         this.startName = config.startName;
-        this.dest = config.dest || game.spawner.getDestination(this.type, this.dir, config.startName);
+        this.dest = config.dest || game.spawner.getDestination(this.type, this.dir, config.startName, this.trackId);
         this.trainNo = config.name ? config.name : game.spawner.generateTrainNumber(this.type, this.dir, config.startName, this.trackId);
 
         /* 運用名 (dutyName)。
@@ -152,12 +152,15 @@ class Train {
             startBlock = blks.find(b => b.hoppoStationName === actualStart);
         }
 
-        if (!startBlock && ["向日町操","宮原操","吹田貨"].includes(actualStart)) {
+        if (!startBlock && ["向日町操", "宮原操", "吹田貨"].includes(actualStart)) {
             if (this.trackId.includes("Hoppo")) {
                 if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === 39);
                 if (actualStart === "吹田貨") startBlock = blks.find(b => b.stationIdx === 41);
             } else if (actualStart === "向日町操") {
                 startBlock = blks.find(b => b.hoppoStationName === "向日町操");
+            } else if (actualStart === "宮原操") {
+                // 旅客の出区は本線経由。新大阪の位置から本線へ出る。
+                startBlock = blks.find(b => b.stationIdx === 39);
             }
         }
 
@@ -247,7 +250,31 @@ class Train {
         if (nextIdx < 0 || nextIdx >= blks.length) return;
         const isFull = blks[nextIdx].lanes.every(l => l !== null);
         const isSuspended = this.game.trackMgr.isSuspended(this.trackId, nextIdx);
-        if (isFull || isSuspended) this.delayTime += CONFIG.TICK_SEC;
+        if (!isFull && !isSuspended) return;
+        /* ★短い信号待ちは遅れに数えない。
+           列車の続く線区では、先行列車との間隔をとるための短い停止は
+           いつでも起きていて、ダイヤにもその余裕時分が入っている。
+           以前はこれも全て遅れとして積んでいたため、
+           支障が何も起きていなくても列車が何時間も遅れている
+           扱いになり、折り返しの判断などが狂っていた。
+           見合わせによる停止は最初から遅れとして積む。 */
+        if (!isSuspended && this.stuckTime < 60) return;
+        this.delayTime += CONFIG.TICK_SEC;
+    }
+
+    /**
+     * 回復運転。
+     * 遅れている列車が支障なく走れているときは、余裕時分のぶんだけ
+     * 少しずつ遅れを取り戻す。実際の運転でも、遅れた列車は
+     * 駅間の余裕時分や停車時分を詰めて回復を図る。
+     * 抑止中・輸送障害中・速度規制中は取り戻さない。
+     */
+    recoverDelay() {
+        if (this.delayTime <= 0) return;
+        if (this.stuckTime > 0 || this.minorTrouble) return;
+        if (this.isManuallySuspended || this.game.isEmergency) return;
+        if (this.game.trackMgr.speedFactor(this.trackId, this.currBlockIndex) > 1) return;
+        this.delayTime = Math.max(0, this.delayTime - 3);   // 1ブロックあたり3秒
     }
 
     update() {
@@ -261,13 +288,77 @@ class Train {
             }
             if (this.timer > 0) {
                 this.timer -= CONFIG.TICK_SEC;
+                /* ★1Tickは15秒なので、15の倍数でない待ち時間は0を飛び越えて
+                   負の値になる。0で止めておかないと、たまたま -1 になった車両が
+                   下の「待機中」の目印と区別できず、出区できないまま
+                   留置場の枠を占め続けてしまう。 */
+                if (this.timer < 0) this.timer = 0;
             }
-            // ★修正: 0ぴったりではなく0以下になったら出区（Tickの減算で0を飛び越える事象を防止）。-1は待機状態。
-            if (this.timer <= 0 && this.timer !== -1) { 
+            /* 出区する運用が決まっている車両だけを出区させる。
+               運用の決まっていない予備車 (depotOutConfig が無い) は、
+               指令または出区計画が運用を与えるまで留置場で待つ。 */
+            if (this.timer <= 0 && this.depotOutConfig) {
                 // ★改善: 強制出区フラグを引数として渡す
                 this.tryDepotOut(this.startName, this.forceDepotOut);
             }
             return;
+        }
+
+        /* ★在線の登録の自己修復。
+           運転整理で線路を移すときに、ごくまれに登録が外れたままになることがある。
+           外れていると後続列車がそこへ進入できてしまうので、毎Tick直す。
+           抑止中・防護無線中でも直したいので、それらの判定より前に置く。 */
+        {
+            const hb = this.game.trackMgr.blocks[this.trackId];
+            const cb = hb ? hb[this.currBlockIndex] : null;
+            if (cb && cb.lanes && cb.x !== -1000 && cb.lanes.indexOf(this) < 0) {
+                let slot = (this.lane >= 0 && this.lane < cb.lanes.length &&
+                            cb.lanes[this.lane] === null) ? this.lane : -1;
+                if (slot < 0) slot = cb.lanes.indexOf(null);
+                if (slot >= 0) { this.lane = slot; cb.lanes[slot] = this; }
+            }
+        }
+
+        /* ★複々線 (西明石〜草津) の外に内側線は無い。
+           線路データには全線ぶんの内側線ブロックがあるが、実際の線路は
+           草津から東・西明石から西は複線なので、何かの経路で内側線に
+           乗ってしまった列車は外側線へ戻す。
+           戻さないと、Super-TID の線路図に線路が描かれていない場所へ
+           列車が出てしまう (線路図と在線が食い違う)。 */
+        if (this.trackId.indexOf("In") >= 0 && this.trackId.indexOf("Hoppo") < 0) {
+            const ib = this.game.trackMgr.blocks[this.trackId];
+            const icb = ib ? ib[this.currBlockIndex] : null;
+            const si = icb ? icb.stationIdx : undefined;
+            if (si !== undefined &&
+                (si < STATION_MAP["西明石"] || si > STATION_MAP["草津"])) {
+                const outId = this.trackId.replace("In", "Out");
+                const ob = this.game.trackMgr.blocks[outId];
+                const onb = ob ? ob[this.currBlockIndex] : null;
+                if (onb && onb.x !== -1000) {
+                    const lane = this.findFreeLane(onb);
+                    if (lane !== -1) {
+                        /* ★自分が入っている枠だけを空ける。
+                           this.lane が実際の枠とずれていることがあり、
+                           そのまま lanes[this.lane] を空けると
+                           別の列車の在線を消してしまう。 */
+                        if (icb) {
+                            const at = icb.lanes.indexOf(this);
+                            if (at >= 0) icb.lanes[at] = null;
+                        }
+                        this.trackId = outId;
+                        this.lane = lane;
+                        onb.lanes[lane] = this;
+                    } else {
+                        /* 外側線が空くまで待つ。ここで待たずに走らせると、
+                           線路の無い内側線を何駅も進んでしまう。
+                           実際にも、進路が開くまで場内で待つ。 */
+                        this.state = "holding";
+                        this.timer = 15;
+                        this.addHoldDelay();
+                        return;
+                    }
+                }
+            }
         }
 
         if (this.game.isEmergency || this.isManuallySuspended) { 
@@ -319,6 +410,7 @@ class Train {
         const blks = this.game.trackMgr.blocks[this.trackId];
         const currentBlock = blks[this.currBlockIndex];
         const currentStName = blockStationName(currentBlock);
+
 
         // ★追加: 駅停車中の旅客対応トラブル (荷物挟まり / 急病人)
         if (this.state === "stopped" && this.hasStoppedAtCurrent && this.timer > 0 && this.timer < 30) {
@@ -424,6 +516,19 @@ class Train {
                         }
                     }
                     
+                    /* ★線区の端で止まっているときは、分岐・合流の転線をやり直す。
+                       湖西線を下ってきた列車は山科で本線へ移らないと先へ進めないが、
+                       転線を試すのは「走行中(running)」の判定だけだった。
+                       そのため、山科で本線の番線が空くのを待って holding になった列車が
+                       二度と転線を試さず、その後ろに湖西線の列車が何時間も
+                       連なったまま動けなくなっていた。
+                       ここで試し直すことで、番線が空いた時点で本線へ入れる。 */
+                    {
+                        const aheadBlk = blks[this.currBlockIndex + this.dir];
+                        if (aheadBlk && aheadBlk.x === -1000) this.checkLogicUpdates();
+                        if (this.state === "running") return;   // 転線できたら次のTickで走らせる
+                    }
+
                     // 修正: 常に true を渡し、ホールド状態でもしっかり間隔チェックを継続させる
                     // ★追加: 指令パッドの「強制発車」が出ている列車は間隔チェックを飛ばす。
                     //        (進路が空いているかどうかは move() が findFreeLane で見るので、
@@ -498,10 +603,10 @@ class Train {
                                 const hereIdx = STATION_MAP[hereName];
                                 if (this.dir === 1) {
                                     this.dest = (hereIdx !== undefined && hereIdx < STATION_MAP["向日町操"] && Math.random() < 0.5)
-                                        ? "向日町操" : this.game.spawner.fallbackTerminal(1, hereName);
+                                        ? "向日町操" : this.game.spawner.fallbackTerminal(1, hereName, this.trackId);
                                 } else {
                                     this.dest = (hereIdx !== undefined && hereIdx > STATION_MAP["宮原操"] && Math.random() < 0.5)
-                                        ? "宮原操" : this.game.spawner.fallbackTerminal(-1, hereName);
+                                        ? "宮原操" : this.game.spawner.fallbackTerminal(-1, hereName, this.trackId);
                                 }
                                 this.nextAction = "depot";
                                 
@@ -541,6 +646,7 @@ class Train {
                         } else {
                             this.stuckTime = 0;
                             this.forceStart = false; // ★移動が完了したら強制発車フラグを解除
+                              this.recoverDelay();
                               this.move();
                         }
                     }
@@ -651,9 +757,11 @@ class Train {
 
         if (blk.stationIdx === STATION_MAP["近江塩津"]) {
             if (this.dir === 1 && this.trackId === "Kosei_Up") {
-                // 上り(湖西線→本線)
-                let target = (this.type === "新快速" || this.type === "特急") ? "Up_Out" : "Up_In";
-                this.attemptTrackSwitch(target, 200);
+                /* 上り(湖西線→本線)。
+                   ★近江塩津は複々線の外なので内側線は無い。必ず外側線へ移す。
+                     以前は普通・快速を Up_In へ移していたため、
+                     線路図に無い内側線を走ることになっていた。 */
+                this.attemptTrackSwitch("Up_Out", 200);
             } else if (this.dir === -1 && !this.trackId.includes("Kosei")) {
                 // 下り(本線→湖西線) 
                 if (this.isKoseiRoute) {

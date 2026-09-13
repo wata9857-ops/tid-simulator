@@ -7,6 +7,17 @@ Train.prototype.executeTurnBack = function () {
 
         // ★事象2対応: 運用変更(特急化など)がある場合は、他の折り返し/入庫ロジックより最優先で処理する
         if (this.serviceChange && this.serviceChange.at === stName) {
+            /* ★運用が変わって進行方向も変わる場合は、先にその場で折り返す。
+               送り込み回送が着いて、そこから反対方向の営業列車になる運用。
+               番線が空くまでは何も変えずに待つ (serviceChange を消してしまうと
+               やり直しが効かなくなり、向きがそのままで走り出してしまう)。 */
+            const wantDir = this.game.ops.directionFor(stName, this.serviceChange.dest);
+            if (wantDir !== 0 && wantDir !== this.dir) {
+                if (!this.game.ops.moveToOppositeTrack(this, stName, wantDir)) {
+                    this.timer = 30;
+                    return;
+                }
+            }
             this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
             this.type = this.serviceChange.type;
             this.dest = this.serviceChange.dest;
@@ -17,6 +28,7 @@ Train.prototype.executeTurnBack = function () {
                 (this.type === "特急" ? this.trainNo : this.dutyName);
             this.game.spawner.activeTrainNos.add(this.trainNo); // ★追加
             const toDepot = (this.dest === "向日町操");
+            this.startName = stName;   // ここから始まる列車になる
             this.serviceChange = null;
 
             // ★運用が変わったので、いまの編成でその運用に入れるか確かめる。
@@ -30,6 +42,8 @@ Train.prototype.executeTurnBack = function () {
                 return;
             }
             this.vehicles = swapped;
+            // 行先が変わったので、湖西線経由かどうかを決め直す
+            this.updateKoseiRoute();
             this.state = "waiting_start";
             this.timer = 15; this.hasStoppedAtCurrent = false;
             this.nextAction = toDepot ? "depot" : "turnback";
@@ -135,13 +149,13 @@ Train.prototype.executeTurnBack = function () {
                 DEPOTS[stName] && DEPOTS[stName].trains.length < DEPOTS[stName].capacity) {
                 let depot = DEPOTS[stName];
                 const newDir = this.dir * -1;
-                let nextDest = this.game.spawner.getDestination(this.type, newDir, stName);
+                let nextDest = this.game.spawner.getDestination(this.type, newDir, stName, this.trackId);
                 // ★行先が始発駅と同じになった場合の代替。
                 //   以前は上り=京都/下り=姫路と決め打ちしていたため、
                 //   草津で上りに折り返した列車に「京都行き」(= 後方) が
                 //   割り当てられ、終点に着けないまま走り続けていた。
                 if (nextDest === this.startName) {
-                    nextDest = this.game.spawner.fallbackTerminal(newDir, stName);
+                    nextDest = this.game.spawner.fallbackTerminal(newDir, stName, this.trackId);
                 }
                 if (stName === "向日町操" && nextDest === "向日町操") nextDest = (newDir===1) ? "京都" : "大阪";
                 
@@ -384,9 +398,9 @@ Train.prototype.executeTurnBack = function () {
                 this.trackId = newTrackId; this.dir = newDir; this.currBlockIndex = newB.index; this.lane = tl;
                 newB.lanes[tl] = this;
                 if (!["回送","貨物","臨時","特急"].includes(this.type)) {
-                    this.dest = this.game.spawner.getDestination(this.type, this.dir, stName);
+                    this.dest = this.game.spawner.getDestination(this.type, this.dir, stName, newTrackId);
                     if (this.dest === this.startName) {
-                        this.dest = this.game.spawner.fallbackTerminal(this.dir, stName);
+                        this.dest = this.game.spawner.fallbackTerminal(this.dir, stName, this.trackId);
                     }
                     
                     // ★追加: 近江塩津・敦賀からの下り普通は米原行きとする（琵琶湖線経由）

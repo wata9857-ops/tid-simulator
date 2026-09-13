@@ -420,7 +420,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
         return ok;
 };
 
-Spawner.prototype.getDestination = function (type, dir, startName) {
+Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
         if (type === "貨物") {
             if (dir === 1) {
                 if (startName === "吹田貨") {
@@ -593,7 +593,7 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
         // ★進行方向の後ろにある駅が行先に選ばれていないか確かめる。
         //   例: 草津で上りに折り返した列車に「京都行き」が割り当てられると、
         //       京都は後方にあるため永久にたどり着けず、米原方向へ走り続けていた。
-        dest = this.sanitizeDestination(dest, dir, startName, type);
+        dest = this.sanitizeDestination(dest, dir, startName, type, trackId);
 
         let h = (ct / 3600) % 24;
         // ★改善: 22:00以降の終電間際における段階的な行き先短縮ロジック
@@ -647,7 +647,7 @@ Spawner.prototype.getDestination = function (type, dir, startName) {
  * 分岐線(JR東西線・JR宝塚線)は本線と同じインデックス空間を共有しているので、
  * 行先の属する線区から進行方向を決める。
  */
-Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type) {
+Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type, trackId) {
     if (!dest) return dest;
 
     /* --- 分岐線の行先は、走る向きも、分岐駅(尼崎)との位置関係も決まっている。
@@ -658,20 +658,21 @@ Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type) {
            これを見ないと「草津発 放出行き」のように、
            物理的にたどり着けない行先が割り当てられていた。 */
     const amaIdx = STATION_MAP["尼崎"];
+    const tid = trackId || "";
     const sIdx0 = STATION_MAP[startName];
     if (TOZAI_THROUGH_DESTS.includes(dest)) {
         // JR東西線へ直通するのは、西明石〜尼崎 の神戸線内から上ってきた列車。
         // 姫路など西明石より西からの直通は無い (207系/321系の走る範囲外)。
         const okSide = TOZAI_PLACES.indexOf(startName) >= 0 ||
                        (sIdx0 !== undefined && sIdx0 >= STATION_MAP["西明石"] && sIdx0 <= amaIdx);
-        return (dir === 1 && okSide) ? dest : this.fallbackTerminal(dir, startName);
+        return (dir === 1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
     }
     if (FUKUCHI_THROUGH_DESTS.includes(dest)) {
         // JR宝塚線へ直通するのは、高槻〜尼崎 の京都線内から下ってきた列車。
         // 琵琶湖線(草津・米原)からの直通は無い。
         const okSide = FUKUCHI_PLACES.indexOf(startName) >= 0 ||
                        (sIdx0 !== undefined && sIdx0 >= amaIdx && sIdx0 <= STATION_MAP["高槻"]);
-        return (dir === -1 && okSide) ? dest : this.fallbackTerminal(dir, startName);
+        return (dir === -1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
     }
 
     // --- 貨物駅・操車場は本線のインデックスで測れないものがあるので触らない
@@ -679,27 +680,66 @@ Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type) {
     const startIdx = STATION_MAP[startName];
     if (destIdx === undefined || startIdx === undefined) return dest;
 
+    /* ★分岐線の中にいる列車が、本線の駅を行先にする場合。
+       分岐線と本線は尼崎・山科でしかつながっていないので、
+       その合流点より先の駅しか行先にできない。
+       (例: 放出発の下り列車は尼崎で本線に入るので、
+        行先は尼崎から西の駅に限られる。大阪は上り方向なので行けない) */
+    const onTozai = (tid.indexOf("Tozai") === 0) || TOZAI_PLACES.indexOf(startName) >= 0;
+    const onFukuchi = (tid.indexOf("Fukuchi") === 0) || FUKUCHI_PLACES.indexOf(startName) >= 0;
+    const onKosei = (tid.indexOf("Kosei") === 0) || KOSEI_PLACES.indexOf(startName) >= 0;
+    if (onTozai) {
+        if (dir !== -1 || destIdx > amaIdx) return this.fallbackTerminal(dir, startName, trackId);
+        return dest;
+    }
+    if (onFukuchi) {
+        if (dir !== 1 || destIdx < amaIdx) return this.fallbackTerminal(dir, startName, trackId);
+        return dest;
+    }
+    if (onKosei) {
+        const yamaIdx = STATION_MAP["山科"];
+        if (dir === -1 && destIdx <= yamaIdx) return dest;
+        if (dir === 1 && destIdx >= STATION_MAP["近江塩津"]) return dest;
+        return this.fallbackTerminal(dir, startName, trackId);
+    }
+
     // 前方(進行方向側)にあればそのまま
     if ((destIdx - startIdx) * dir > 0) return dest;
-    // 当駅止まり(折り返し)は、終着として成立するのでそのまま
-    if (destIdx === startIdx) return dest;
-
-    return this.fallbackTerminal(dir, startName);
+    /* 始発駅と同じ行先は、走り出した瞬間に到達できなくなるので使わない。
+       (「西明石発 西明石行き」が上り線を走り続ける、という状態を防ぐ) */
+    return this.fallbackTerminal(dir, startName, trackId);
 };
 
-/** 進行方向の前方にある、いちばん近い主要な終着駅を返す */
-Spawner.prototype.fallbackTerminal = function (dir, startName) {
+/**
+ * 進行方向の前方にある、いちばん近い主要な終着駅を返す。
+ *
+ * ★線区ごとに候補を変える。
+ *   分岐線 (湖西線・JR宝塚線・JR東西線) は本線とインデックスを共有しているので、
+ *   本線の駅名から選ぶと「道場発 須磨行き」のような、その線路では
+ *   たどり着けない行先になってしまう。
+ */
+Spawner.prototype.fallbackTerminal = function (dir, startName, trackId) {
     const startIdx = STATION_MAP[startName];
-    // 上り(米原方面) / 下り(姫路方面) それぞれの主要終着駅を、近い順に並べたもの
-    const UP   = ["高槻", "京都", "草津", "野洲", "米原", "長浜", "近江塩津", "敦賀"];
-    const DOWN = ["尼崎", "大阪", "神戸", "須磨", "西明石", "加古川", "姫路"];
-    const list = (dir === 1) ? UP : DOWN;
+    let list;
+    const tid = trackId || "";
+    if (tid.indexOf("Fukuchi") === 0 || FUKUCHI_PLACES.indexOf(startName) >= 0) {
+        list = (dir === 1) ? ["尼崎"] : ["宝塚", "新三田"];
+    } else if (tid.indexOf("Tozai") === 0 || TOZAI_PLACES.indexOf(startName) >= 0) {
+        list = (dir === 1) ? ["京橋", "放出"] : ["尼崎"];
+    } else if (tid.indexOf("Kosei") === 0 || KOSEI_PLACES.indexOf(startName) >= 0) {
+        list = (dir === 1) ? ["近江今津", "永原"] : ["京都"];
+    } else {
+        // 本線。上り(米原方面) / 下り(姫路方面) の主要終着駅を近い順に。
+        list = (dir === 1)
+            ? ["高槻", "京都", "草津", "野洲", "米原", "長浜", "近江塩津", "敦賀"]
+            : ["尼崎", "大阪", "神戸", "須磨", "西明石", "加古川", "姫路"];
+    }
     if (startIdx === undefined) return list[list.length - 1];
     const ahead = list
         .map(n => ({ n: n, i: STATION_MAP[n] }))
         .filter(o => o.i !== undefined && (o.i - startIdx) * dir > 0)
         .sort((a, b) => Math.abs(a.i - startIdx) - Math.abs(b.i - startIdx));
+    if (ahead.length === 0) return list[list.length - 1];
     // 近すぎる駅ばかりにならないよう、前方の候補のうち2番目までから選ぶ
-    if (ahead.length === 0) return (dir === 1) ? "敦賀" : "姫路";
     return ahead[Math.min(1, ahead.length - 1)].n;
 };

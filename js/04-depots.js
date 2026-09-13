@@ -50,7 +50,13 @@ function depotTrackId(depotName, dir, type) {
     if (line === "Tozai")   return (dir === 1) ? "Tozai_Up" : "Tozai_Down";
     if (line === "Fukuchi") return (dir === 1) ? "Fukuchi_Up" : "Fukuchi_Down";
     if (line === "Kosei")   return (dir === 1) ? "Kosei_Up" : "Kosei_Down";
-    if (depotName === "宮原操") return (dir === 1) ? "Up_Hoppo" : "Down_Hoppo";
+    /* 宮原操は北方貨物線に面しているが、旅客車の出入区は本線 (新大阪・大阪方) を通る。
+       北方貨物線は大阪駅を通らない貨物のバイパスなので、
+       旅客の回送をそこへ乗せると大阪・高槻へ出られなくなる。 */
+    if (depotName === "宮原操") {
+        if (type === "貨物") return (dir === 1) ? "Up_Hoppo" : "Down_Hoppo";
+        return (dir === 1) ? "Up_Out" : "Down_Out";
+    }
 
     // --- 本線。優等・回送・貨物は外側線、普通・快速は内側線から出る。
     let tid = (dir === 1) ? "Up_In" : "Down_In";
@@ -74,6 +80,20 @@ function depotAdd(depotName, train) {
     if (dep.trains.indexOf(train) < 0) dep.trains.push(train);
     return true;
 }
+
+/* 留置場の別名。
+   網干総合車両所や松井山手の電留線は線路図の範囲の外にあるので、
+   線路図の上では、いちばん近い駅の留置線から出入りするものとして扱う。
+   出入区の処理がどちらの名前で呼ばれても同じ留置場を指すようにする。
+   (尼崎には留置場を置いていないので、松井山手・四条畷は
+    留置場を経由せず駅に直接生成される) */
+const DEPOT_ALIAS = {
+    "網干": "姫路", "播州赤穂": "姫路", "上郡": "姫路",
+    "松井山手": "尼崎", "四条畷": "尼崎"
+};
+
+/** 留置場の名前を、DEPOTS の見出しに直す。 */
+function depotKeyOf(name) { return DEPOT_ALIAS[name] || name; }
 
 /** すべての留置場の在線リストから、その列車を外す。 */
 function depotRemove(train) {

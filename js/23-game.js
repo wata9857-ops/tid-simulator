@@ -149,7 +149,11 @@ class GameSystem {
                 reserveTrain.dest = config.dest || this.spawner.getDestination(config.type, config.dir, config.startName);
                 reserveTrain.dir = config.dir;
                 reserveTrain.trackId = config.trackId;
-                reserveTrain.startName = config.startName;
+                /* ★実際に入っている留置場の名前を持たせる。
+                   config.startName は「網干」のように線路図の外の名前が
+                   入ることがあり、それを持たせると出区のときに
+                   留置場が見つからず出られなくなる。 */
+                reserveTrain.startName = actualStart;
                 reserveTrain.trainNo = config.name || this.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId);
                 reserveTrain.dutyName = dutyName || reserveTrain.trainNo;
                 reserveTrain.nextAction = config.nextAction || "turnback";
@@ -228,6 +232,15 @@ class GameSystem {
         this.trains = this.trains.filter(t => t.state !== "finished");
         this.trains.sort((a,b)=>PRIORITY[b.type]-PRIORITY[a.type]);
         this.trains.forEach(t => t.update());
+
+        /* 行先の見張り。折り返しや運転整理で行先・向きが書き換わった直後に、
+           いまの線路・向きでたどり着けるかを確かめ、駄目なら直す。
+           (js/27-operations.js の fixUnreachableDest) */
+        this.trains.forEach(t => {
+            if (t.state === "finished" || t.state === "in_depot") return;
+            this.ops.fixUnreachableDest(t);
+        });
+
         
         this.ui.updateClock(this.currentTime);
         

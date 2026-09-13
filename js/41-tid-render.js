@@ -26,7 +26,8 @@ class TidRenderer {
         this.viewW = 0; this.viewH = 0; this.dpr = 1;
 
         // 表示の切り替え (画面の「表示」メニューから変える)
-        this.show = { signal: true, occupy: true, fleet: true, route: true, platform: true };
+        this.show = { signal: true, occupy: true, fleet: true, route: true,
+                      platform: true, predict: true };
 
         /* 表示する線区。全線を縦に並べると長くなりすぎるので、
            実物の Super-TID と同じように線区ごとに切り替える。 */
@@ -118,8 +119,9 @@ class TidRenderer {
     // ============================================================ 当たり判定
     buildStationHits() {
         this.hitStations = [];
-        const topY = TID_GEO.topPad - 40;
-        const botY = this.height - TID_GEO.bottomPad + 26;
+        const topY = TID_GEO.topPad - TID_GEO.plateTopGap;
+        const botY = this.height - TID_GEO.bottomPad -
+                     (TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap) + TID_GEO.plateBotGap;
         const add = (name, x, y) => {
             const w = Math.max(TID_GEO.plateW, name.length * 15 + 22);
             this.hitStations.push({ name: name, x: x - w / 2, y: y - 11, w: w, h: 22 });
@@ -182,6 +184,10 @@ class TidRenderer {
         this.hitTrains = [];
         this.hitDepots = [];
 
+        /* 駅ごとの発着予告 (次に来る列車) を、列車を1回なめて集める。
+           駅ごとに全列車を調べると重いので、列車から「次に着く駅」を引く。 */
+        this.predict = this.buildPredictions();
+
         this.drawTracks(ctx, xMin, xMax);
         this.drawStations(ctx, xMin, xMax);
         if (this.show.route) this.drawRoutes(ctx, xMin, xMax);
@@ -210,6 +216,36 @@ class TidRenderer {
         });
     }
 
+    /**
+     * 駅ごとの発着予告を集める。
+     * 走っている列車それぞれについて、進行方向の前方でいちばん近い駅を探し、
+     * 「その駅・その線路に次に来る列車」として登録する。
+     * 表示は実物と同じく1線1本ぶん (いちばん近い列車) だけを出す。
+     */
+    buildPredictions() {
+        const out = {};
+        this.game.trains.forEach(t => {
+            if (t.state === "in_depot" || t.state === "finished") return;
+            if (this.trackY[t.trackId] === undefined) return;
+            const blks = this.game.trackMgr.blocks[t.trackId];
+            if (!blks) return;
+            for (let k = 0; k <= UNITS_PER_STATION * 3; k++) {
+                const i = t.currBlockIndex + t.dir * k;
+                if (i < 0 || i >= blks.length) break;
+                const b = blks[i];
+                if (b.x === -1000) break;
+                if (!isRealStationBlock(b)) continue;
+                const name = blockStationName(b);
+                if (!name) continue;
+                const key = t.trackId + "|" + name;
+                const cur = out[key];
+                if (!cur || k < cur.d) out[key] = { t: t, d: k };
+                break;
+            }
+        });
+        return out;
+    }
+
     /** 線路と軌道回路 */
     drawTracks(ctx, xMin, xMax) {
         this.rows().forEach(row => {
@@ -217,7 +253,10 @@ class TidRenderer {
             if (!blks) return;
             const y = this.trackY[row.id];
             const range = tidTrackRange(row.id);
-            const sX = tidStationX(range[0]), eX = tidStationX(range[1]);
+            /* ★左右を入れ替えて描くので、線区の端の大小も入れ替わる。
+               (tidStationX は Super-TID の向きの X を返す) */
+            const x1r = tidStationX(range[0]), x2r = tidStationX(range[1]);
+            const sX = Math.min(x1r, x2r), eX = Math.max(x1r, x2r);
             const a = Math.max(sX, xMin), b = Math.min(eX, xMax);
             if (b <= a) return;
 
@@ -228,14 +267,17 @@ class TidRenderer {
             for (let i = 0; i < blks.length; i++) {
                 const blk = blks[i];
                 if (blk.x === -1000) continue;
-                if (blk.x < xMin - BLOCK_WIDTH || blk.x > xMax + BLOCK_WIDTH) continue;
-                const x1 = blk.x - BLOCK_WIDTH / 2 + 2;
-                const x2 = blk.x + BLOCK_WIDTH / 2 - 2;
+                const bx = tidX(blk.x);
+                if (bx < xMin - BLOCK_WIDTH || bx > xMax + BLOCK_WIDTH) continue;
+                const x1 = bx - BLOCK_WIDTH / 2 + 2;
+                const x2 = bx + BLOCK_WIDTH / 2 - 2;
 
-                const busy = blk.lanes.some(l => l !== null);
-                if (this.show.occupy && busy) {
-                    tidDrawRail(ctx, x1, x2, y, TID_COLORS.occupied);
-                }
+                /* ★在線は線路を塗らない。
+                   実物の Super-TID は、線路の色は「進路が開通しているか」
+                   (黄緑) だけを表し、在線は列車の位置の丸 (走行中=青 /
+                   停車中=赤) で示している。以前は在線の軌道回路を赤く
+                   塗っていたので、列車の多い時間帯は線路がほぼ赤一色になり、
+                   実物とまるで違う見え方になっていた。 */
                 // 運転見合わせ・障害
                 if (this.game.trackMgr.isSuspended(row.id, i)) {
                     ctx.strokeStyle = TID_COLORS.fault;
@@ -256,8 +298,11 @@ class TidRenderer {
                     ctx.lineWidth = 2;
                     ctx.beginPath(); ctx.moveTo(x1, y + 6); ctx.lineTo(x2, y + 6); ctx.stroke();
                 }
-                // 軌道回路の境目
-                tidDrawCircuitMark(ctx, blk.x + BLOCK_WIDTH / 2, y);
+                /* 軌道回路の境目。
+                   実物は境目ごとに白い丸が並ぶ。閉塞の区切りは
+                   TrackManager のブロックそのものなので、
+                   見た目だけの丸は足していない。 */
+                tidDrawCircuitMark(ctx, bx + BLOCK_WIDTH / 2, y);
             }
 
         });
@@ -266,8 +311,9 @@ class TidRenderer {
     /** 駅 (駅名札・番線・ホーム・分岐) */
     drawStations(ctx, xMin, xMax) {
         const tY = this.trackY;
-        const topY = TID_GEO.topPad - 40;
-        const botY = this.height - TID_GEO.bottomPad + 26;
+        const topY = TID_GEO.topPad - TID_GEO.plateTopGap;
+        const botY = this.height - TID_GEO.bottomPad -
+                     (TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap) + TID_GEO.plateBotGap;
 
         STATIONS.forEach((st, i) => {
             const x = tidStationX(i);
@@ -289,6 +335,9 @@ class TidRenderer {
             if (tY["Up_Out"] !== undefined) {
                 this.drawStationLanes(ctx, st.name, x, tY["Up_Out"], false);
             }
+
+            // 発着予告 (その駅の線路ごとに、次に来る列車を出す)
+            this.drawPredictions(ctx, st.name, x);
 
             // 分岐線の駅
             [[KOSEI_STATIONS_MAP, "Kosei_Up", "Kosei_Down"],
@@ -319,7 +368,7 @@ class TidRenderer {
         (def.crossovers || []).forEach(c => {
             const yA = tY[c[0]], yB = tY[c[1]];
             if (yA === undefined || yB === undefined) return;
-            tidDrawCrossover(ctx, cx, Math.min(yA, yB), Math.max(yA, yB), c[2]);
+            tidDrawCrossover(ctx, cx, Math.min(yA, yB), Math.max(yA, yB), tidShape(c[2]));
         });
 
         (def.junctions || []).forEach(j => {
@@ -333,15 +382,52 @@ class TidRenderer {
         (def.stubs || []).forEach(s => {
             const y = tY[s.from];
             if (y === undefined) return;
-            const key = s.side + (s.up ? "U" : "D");
+            const key = tidSide(s.side) + (s.up ? "U" : "D");
             const bag = s.up ? usedUp : usedDown;
             const order = bag[key] || 0;
             bag[key] = order + 1;
-            tidDrawStub(ctx, cx, y, s.up, s.label, s.side, order);
+            tidDrawStub(ctx, cx, y, s.up, s.label, tidSide(s.side), order);
         });
     }
 
-    /** 駅の番線とホームを描く */
+    /**
+     * 駅の発着予告を描く。
+     * 実物と同じく、下り線はその線路の下、上り線はその線路の上に、
+     * 線名の小札を付けた札で「次に来る列車」を出す。
+     */
+    drawPredictions(ctx, stName, cx) {
+        if (!this.show.predict || !this.predict) return;
+        this.rows().forEach(row => {
+            const y = this.trackY[row.id];
+            if (y === undefined) return;
+            const p = this.predict[row.id + "|" + stName];
+            /* その線路に来る列車が無いときは、実物と同じく薄い空き枠だけを出す。
+               (実物の画面も、列車が決まっていない所は枠だけが並んでいる) */
+            const range = tidTrackRange(row.id);
+            const sIdx = STATION_MAP[stName];
+            if (sIdx !== undefined && (sIdx < range[0] || sIdx > range[1]) &&
+                KOSEI_STATIONS_MAP[sIdx] === undefined &&
+                FUKUCHI_STATIONS_MAP[sIdx] === undefined &&
+                TOZAI_STATIONS_MAP[sIdx] === undefined) return;
+            /* 実物では、下り線の予告は駅の右 (進む先) 側、
+               上り線の予告は駅の左側に並ぶ。こうすると上下の札が
+               横にずれるので、狭い内側線のあいだでも重ならない。 */
+            const py = (row.dir === -1) ? (y + 22) : (y - 22);
+            const px = (row.dir === -1) ? (cx + 88) : (cx - 88);
+            tidDrawPredictPlate(ctx, px, py, p ? row.label : null, p ? p.t : null);
+        });
+    }
+
+    /**
+     * 駅の着発線とホームを描く。
+     *
+     * ■ 実物に合わせた点
+     *   ・着発線を薄い枠 (構内) で囲む
+     *   ・転てつ器のある駅は、構内の入口に白い四角を置く
+     *   ・ホームは「面している2本の線路のちょうど中間」に1本の黄色い帯で描き、
+     *     上の線路の番線番号を帯の上、下の線路の番線番号を帯の下に書く
+     *     (以前は線路ごとに帯を描いていたので、島式ホームが2本に見えていた)
+     */
     drawStationLanes(ctx, stName, cx, refUpOutY, branch) {
         const rule = STATION_PLATFORM_RULES[stName];
         if (!rule) return;
@@ -350,29 +436,52 @@ class TidRenderer {
         // 本線 (そのまま真っ直ぐ通る線) の縦位置
         const mains = this.rows().map(r => this.trackY[r.id]);
         const isMain = (y) => mains.some(m => Math.abs(m - y) < 1.5);
-        // 上り側か下り側か (上り側は下半分に来る)
-        const mid = refUpOutY - TID_GEO.rowGap * 1.5;
 
-        for (let i = 0; i < rule.lanes.length && i < ys.length; i++) {
-            const y = ys[i];
-            if (!isMain(y)) {
+        // 着発線を画面の上から下の順に並べ直す (ホームの組を作るため)
+        const n = Math.min(rule.lanes.length, ys.length);
+        const lanes = [];
+        for (let i = 0; i < n; i++) {
+            lanes.push({ y: ys[i], label: rule.labels[i], plat: !!rule.lanes[i] });
+        }
+        lanes.sort((a, b) => a.y - b.y);
+
+        // 転てつ器があるのは、渡り線・分岐のある駅か、副本線を持つ駅
+        const hasPoints = !!TID_JUNCTIONS[stName] || lanes.some(l => !isMain(l.y));
+
+        lanes.forEach(ln => {
+            if (!isMain(ln.y)) {
                 // 待避線・副本線。前後に渡り線を付けて本線につなぐ。
-                tidDrawRail(ctx, cx - w / 2, cx + w / 2, y);
+                tidDrawRail(ctx, cx - w / 2, cx + w / 2, ln.y);
                 const base = mains.reduce((best, m) =>
-                    Math.abs(m - y) < Math.abs(best - y) ? m : best, mains[0]);
+                    Math.abs(m - ln.y) < Math.abs(best - ln.y) ? m : best, mains[0]);
                 ctx.strokeStyle = TID_COLORS.railEdge; ctx.lineWidth = 4;
                 ctx.beginPath();
-                ctx.moveTo(cx - w / 2, y); ctx.lineTo(cx - w / 2 - 22, base);
-                ctx.moveTo(cx + w / 2, y); ctx.lineTo(cx + w / 2 + 22, base);
+                ctx.moveTo(cx - w / 2, ln.y); ctx.lineTo(cx - w / 2 - 22, base);
+                ctx.moveTo(cx + w / 2, ln.y); ctx.lineTo(cx + w / 2 + 22, base);
                 ctx.stroke();
                 ctx.strokeStyle = TID_COLORS.rail; ctx.lineWidth = 2.5;
                 ctx.beginPath();
-                ctx.moveTo(cx - w / 2, y); ctx.lineTo(cx - w / 2 - 22, base);
-                ctx.moveTo(cx + w / 2, y); ctx.lineTo(cx + w / 2 + 22, base);
+                ctx.moveTo(cx - w / 2, ln.y); ctx.lineTo(cx - w / 2 - 22, base);
+                ctx.moveTo(cx + w / 2, ln.y); ctx.lineTo(cx + w / 2 + 22, base);
                 ctx.stroke();
             }
-            if (this.show.platform && rule.lanes[i]) {
-                tidDrawPlatform(ctx, cx, y, rule.labels[i], y >= mid);
+            // 構内 (着発線) の枠
+            tidDrawStationTrackBox(ctx, cx, ln.y, w);
+            // 構内の入口の転てつ器 (実物は構内の枠のすぐ外側に白い四角)
+            if (hasPoints) tidDrawTurnoutBox(ctx, cx - w / 2 - 9, ln.y);
+        });
+
+        // ホーム帯。上から順に、ホームのある着発線を2本ずつ組にする。
+        if (this.show.platform) {
+            const p = lanes.filter(l => l.plat);
+            for (let i = 0; i < p.length; i += 2) {
+                const upper = p[i], lower = p[i + 1];
+                if (lower) {
+                    tidDrawPlatform(ctx, cx, upper.y, lower.y, upper.label, lower.label);
+                } else {
+                    // 相手のいない片面ホームは、その線路のすぐ下に置く
+                    tidDrawPlatform(ctx, cx, upper.y, upper.y + 24, upper.label, null);
+                }
             }
         }
     }
@@ -384,14 +493,17 @@ class TidRenderer {
             const blks = this.game.trackMgr.blocks[t.trackId];
             if (!blks) return;
             const here = blks[t.currBlockIndex];
-            if (!here || here.x < xMin - 400 || here.x > xMax + 400) return;
+            if (!here) return;
+            const hx = tidX(here.x);
+            if (hx < xMin - 400 || hx > xMax + 400) return;
             const y = this.trackY[t.trackId];
             if (y === undefined) return;   // その線区を表示していない
             const route = this.game.signals.routeBlocks(t, 3);
             route.forEach(idx => {
                 const b = blks[idx];
                 if (!b || b.x === -1000) return;
-                tidDrawRail(ctx, b.x - BLOCK_WIDTH / 2 + 2, b.x + BLOCK_WIDTH / 2 - 2, y, TID_COLORS.route);
+                const bx = tidX(b.x);
+                tidDrawRail(ctx, bx - BLOCK_WIDTH / 2 + 2, bx + BLOCK_WIDTH / 2 - 2, y, TID_COLORS.route);
             });
         });
     }
@@ -400,8 +512,12 @@ class TidRenderer {
     drawSignals(ctx, xMin, xMax) {
         this.rows().forEach(row => {
             const y = this.trackY[row.id];
-            const sigs = this.game.signals.signalsInRange(row.id, row.dir, xMin, xMax);
-            sigs.forEach(s => tidDrawSignal(ctx, s.x, y, row.dir, s.aspect, s.kind));
+            /* signalsInRange はシミュレーションの座標で範囲を受け取るので、
+               画面の範囲を内部座標に戻してから渡す。 */
+            const wMin = Math.min(tidX(xMin), tidX(xMax));
+            const wMax = Math.max(tidX(xMin), tidX(xMax));
+            const sigs = this.game.signals.signalsInRange(row.id, row.dir, wMin, wMax);
+            sigs.forEach(s => tidDrawSignal(ctx, tidX(s.x), y, row.dir, s.aspect, s.kind));
         });
     }
 
@@ -411,7 +527,7 @@ class TidRenderer {
             const dep = DEPOTS[name];
             const idx = (name === "宮原操") ? 39 : (name === "向日町操") ? 51 : STATION_MAP[name];
             if (idx === undefined) continue;
-            const x = tidStationX(idx) + (dep.drawOffset.x * BLOCK_WIDTH * UNITS_PER_STATION);
+            const x = tidStationX(idx) - (dep.drawOffset.x * BLOCK_WIDTH * UNITS_PER_STATION);
             if (x < xMin - 200 || x > xMax + 200) continue;
 
             let y;
@@ -444,14 +560,24 @@ class TidRenderer {
             const blks = this.game.trackMgr.blocks[t.trackId];
             if (!blks) return;
             const b = blks[t.currBlockIndex];
-            if (!b || b.x === -1000 || b.x < xMin || b.x > xMax) return;
+            if (!b || b.x === -1000) return;
+            const bx = tidX(b.x);
+            if (bx < xMin || bx > xMax) return;
             const baseY = this.trackY[t.trackId];
             if (baseY === undefined) return;
 
             const y = this.laneY(t, b, baseY);
-            tidDrawOccupyDot(ctx, b.x, y);
+            /* 実物と同じく、走行中は青丸・停車や抑止中は赤丸で在線を示す。 */
+            const stopped = (t.state === "stopped" || t.state === "holding" ||
+                             t.state === "waiting_start" || t.state === "turning_back" ||
+                             t.isManuallySuspended || t.minorTrouble);
+            tidDrawOccupyDot(ctx, bx, y, stopped);
 
-            const box = tidDrawTrainLabel(ctx, t, b.x, y - 16, { showFleet: this.show.fleet });
+            /* 実物では、下り線の列車表示は線路の上、上り線は線路の下に出る。
+               発着予告と上下で分かれるので、どちらも読めるようになる。 */
+            const labelY = (t.dir === -1) ? (y - 16) : (y + 16);
+            const box = tidDrawTrainLabel(ctx, t, bx, labelY,
+                { showFleet: this.show.fleet, below: (t.dir === 1) });
             this.hitTrains.push({ id: t.id, x: box.x, y: box.y, w: box.w, h: box.h });
 
             if (selected === t.id) {

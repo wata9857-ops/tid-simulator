@@ -18,13 +18,30 @@ const ROOT = process.env.TID_ROOT
 
 // --orig を付けると、分割前の index.html から抜き出した原本を読み込む(比較用)。
 const USE_ORIG = process.argv.indexOf('--orig') >= 0;
-const SOURCES = USE_ORIG
-    ? [path.join(ROOT, 'tools', 'baseline', 'original.js')]
-    : fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
+/** そのHTMLが読み込んでいる js/*.js を、書かれている順に取り出す */
+function scriptsOf(htmlName) {
+    return fs.readFileSync(path.join(ROOT, htmlName), 'utf8')
         .split('\n')
         .map(l => /<script src="js\/([^"]+)"><\/script>/.exec(l))
         .filter(Boolean)
-        .map(m => path.join(ROOT, 'js', m[1]));
+        .map(m => m[1]);
+}
+
+/* --tid を付けると、Super-TID 画面 (tid.html) だけが読み込んでいる
+   js/40-tid-theme.js などの表示用ファイルも足す。
+   起動処理 (49-tid-boot.js) は game を作ってしまうので外す。 */
+const USE_TID = process.argv.indexOf('--tid') >= 0;
+const SRC_NAMES = USE_ORIG ? [] : scriptsOf('index.html');
+if (USE_TID && !USE_ORIG) {
+    scriptsOf('tid.html').forEach(n => {
+        if (SRC_NAMES.indexOf(n) >= 0) return;
+        if (n === '49-tid-boot.js') return;
+        SRC_NAMES.push(n);
+    });
+}
+const SOURCES = USE_ORIG
+    ? [path.join(ROOT, 'tools', 'baseline', 'original.js')]
+    : SRC_NAMES.map(n => path.join(ROOT, 'js', n));
 
 // ------------------------------------------------------------------ DOM スタブ
 function makeCtx() {
@@ -179,7 +196,7 @@ globalThis.__run = function (seconds, onTick) {
 globalThis.__api = { game, Train, Vehicle, CONFIG, DEPOTS, STATIONS, STATION_MAP, EXCEL_VEHICLES };
 `, ctxObj, { filename: 'harness-bootstrap.js' });
 
-const script = process.argv.slice(2).filter(a => a !== '--orig')[0];
+const script = process.argv.slice(2).filter(a => a !== '--orig' && a !== '--tid')[0];
 if (!script) {
     console.log('読み込み成功: ' + SOURCES.length + ' ファイル' + (USE_ORIG ? ' (原本)' : ''));
     process.exit(0);

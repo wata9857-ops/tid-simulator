@@ -65,8 +65,13 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
             let tEta = this.game.currentTime + (tDist * (t.type === "快速" ? 60 : 75)) + t.delayTime + t.stuckTime;
             if (t.state === "waiting_start") tEta += t.timer;
 
-            // 同じ退出路線に向かう列車の到着予測時刻の差が 4.5分(270秒) 未満なら「被る」と判定し生成を見送る
-            if (Math.abs(myEta - tEta) < 270) {
+            /* 同じ退出路線へ向かう列車の到着予測時刻がこれより近いと「被る」と見なす。
+               ★4.5分(270秒)から3分(180秒)に詰めた。
+                 遅れの積み方を実際に近づけた (js/11-train-core.js の回復運転) ことで
+                 到着予測のばらつきが小さくなり、270秒では尼崎での合流待ちが
+                 掛かりすぎて、JR東西線・JR宝塚線の本数が落ちていた。
+                 尼崎の合流はもともと2分程度の間隔で捌いている。 */
+            if (Math.abs(myEta - tEta) < 180) {
                 return true; 
             }
         }

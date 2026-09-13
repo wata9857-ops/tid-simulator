@@ -17,6 +17,8 @@ Train.prototype.checkHold = function (isStarting) {
         
         if (nextIdx >= 0 && nextIdx < blks.length) {
             let nextBlk = blks[nextIdx];
+            // 線路の無い区間へは進めない (線区の端)
+            if (nextBlk.x === -1000) return true;
             const currentBlk = blks[this.currBlockIndex]; // ★追加
             
             if (nextBlk && nextBlk.stationIdx !== undefined) {
@@ -62,6 +64,17 @@ Train.prototype.checkHold = function (isStarting) {
                             }
                         }
                     }
+                }
+            }
+
+            /* ★尼崎を発車するときの分岐 (move() と同じ判定) */
+            if (currentBlk && currentBlk.stationIdx === STATION_MAP["尼崎"]) {
+                if (this.dir === 1 && this.trackId.indexOf("Tozai") !== 0 &&
+                    TOZAI_THROUGH_DESTS.includes(this.dest)) {
+                    targetTrackId = "Tozai_Up";
+                } else if (this.dir === -1 && this.trackId.indexOf("Fukuchi") !== 0 &&
+                    FUKUCHI_THROUGH_DESTS.includes(this.dest)) {
+                    targetTrackId = "Fukuchi_Down";
                 }
             }
 

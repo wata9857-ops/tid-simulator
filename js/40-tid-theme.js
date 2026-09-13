@@ -35,6 +35,8 @@ const TID_COLORS = {
     occupied:    "#E8453C",   // 在線している軌道回路
     platform:    "#FEFB39",
     platformEdge:"#6B6B20",
+    platformShadow:"#5B6580",  // ホーム帯の落ち影 (実物 rgb(91,101,127))
+    slotEdge:    "#A3ADCA",    // 駅の着発線の枠・列車表示の空き枠 (実物 rgb(163,173,202))
     dot:         "#2036FB",   // 列車の位置を示す丸
     stopMark:    "#DE2A02",   // 抑止・停車中の四角
     plate:       "#FFFFFF",
@@ -80,32 +82,53 @@ const TID_FLEET_COLORS = {
      group  … 線区のまとまり (見出しを出すのに使う)
 */
 const TID_ROWS = [
-    { id: "Down_Hoppo", label: "北方貨物下", dir: -1, group: "北方貨物線" },
-    { id: "Up_Hoppo",   label: "北方貨物上", dir: 1,  group: "北方貨物線" },
-    { id: "Down_Out",   label: "下り外",     dir: -1, group: "本線" },
-    { id: "Down_In",    label: "下り内",     dir: -1, group: "本線" },
-    { id: "Up_In",      label: "上り内",     dir: 1,  group: "本線" },
-    { id: "Up_Out",     label: "上り外",     dir: 1,  group: "本線" },
-    { id: "Kosei_Down", label: "湖西下り",   dir: -1, group: "湖西線" },
-    { id: "Kosei_Up",   label: "湖西上り",   dir: 1,  group: "湖西線" },
-    { id: "Fukuchi_Down", label: "宝塚下り", dir: -1, group: "JR宝塚線" },
-    { id: "Fukuchi_Up",   label: "宝塚上り", dir: 1,  group: "JR宝塚線" },
-    { id: "Tozai_Down", label: "東西下り",   dir: -1, group: "JR東西線" },
-    { id: "Tozai_Up",   label: "東西上り",   dir: 1,  group: "JR東西線" }
+    { id: "Down_Hoppo", label: "北方貨物下", dir: -1, group: "北方貨物線", gap: 72 },
+    { id: "Up_Hoppo",   label: "北方貨物上", dir: 1,  group: "北方貨物線", gap: 72 },
+    { id: "Down_Out",   label: "下り外",     dir: -1, group: "本線", gap: 72 },
+    { id: "Down_In",    label: "下り内",     dir: -1, group: "本線", gap: 59 },
+    { id: "Up_In",      label: "上り内",     dir: 1,  group: "本線", gap: 73 },
+    { id: "Up_Out",     label: "上り外",     dir: 1,  group: "本線", gap: 72 },
+    { id: "Kosei_Down", label: "湖西下り",   dir: -1, group: "湖西線", gap: 72 },
+    { id: "Kosei_Up",   label: "湖西上り",   dir: 1,  group: "湖西線", gap: 72 },
+    { id: "Fukuchi_Down", label: "宝塚下り", dir: -1, group: "JR宝塚線", gap: 72 },
+    { id: "Fukuchi_Up",   label: "宝塚上り", dir: 1,  group: "JR宝塚線", gap: 72 },
+    { id: "Tozai_Down", label: "東西下り",   dir: -1, group: "JR東西線", gap: 72 },
+    { id: "Tozai_Up",   label: "東西上り",   dir: 1,  group: "JR東西線", gap: 72 }
 ];
 
-/* 縦の寸法 */
+/* 縦の寸法。実物の ref-diagram-3468x632.png を画素で測って合わせた値。
+
+     駅名札   上 y=107〜125 / 下 y=507〜525   → 線路の帯から約120px 離れている
+     下り外   y=230
+     下り内   y=302        (下り外から 72)
+     上り内   y=361        (下り内から 59 … 内側線どうしは間隔が狭い)
+     上り外   y=434        (上り内から 73)
+     ホーム帯 y=266 / 392  (その2線のちょうど中間)
+     軌道回路の丸 直径 11px / 間隔 31〜32px
+     転てつ器の白四角 9×10px
+     在線の丸 直径 11px (走行中=青 / 停車中=赤)
+*/
 const TID_GEO = {
-    topPad:      58,    // 上の駅名札のぶん
-    rowGap:      84,    // 線路と線路のあいだ
+    /* 駅名札と線路の帯の距離。実物は上の札の中心 y=117 に対して
+       いちばん上の線路が y=230、下の札の中心が y=518 に対して
+       いちばん下の線路が y=434 で、上が 113px・下が 84px 空いている。
+       発着予告の札がここに入るので、実物どおりの余白をとる。 */
+    topPad:      131,   // 上の駅名札から、いちばん上の線路まで
+    plateTopGap: 113,   // 札の中心と、いちばん上の線路の距離
+    plateBotGap: 84,    // 札の中心と、いちばん下の線路の距離
+    rowGap:      72,    // 既定の線路間隔 (TID_ROWS の gap が無いとき)
     groupGap:    58,    // 線区と線区のあいだ
-    bottomPad:   58,
-    plateW:      104,
-    plateH:      22,
+    bottomPad:   40,
+    plateW:      99,    // 駅名札の幅 (実物は 99px)
+    plateH:      19,    // 駅名札の高さ (実物は 19px)
     trainH:      18,
     trainNoW:    46,    // 列車番号の桝の幅
     signalR:     4.5,
-    circuitR:    3.2,
+    circuitR:    5.5,   // 軌道回路の境目の丸 (実物は直径11px)
+    dotR:        5.5,   // 在線の丸
+    turnoutW:    9,     // 転てつ器の白い四角
+    turnoutH:    10,
+    platformW:   83,    // ホーム帯の幅 (実物は 83px)
     /* 番線の縦位置を計算するときの「仮想の線路間隔」。
        旅客向けの線路図 (js/17-renderer.js) は線路が 120px 間隔で並んでいて、
        stationLaneYPositions() の数値もそれを前提に書かれている。
@@ -138,7 +161,10 @@ function buildTidTrackY(groups) {
         if (lastGroup !== null && row.group !== lastGroup) cur += TID_GEO.groupGap;
         y[row.id] = cur;
         y.__rows.push(row);
-        cur += TID_GEO.rowGap;
+        /* 実物と同じく間隔は一定ではない。内側線どうし (下り内〜上り内) は
+           あいだにホームが入らないので狭く、外側線との間は
+           ホーム帯と「N番のりば」の札が入るので広い。 */
+        cur += (row.gap || TID_GEO.rowGap);
         lastGroup = row.group;
     });
     y.__height = cur + TID_GEO.bottomPad;
@@ -160,8 +186,50 @@ function tidStationLaneYs(stName, refUpOutY, branch) {
     const virt = branch
         ? stationLaneYPositions(stName, 0, 0, K, K)
         : stationLaneYPositions(stName, 0, K, 2 * K, 3 * K);
-    const scale = TID_GEO.rowGap / K;
-    return virt.map(v => refUpOutY - v * scale);
+    return virt.map(v => tidVirtualToY(v, refUpOutY, branch));
+}
+
+/**
+ * 仮想座標 (上り外=0, 上り内=K, 下り内=2K, 下り外=3K) を
+ * Super-TID の実際の縦位置に折り返す。
+ *
+ * 線路の間隔が一定でないので、4本の線路の位置を「折れ点」として
+ * 区間ごとに比例配分する。待避線のように線路の間や外にある番線も、
+ * その区間の比率のまま置かれる。
+ */
+function tidVirtualToY(v, refUpOutY, branch) {
+    const K = TID_GEO.virtualGap;
+    const rows = TID_ROWS;
+    const gapOf = (id) => {
+        const r = rows.find(x => x.id === id);
+        return (r && r.gap) || TID_GEO.rowGap;
+    };
+    // 上り外を基準に、上へ向かって積む (画面では上が下り側)
+    let anchors;
+    if (branch) {
+        // 分岐線は上下2本だけ。上り線=0, 下り線=K
+        anchors = [[0, refUpOutY], [K, refUpOutY - gapOf("Kosei_Down")]];
+    } else {
+        const gUpIn   = gapOf("Up_In");     // 上り内 → 上り外
+        const gDownIn = gapOf("Down_In");   // 下り内 → 上り内
+        const gDownOut= gapOf("Down_Out");  // 下り外 → 下り内
+        anchors = [
+            [0,     refUpOutY],
+            [K,     refUpOutY - gUpIn],
+            [2 * K, refUpOutY - gUpIn - gDownIn],
+            [3 * K, refUpOutY - gUpIn - gDownIn - gDownOut]
+        ];
+    }
+    // v がどの区間にあるかを見て比例配分する (区間の外は両端の傾きで伸ばす)
+    for (let i = 0; i < anchors.length - 1; i++) {
+        const [v0, y0] = anchors[i], [v1, y1] = anchors[i + 1];
+        const last = (i === anchors.length - 2);
+        if (v <= v1 || last) {
+            const t = (v - v0) / (v1 - v0);
+            return y0 + (y1 - y0) * t;
+        }
+    }
+    return refUpOutY;
 }
 
 /** その線路が実体を持つ駅インデックスの範囲 */
@@ -174,9 +242,29 @@ function tidTrackRange(trackId) {
     return [0, STATIONS.length - 1];
 }
 
-/** 駅インデックスから X 座標 */
+/* 実物の Super-TID は、画面の左が米原・草津方 (上り方)、
+   右が大阪・姫路方 (下り方) で、下り列車が左から右へ進む。
+   (ref-diagram-3468x632.png は左端が膳所・右端が向日町、
+    ref-diagram-4000x935.png は左端が吹田・右端が塚本)
+
+   シミュレーションの内部座標は逆向き (姫路=0 で西が小さい) で、
+   旅客向けの線路図 (js/17-renderer.js) もそれに合わせてある。
+   内部座標を変えると運行の処理まで影響するので、
+   Super-TID を描くときだけ左右を入れ替える。 */
+const TID_WORLD_W = 100 + ((STATIONS.length - 1) * UNITS_PER_STATION) * BLOCK_WIDTH + 100;
+
+/** シミュレーションの X を、Super-TID の画面の X に直す */
+function tidX(x) { return TID_WORLD_W - x; }
+
+/** 左右が入れ替わるので、「駅のどちら側か」の指定も入れ替える */
+function tidSide(side) { return side === "L" ? "R" : side === "R" ? "L" : side; }
+
+/** 渡り線の形の指定 (l=片開き左 / r=片開き右 / x=両渡り) も入れ替える */
+function tidShape(sh) { return sh === "l" ? "r" : sh === "r" ? "l" : sh; }
+
+/** 駅インデックスから X 座標 (Super-TID の向き) */
 function tidStationX(i) {
-    return 100 + (i * UNITS_PER_STATION) * BLOCK_WIDTH;
+    return tidX(100 + (i * UNITS_PER_STATION) * BLOCK_WIDTH);
 }
 
 // ------------------------------------------------------------------ 描画の部品
@@ -195,31 +283,72 @@ function tidDrawRail(ctx, x1, x2, y, color) {
     ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
 }
 
-/** 軌道回路の境目を示す小さな丸 */
+/** 軌道回路の境目を示す白い丸 (実物は直径11px の白丸に細い黒縁) */
 function tidDrawCircuitMark(ctx, x, y) {
     ctx.beginPath();
     ctx.arc(x, y, TID_GEO.circuitR, 0, Math.PI * 2);
     ctx.fillStyle = "#FFFFFF";
     ctx.fill();
     ctx.strokeStyle = TID_COLORS.railEdge;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.2;
     ctx.stroke();
 }
 
-/** 列車の在線を示す青い丸 */
-function tidDrawOccupyDot(ctx, x, y) {
+/** 転てつ器 (分岐器) を示す白い四角。実物は線路の上に 9×10px で置かれる。 */
+function tidDrawTurnoutBox(ctx, x, y) {
+    const w = TID_GEO.turnoutW, h = TID_GEO.turnoutH;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x - w / 2, y - h / 2, w, h);
+    ctx.strokeStyle = TID_COLORS.railEdge;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - w / 2 + 0.5, y - h / 2 + 0.5, w - 1, h - 1);
+}
+
+/** 駅の構内 (着発線) を示す細い枠。実物は線路を囲む薄い灰色の角丸。 */
+function tidDrawStationTrackBox(ctx, cx, y, w) {
+    const h = 12;
+    ctx.strokeStyle = TID_COLORS.slotEdge;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - w / 2 + 0.5, y - h / 2 + 0.5, w - 1, h - 1);
+}
+
+/**
+ * 列車の在線を示す丸。
+ * 実物と同じく、走行中は青、停車・抑止中は赤で塗る。
+ * 大きさは軌道回路の境目の丸と同じ (直径11px)。
+ */
+function tidDrawOccupyDot(ctx, x, y, stopped) {
     ctx.beginPath();
-    ctx.arc(x, y, 4.2, 0, Math.PI * 2);
-    ctx.fillStyle = TID_COLORS.dot;
+    ctx.arc(x, y, TID_GEO.dotR, 0, Math.PI * 2);
+    ctx.fillStyle = stopped ? TID_COLORS.stopMark : TID_COLORS.dot;
     ctx.fill();
 }
 
-/** 駅名札 (白地・黒文字・影付き) */
+/**
+ * 駅名札。
+ * 実物は「白地・黒文字」の札の右辺と下辺に黒い帯が付き、
+ * 右上の角だけ斜めに切り落とされた形をしている。
+ * (以前は青灰色の影を右下にずらして描いていたので、実物と違っていた)
+ */
 function tidDrawPlate(ctx, name, cx, cy) {
     const w = Math.max(TID_GEO.plateW, name.length * 15 + 22), h = TID_GEO.plateH;
     const x = cx - w / 2, y = cy - h / 2;
+    const t = 2;                     // 黒帯の太さ
+    // 右辺と下辺の黒帯 (右上は斜めに切る)
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + t + 1);
+    ctx.lineTo(x + w + t, y + t + 3);
+    ctx.lineTo(x + w + t, y + h + t);
+    ctx.lineTo(x + t, y + h + t);
+    ctx.lineTo(x + t, y + h);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fill();
+    // ごく薄い落ち影 (実物にも1pxだけある)
     ctx.fillStyle = TID_COLORS.plateShadow;
-    ctx.fillRect(x + 3, y + 3, w, h);
+    ctx.fillRect(x + t, y + h + t, w, 1);
+    // 札そのもの
     ctx.fillStyle = TID_COLORS.plate;
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = TID_COLORS.plateEdge;
@@ -232,60 +361,95 @@ function tidDrawPlate(ctx, name, cx, cy) {
     return { x: x, y: y, w: w, h: h };
 }
 
-/** ホーム (黄色の帯) と「N番のりば」の札 */
-function tidDrawPlatform(ctx, cx, y, label, isUpSide) {
-    const w = BLOCK_WIDTH * 0.95;
+/**
+ * ホーム (黄色の帯) と「N番のりば」の札。
+ *
+ * 実物の Super-TID は、島式ホームを「そのホームに面した2本の線路の
+ * ちょうど中間」に1本の黄色い帯で描き、上の線路の番線番号を帯の上、
+ * 下の線路の番線番号を帯の下に、背景のままの細い文字で書く。
+ *   例) 膳所      4番のりば / ▬▬▬ / 3番のりば   (下り外と下り内のあいだ)
+ *       桂川      1番のりば / ▬▬▬ / 2番のりば   (下り内と上り内のあいだ)
+ * 以前は線路ごとに帯を1本ずつ描き、番線札を黄色の枠で囲っていたので
+ * 実物と形が違っていた。
+ *
+ *   yUpper / yLower … その帯に面した2本の線路の縦位置
+ *   labelUpper / labelLower … それぞれの番線番号 (片面ホームなら片方を null)
+ */
+function tidDrawPlatform(ctx, cx, yUpper, yLower, labelUpper, labelLower) {
+    const w = TID_GEO.platformW;
     const x = cx - w / 2;
-    const py = isUpSide ? (y + 6) : (y - 10);
+    const py = (yUpper + yLower) / 2 - 2;      // 2線のちょうど中間
+    // 帯の落ち影 (実物は右下に2pxずれた濃い青灰色)
+    ctx.fillStyle = TID_COLORS.platformShadow;
+    ctx.fillRect(x + 2, py + 4, w, 2);
     ctx.fillStyle = TID_COLORS.platform;
     ctx.fillRect(x, py, w, 4);
-    ctx.strokeStyle = TID_COLORS.platformEdge;
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(x + 0.5, py + 0.5, w - 1, 3);
-    if (label) {
-        const t = label + "番のりば";
-        ctx.font = "9px 'Meiryo UI', 'Yu Gothic', sans-serif";
-        const tw = ctx.measureText(t).width + 6;
-        const tx = x + w - tw, ty = isUpSide ? (py + 6) : (py - 12);
-        ctx.fillStyle = TID_COLORS.platform;
-        ctx.fillRect(tx, ty, tw, 11);
-        ctx.strokeStyle = TID_COLORS.platformEdge;
-        ctx.strokeRect(tx + 0.5, ty + 0.5, tw - 1, 10);
-        ctx.fillStyle = TID_COLORS.text;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(t, tx + tw / 2, ty + 6);
+
+    ctx.font = "10px 'Meiryo UI', 'Yu Gothic', sans-serif";
+    ctx.fillStyle = TID_COLORS.textSub;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    /* 番線の呼び方。数字の番線は「4番のりば」、
+       「上通」「下外」「京」のように数字でないものはそのまま出す。
+       (以前は何でも「番のりば」を付けていたので
+        「京番のりば」のような文字になっていた) */
+    const nameOf = (v) => (/^[0-9]+$/.test(String(v)) ? v + "番のりば" : String(v));
+    if (labelUpper) ctx.fillText(nameOf(labelUpper), cx, py - 7);
+    if (labelLower) ctx.fillText(nameOf(labelLower), cx, py + 13);
+}
+
+/**
+ * 文字を枡の幅に収める。
+ * 「サンダーバード1号」のように長い列車名が枡からはみ出していたので、
+ * 入るところまで字を小さくしてから描く。
+ */
+function tidFitText(ctx, text, maxW, weight, basePx) {
+    let px = basePx || 11;
+    for (; px >= 7; px -= 0.5) {
+        ctx.font = weight + " " + px + "px 'Meiryo UI', 'Yu Gothic', sans-serif";
+        if (ctx.measureText(text).width <= maxW) return;
     }
 }
 
-/** 信号機 (柱と灯) */
-function tidDrawSignal(ctx, x, y, dir, aspect, kind) {
-    const asp = SIGNAL_ASPECTS[aspect] || SIGNAL_ASPECTS.R;
-    const up = (dir === 1);           // 上り = 線路の下側に立てる
-    const mastY = up ? y + 9 : y - 9;
-    const headY = up ? y + 20 : y - 20;
-    ctx.strokeStyle = "#2A2A30";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, mastY); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, mastY); ctx.lineTo(x, headY); ctx.stroke();
+/** 行先を実物のように詰める (2文字の駅名は「姫　路」のように空けて幅を揃える) */
+function tidPadDest(name) {
+    if (!name) return "";
+    if (name.length === 2) return name.charAt(0) + "　" + name.charAt(1);
+    if (name.length === 3) return name.charAt(0) + name.charAt(1) + name.charAt(2);
+    return name;
+}
 
-    const n = asp.lamps.length;
-    const r = TID_GEO.signalR;
-    const boxH = n * (r * 2 + 1.5) + 3;
-    const boxW = r * 2 + 4;
-    const bx = x - boxW / 2, by = headY - (up ? 0 : boxH);
-    ctx.fillStyle = "#1C1C22";
-    ctx.fillRect(bx, by, boxW, boxH);
-    asp.lamps.forEach((c, i) => {
+/**
+ * 信号機。
+ *
+ * ■ 実物に合わせて描き方を変えた
+ *   実物の Super-TID には、灯を縦に並べた信号機の絵は出てこない。
+ *   信号の状態は
+ *     ・進路が開通している区間を黄緑に塗る (進行を現示している)
+ *     ・停止を現示している所に赤い四角を置く
+ *   の2つで表している。軌道回路の境目の白丸が、そのまま信号機の位置になる。
+ *   以前は3灯式の信号機を線路の脇に立てていたが、実物には無い形だった。
+ *
+ *   停止以外 (G/YG/Y/YY) のときは、白丸と緑の進路だけで分かるので
+ *   余計な印は置かない。注意現示 (Y/YY) は、丸を細く黄色で囲って示す。
+ */
+function tidDrawSignal(ctx, x, y, dir, aspect, kind) {
+    if (aspect === "R") {
+        // 停止現示。実物と同じく線路の上に赤い四角を置く。
+        const w = 9, h = 10;
+        ctx.fillStyle = TID_COLORS.stopMark;
+        ctx.fillRect(x - w / 2, y - h / 2, w, h);
+        ctx.strokeStyle = "#3A1000";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - w / 2 + 0.5, y - h / 2 + 0.5, w - 1, h - 1);
+        return;
+    }
+    if (aspect === "Y" || aspect === "YY") {
+        // 注意・警戒現示。白丸を黄色で囲う。
         ctx.beginPath();
-        ctx.arc(x, by + 3 + i * (r * 2 + 1.5) + r - 1.5, r, 0, Math.PI * 2);
-        ctx.fillStyle = c;
-        ctx.fill();
-    });
-    if (kind === "出発") {
-        ctx.fillStyle = "#FFFFFF";
-        ctx.font = "7px 'Meiryo UI', sans-serif";
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("出", x + boxW, by + boxH / 2);
+        ctx.arc(x, y, TID_GEO.circuitR + 1.5, 0, Math.PI * 2);
+        ctx.strokeStyle = TID_COLORS.caution;
+        ctx.lineWidth = 2;
+        ctx.stroke();
     }
 }
 
@@ -305,7 +469,13 @@ function tidCircledNumber(n) {
 function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
     opt = opt || {};
     const col = TID_TYPE_COLORS[t.type] || TID_TYPE_COLORS["普通"];
-    const noW = TID_GEO.trainNoW, h = TID_GEO.trainH;
+    const h = TID_GEO.trainH;
+    /* 列車番号の枡。特急は「サンダーバード1号」のように長い名前が入るので、
+       必要なぶんだけ広げてから、それでも入らなければ字を小さくする。 */
+    ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
+    const noText = t.trainNo || "";
+    const noW = Math.max(TID_GEO.trainNoW,
+                         Math.min(92, ctx.measureText(noText).width + 10));
     const cars = (t.vehicles || []).reduce((s, v) => s + v.cars, 0);
     const destText = (t.dest || "") + (cars ? tidCircledNumber(cars) : "");
     ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
@@ -329,7 +499,8 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
     ctx.fillRect(x, y, noW, h);
     ctx.fillStyle = col.text;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(t.trainNo || "", x + noW / 2, y + h / 2 + 0.5);
+    tidFitText(ctx, noText, noW - 4, "bold", 11);
+    ctx.fillText(noText, x + noW / 2, y + h / 2 + 0.5);
 
     // 行先の枡
     ctx.fillStyle = "#FFFFFF";
@@ -363,7 +534,7 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
         const label = t.vehicles.map(v => v.id).join("+");
         ctx.font = "9px 'Meiryo UI', sans-serif";
         const fw = ctx.measureText(label).width + 8;
-        const fx = x, fy = y - 11;
+        const fx = x, fy = opt.below ? (y + h + 1) : (y - 11);
         ctx.fillStyle = fc.bg;
         ctx.fillRect(fx, fy, fw, 10);
         ctx.fillStyle = fc.text;
@@ -441,7 +612,14 @@ const TID_JUNCTIONS = {
     // 山科 — 湖西線との分岐
     "山科":   { junctions: [["Up_Out", "Kosei_Up", "out"], ["Down_Out", "Kosei_Down", "in"],
                             ["Up_In", "Kosei_Up", "out"], ["Down_In", "Kosei_Down", "in"]] },
-    "石山":   { crossovers: [["Up_Out", "Down_Out", "l"]] },
+    /* 膳所 — 実物の Super-TID には、下り外〜下り内と上り内〜上り外に
+       それぞれ片渡り線が描かれている (草津方=画面の左側)。
+       大津には渡り線が無いので入れていない。 */
+    "膳所":   { crossovers: [["Down_Out", "Down_In", "l"], ["Up_In", "Up_Out", "l"]] },
+    /* 石山 — 複々線の中の駅なので、外側線と内側線をつなぐ渡り線になる。
+       (以前は上り外と下り外を直接つないでいたが、
+        あいだの内側線2本を飛び越す線路は実際には無い) */
+    "石山":   { crossovers: [["Down_Out", "Down_In", "l"], ["Up_In", "Up_Out", "l"]] },
     // 草津 — 複々線の東端 かつ 草津線の分岐
     "草津":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
                 stubs: [{ side: "R", from: "Up_Out", up: true, label: "草津線 手原方" }] },
@@ -507,10 +685,10 @@ function tidDrawCrossover(ctx, cx, yTop, yBot, shape) {
     };
     if (shape === "x" || shape === "l") draw(cx - w / 2, cx + w / 2);
     if (shape === "x" || shape === "r") draw(cx + w / 2, cx - w / 2);
-    // 転てつ器の印
-    ctx.fillStyle = "#2A2A30";
+    /* 転てつ器の印。実物は線路の上に置いた白い四角なので、
+       以前の黒い小さな丸から描き替えた。 */
     [[cx - w / 2, yTop], [cx + w / 2, yTop], [cx - w / 2, yBot], [cx + w / 2, yBot]].forEach(p => {
-        ctx.beginPath(); ctx.arc(p[0], p[1], 2.6, 0, Math.PI * 2); ctx.fill();
+        tidDrawTurnoutBox(ctx, p[0], p[1]);
     });
 }
 
@@ -525,10 +703,8 @@ function tidDrawJunction(ctx, cx, yMain, yBranch, mode) {
     ctx.strokeStyle = TID_COLORS.rail;
     ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(cx, yMain); ctx.lineTo(x1, yBranch); ctx.stroke();
-    ctx.fillStyle = "#2A2A30";
-    ctx.beginPath();
-    ctx.arc(cx + (mode === "in" ? -16 : 16), yMain + (yBranch - yMain) * 0.13, 3, 0, Math.PI * 2);
-    ctx.fill();
+    // 合流・分岐点の転てつ器 (実物と同じ白い四角)
+    tidDrawTurnoutBox(ctx, cx, yMain);
 }
 
 /** 画面の外へ出ていく線 (支線・車両所への引上線など) */
@@ -554,4 +730,82 @@ function tidDrawStub(ctx, cx, y, goUp, label, side, order) {
     ctx.fillStyle = TID_COLORS.textSub;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(label, tx + tw / 2, y2);
+}
+
+/**
+ * 駅の発着予告。
+ *
+ * 実物の Super-TID は、駅ごとに「どの線路から次に何が来るか」を
+ *   [小さな線名の札]
+ *   ▮[列車番号][行先 両数]▮      ← 両端の細い黄色はホームを表す
+ * の形で、線路と線路のあいだに出している。
+ *   例) 膳所 …  下り外 / 3419M 姫　路⑫
+ *               下り内 / 731T  姫　路⑫
+ *               上り内 / 708M  米　原⑧
+ *               上り外 / 3406M 近江塩津⑫
+ * これが実物の画面でいちばん目立つ要素なので、同じ形で描く。
+ *
+ *   cx, cy … 札の中心
+ *   rowLabel … 「下り外」などの線名 (null なら札を出さない)
+ *   train … 来る列車 (null なら空の枠だけを描く)
+ */
+function tidDrawPredictPlate(ctx, cx, cy, rowLabel, train) {
+    const h = 17, tick = 4;
+    const noW = 42;
+    let destText = "";
+    if (train) {
+        const cars = (train.vehicles || []).reduce((s, v) => s + v.cars, 0);
+        destText = tidPadDest(train.dest) + (cars ? tidCircledNumber(cars) : "");
+    }
+    ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
+    const noText = train ? (train.trainNo || "") : "";
+    const noWfit = Math.max(noW, Math.min(92, ctx.measureText(noText).width + 10));
+    const destW = Math.max(62, train ? ctx.measureText(destText).width + 12 : 62);
+    const w = tick * 2 + noWfit + destW;
+    const x = cx - w / 2, y = cy - h / 2;
+
+    if (!train) {
+        // 空き枠。実物も、まだ列車が決まっていない所は薄い枠だけになる。
+        ctx.strokeStyle = TID_COLORS.slotEdge;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        return;
+    }
+
+    // 両端のホームを表す黄色
+    ctx.fillStyle = TID_COLORS.platform;
+    ctx.fillRect(x, y, tick, h);
+    ctx.fillRect(x + w - tick, y, tick, h);
+    // 列車番号 (種別の色)
+    const col = TID_TYPE_COLORS[train.type] || TID_TYPE_COLORS["普通"];
+    ctx.fillStyle = col.bg;
+    ctx.fillRect(x + tick, y, noWfit, h);
+    ctx.fillStyle = col.text;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    tidFitText(ctx, noText, noWfit - 4, "bold", 11);
+    ctx.fillText(noText, x + tick + noWfit / 2, y + h / 2 + 0.5);
+    // 行先と両数 (白地)
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x + tick + noWfit, y, destW, h);
+    ctx.fillStyle = TID_COLORS.text;
+    ctx.font = "11px 'Meiryo UI', 'Yu Gothic', sans-serif";
+    ctx.fillText(destText, x + tick + noWfit + destW / 2, y + h / 2 + 0.5);
+    ctx.strokeStyle = TID_COLORS.plateEdge;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+    // 線名の小札 (実物は札の左上にはみ出して付く)
+    if (rowLabel) {
+        ctx.font = "9px 'Meiryo UI', 'Yu Gothic', sans-serif";
+        const lw = ctx.measureText(rowLabel).width + 8;
+        const lx = x + tick + noWfit / 2 - lw / 2, ly = y - 11;
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(lx, ly, lw, 11);
+        ctx.strokeStyle = TID_COLORS.plateEdge;
+        ctx.strokeRect(lx + 0.5, ly + 0.5, lw - 1, 10);
+        ctx.fillStyle = TID_COLORS.text;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(rowLabel, lx + lw / 2, ly + 6);
+    }
+    return { x: x, y: y, w: w, h: h };
 }

@@ -50,7 +50,10 @@ Train.prototype.enterDepot = function (stName) {
 
     // ★追加: 留置場からの出区を試行するメソッド
 Train.prototype.tryDepotOut = function (depotName, force = false) {
-        const depot = DEPOTS[depotName];
+        /* ★留置場の名前は別名で渡ってくることがある (網干=姫路電留線 など)。
+           以前はここで DEPOTS["網干"] が見つからずそのまま返っていたため、
+           姫路電留線に入った編成が出区できないまま枠を占め続けていた。 */
+        const depot = DEPOTS[depotKeyOf(depotName)];
         if (!depot) return;
         
         // ★改善: 強制出区フラグの永続化
@@ -71,7 +74,33 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
            放出のように本線以外に面した留置場があるため、
            一律に本線を使うと出区できずに列車が消えてしまう。 */
         let targetTrackId = depotTrackId(actualStart, this.depotOutConfig.dir, this.depotOutConfig.type);
-        
+
+        /* ★いつもの線路の番線が塞がっているときは、同じ駅の
+           内側線・外側線のもう一方から出す。
+           高槻の電留線のように、面している番線が2本しかない留置場では、
+           片方だけを見ていると一日中出区できないままになっていた。
+           (向日町操・宮原操のように駅名で番線を持たない留置場では
+            どちらも見つからないので、この切り替えは働かない) */
+        const hasFreeLaneAt = (tid) => {
+            const bs = this.game.trackMgr.blocks[tid];
+            if (!bs) return false;
+            const b = bs.find(x => x.isStation && x.x !== -1000 &&
+                                   STATIONS[x.stationIdx].name === actualStart);
+            return !!(b && b.lanes.some(l => l === null));
+        };
+        /* ★内側線があるのは複々線 (西明石〜草津) の中だけ。
+           野洲・米原のように複線の駅で内側線へ移すと、
+           線路図に無い線路を走ることになるので切り替えない。 */
+        const stIdx2 = STATION_MAP[actualStart];
+        const hasInnerHere = stIdx2 !== undefined &&
+            stIdx2 >= STATION_MAP["西明石"] && stIdx2 <= STATION_MAP["草津"];
+        const siblingTrackId = !hasInnerHere ? null :
+            targetTrackId.indexOf("_In") >= 0  ? targetTrackId.replace("_In", "_Out") :
+            targetTrackId.indexOf("_Out") >= 0 ? targetTrackId.replace("_Out", "_In") : null;
+        if (siblingTrackId && !hasFreeLaneAt(targetTrackId) && hasFreeLaneAt(siblingTrackId)) {
+            targetTrackId = siblingTrackId;
+        }
+
         const blks = this.game.trackMgr.blocks[targetTrackId];
         if (!blks) {
             // ブロックが見つからない異常事態は強制消滅させて枠を空ける
@@ -81,12 +110,10 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
 
         let startBlock = blks.find(b => b.isStation && STATIONS[b.stationIdx].name === actualStart);
         if (!startBlock) startBlock = blks.find(b => b.hoppoStationName === actualStart);
-        if (!startBlock && ["向日町操","宮原操"].includes(actualStart)) {
-            if (targetTrackId.includes("Hoppo")) {
-                if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === 39);
-            } else if (actualStart === "向日町操") {
-                startBlock = blks.find(b => b.hoppoStationName === "向日町操");
-            }
+        if (!startBlock && ["向日町操", "宮原操"].includes(actualStart)) {
+            // 宮原操は新大阪の位置で本線につながる (北方貨物線に出ない旅客の出区)
+            if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === 39);
+            else startBlock = blks.find(b => b.hoppoStationName === "向日町操");
         }
 
         if (startBlock) {
@@ -101,7 +128,16 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
             if (freeLane !== -1) {
                 // 出区時に後続列車(本線上)が接近していないか確認し、謎の抑止バグを防ぐ
                 let safeToOut = true;
-                let checkDist = Math.ceil(UNITS_PER_STATION * 3.0); // マージンを少し広げる
+                /* 後続列車との間隔。待たされるほど詰めていく。
+                   ★以前は常に3駅ぶんを空けて待っていたため、
+                     高槻のように列車の詰まった線区に面した留置場では
+                     切れ目ができず、編成が半日出区できないままになっていた。
+                     実際の指令も、続行の切れ目が無いときは間隔を詰めて出す。
+                     番線が空いていることは上で確かめてあり、出区後は
+                     通常の閉塞・信号の判定で後続との間隔が保たれる。 */
+                const outWait = this.depotOutWait || 0;
+                const outMargin = (outWait >= 300) ? 1.0 : (outWait >= 150) ? 2.0 : 3.0;
+                let checkDist = Math.max(1, Math.ceil(UNITS_PER_STATION * outMargin));
                 for (let k = 1; k <= checkDist; k++) {
                     let idx = startBlock.index - (this.depotOutConfig.dir * k);
                     if (idx >= 0 && idx < blks.length) {
@@ -116,6 +152,7 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
 
                 if (!safeToOut) {
                     this.depotStuckTime += 30;
+                    this.depotOutWait = outWait + 30;
                     if (this.depotStuckTime >= 180 && !isForced) { 
                         // 強引に出区せず、長期待機モードに移行する
                         this.game.ui.updateBanner(`【運転整理】本線混雑予測のため、${depotName}留置場の ${this.depotOutConfig.trainNo} は出区を見合わせ、長期待機を行います。`, "banner-orange");
@@ -143,6 +180,7 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
                     this.vehicles = newVehicles;
 
                     this.depotStuckTime = 0;
+                    this.depotOutWait = 0;
                     this.forceDepotOut = false;
                     // 出区成功: 留置場配列から自身を削除し、本線レーンへ
                     depotRemove(this);
@@ -219,6 +257,24 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         if (targetIdx === null || currentIdx === null) return false;
         let nextDir = (targetIdx > currentIdx) ? 1 : -1;
 
+        /* ★向きが変わる場合は、先に線路を移せるか確かめてから書き換える。
+           移せないまま行先だけ変えると、車両所と反対の方向へ
+           走り続けることになってしまう。 */
+        if (this.dir !== nextDir && !this.game.ops.moveToOppositeTrack(this, stName, nextDir)) {
+            /* 反対側の番線が空くのを待つ。実際の駅でもこうして待つ。
+               ただし待ち続けると終着駅の番線をふさいでしまうので、
+               何度待っても空かないときは、向きを変えずに済む
+               前方の車両所へ回送して抜けさせる。 */
+            this.deadheadWait = (this.deadheadWait || 0) + 1;
+            if (this.deadheadWait <= 8) { this.timer = 20; return true; }
+            this.deadheadWait = 0;
+            const fwd = this.game.ops.nearestDepotAhead(this, stName);
+            if (!fwd || !fwd.ahead) return false;
+            targetDest = fwd.name;
+            nextDir = this.dir;
+        }
+        this.deadheadWait = 0;
+
         this.game.ui.updateBanner(
             `【運転整理】${stName}駅で折り返せないため、${this.trainNo} を ` +
             `${targetDest} 行きの回送に変更して入区させます。`, "banner-orange");
@@ -231,6 +287,7 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         this.game.spawner.activeTrainNos.add(this.trainNo);
         this.nextAction = "depot";
         this.isFinalStop = false;
+        this.startName = stName;
         // 回送は外側線(列車線)を走らせる。内側線にいれば次の待避駅で転線する。
         this.rerouteToOuter = true;
 
@@ -242,32 +299,11 @@ Train.prototype.tryConvertDeadhead = function (stName) {
             this.timer = 15;
             return true;
         }
-        // 方向が逆になる場合は折り返し転線を試みる
-        let newTrackId = this.trackId.includes("Down") ? this.trackId.replace("Down", "Up") : this.trackId.replace("Up", "Down");
-        if ((currentIdx < STATION_MAP["西明石"] || currentIdx > STATION_MAP["草津"]) && newTrackId.includes("In")) {
-            newTrackId = newTrackId.replace("In", "Out");
-        }
-        const blks = this.game.trackMgr.blocks[this.trackId];
-        const blk = blks[this.currBlockIndex];
-        const targetBlks = this.game.trackMgr.blocks[newTrackId];
-        const newB = targetBlks ? targetBlks.find(b => Math.abs(b.x - blk.x) < 5) : null;
-        if (!newB) return false;
-
-        let tl = this.findFreeLane(newB);
-        if (tl !== -1) {
-            blk.lanes[this.lane] = null;
-            this.trackId = newTrackId;
-            this.dir = nextDir;
-            this.currBlockIndex = newB.index;
-            this.lane = tl;
-            newB.lanes[tl] = this;
-            this.state = "waiting_start";
-            this.timer = 15;
-            this.stuckTime = 0;
-            this.hasStoppedAtCurrent = false;
-            this.hasDeparted = false;
-            return true;
-        }
-        this.timer = 15;   // 満線なら待機して再試行
+        // 向きは上で合わせてあるので、そのまま走らせる
+        this.state = "waiting_start";
+        this.timer = 15;
+        this.stuckTime = 0;
+        this.hasStoppedAtCurrent = false;
+        this.hasDeparted = false;
         return true;
 };

@@ -6,6 +6,25 @@ Train.prototype.move = function () {
         if (nextIdx < 0 || nextIdx >= blks.length) { this.remove(); return; }
 
         let nextBlock = blks[nextIdx];
+
+        /* ★線路の無い区間 (x === -1000 のプレースホルダ) へは進ませない。
+           湖西線・JR宝塚線・JR東西線・北方貨物線は本線とインデックスを
+           共有していて、線区の外はプレースホルダになっている。
+           以前はここを素通りできてしまい、線路の無い場所を走り続ける
+           列車が生まれていた。線区の端に着いたら、そこで運転を打ち切る。 */
+        if (nextBlock.x === -1000) {
+            const here = blks[this.currBlockIndex];
+            const endName = blockStationName(here);
+            if (this.state !== "stopped") {
+                this.state = "stopped";
+                this.hasStoppedAtCurrent = true;
+                this.isFinalStop = true;
+                this.timer = 30;
+                this.dest = endName || this.dest;
+                if (!this.nextAction || this.nextAction === "turnback") this.nextAction = "depot";
+            }
+            return;
+        }
         let targetTrackId = this.trackId;
         const currentBlock = blks[this.currBlockIndex]; // ★追加
 
@@ -21,6 +40,20 @@ Train.prototype.move = function () {
             } else if (this.dir === -1 && this.trackId === "Tozai_Down") {
                 targetTrackId = FUKUCHI_THROUGH_DESTS.includes(this.dest) ?
 "Fukuchi_Down" : "Down_In";
+            }
+        }
+
+        /* ★尼崎を「発車するとき」の分岐。
+           上の判定は尼崎へ「進入するとき」だけを見ていたため、
+           尼崎で折り返したり、尼崎始発になったりした列車が
+           分岐線へ入れず、本線を走り続けてしまっていた。 */
+        if (currentBlock && currentBlock.stationIdx === STATION_MAP["尼崎"]) {
+            if (this.dir === 1 && this.trackId.indexOf("Tozai") !== 0 &&
+                TOZAI_THROUGH_DESTS.includes(this.dest)) {
+                targetTrackId = "Tozai_Up";
+            } else if (this.dir === -1 && this.trackId.indexOf("Fukuchi") !== 0 &&
+                FUKUCHI_THROUGH_DESTS.includes(this.dest)) {
+                targetTrackId = "Fukuchi_Down";
             }
         }
 
@@ -108,6 +141,21 @@ Train.prototype.move = function () {
         if (nextBlock.isStation || nextBlock.hoppoStationName) {
             let st = (nextBlock.hoppoStationName) ? {name: nextBlock.hoppoStationName, stopTime:60} : STATIONS[nextBlock.stationIdx];
             if (!st) st = {name: "Unknown", stopTime: 60, type: 0};
+
+            /* ★宮原操は北方貨物線の上にしか駅ブロックが無いが、
+               旅客車の出入区は本線 (新大阪の位置) からつながっている。
+               本線を走る宮原操行きは、新大阪の位置で到着扱いにする。
+               これをしないと、宮原操行きの回送が新大阪を通り越して
+               いつまでも終点に着けなかった。 */
+            if (this.dest === "宮原操" && st.name === "新大阪" &&
+                this.trackId.indexOf("Hoppo") < 0) {
+                st = { name: "宮原操", stopTime: 60, type: 0 };
+            }
+            // 吹田貨物ターミナルも同じく、本線側では吹田の位置で到着扱いにする
+            if (this.dest === "吹田貨" && st.name === "吹田" &&
+                this.trackId.indexOf("Hoppo") < 0) {
+                st = { name: "吹田貨", stopTime: 60, type: 0 };
+            }
             
             // ★混雑状況に応じた行先変更(間引き・延長)判定
             this.checkCongestionAndAdjust(st.name);
