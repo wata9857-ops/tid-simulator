@@ -64,11 +64,66 @@ ok('上り内〜上り外 の間隔が実物の比と合う',
    near(g3, REF.gapUpInToUpOut * TID_SCALE_Y), String(g3));
 ok('内側線どうしの間隔が外側との間隔より狭い (実物と同じ)', g2 < g1 && g2 < g3,
    g1 + '/' + g2 + '/' + g3);
-ok('線路図を実物より大きく描いている (横 ' + TID_SCALE + '倍)', TID_SCALE >= 2.0,
-   String(TID_SCALE));
-ok('1駅の間隔が読みやすい幅になっている',
-   Math.abs(tidStationX(1) - tidStationX(0)) >= 700,
-   Math.round(Math.abs(tidStationX(1) - tidStationX(0))) + 'px');
+/* 横の倍率。
+   ★2.4倍まで拡げていたときは1駅が864pxになり、画面に2駅しか入らず
+     閉塞が間延びしていた。重なりは「駅の中を縦に広げる」
+     (tidStationLayout) と「渡り線を のど に置く」で直したので、
+     元の見た目に近い所まで戻してある。
+     もっと拡げたいときは画面の拡大縮小 (js/43-tid-zoom.js) を使う。 */
+ok('線路図の横の倍率が行きすぎていない (横 ' + TID_SCALE + '倍)',
+   TID_SCALE >= 1.0 && TID_SCALE <= 1.6, String(TID_SCALE));
+const stGap = Math.abs(tidStationX(1) - tidStationX(0));
+ok('1駅の間隔が、駅の中身が入るだけあり、かつ間延びしていない',
+   stGap >= 360 && stGap <= 620, Math.round(stGap) + 'px');
+
+head('駅の中の配置 (ホームと渡り線が重ならないか)');
+/* 渡り線を置く「のど」が、着発線の枠とホーム帯の外側にあること。
+   ここが重なっていると、実機の画面 (IMG_0332/IMG_0333) のように
+   斜めの線がホームと番線札を突き抜ける。 */
+const boxHalf = tidStationBoxW() / 2;
+const crossInner = Math.abs(tidThroatX(0, 'R')) - tidCrossoverW() / 2;
+ok('渡り線が着発線の枠の外側にある', crossInner > boxHalf,
+   '渡り線の内端 ' + crossInner.toFixed(0) + 'px / 着発線の端 ' + boxHalf.toFixed(0) + 'px');
+ok('渡り線がホーム帯の外側にある', crossInner > tidW(TID_GEO.platformW) / 2,
+   '渡り線の内端 ' + crossInner.toFixed(0) + 'px / ホーム帯の端 ' +
+   (tidW(TID_GEO.platformW) / 2).toFixed(0) + 'px');
+ok('渡り線が となりの駅まではみ出していない',
+   Math.abs(tidThroatX(0, 'R')) + tidCrossoverW() / 2 < stGap / 2,
+   '渡り線の外端 ' + (Math.abs(tidThroatX(0, 'R')) + tidCrossoverW() / 2).toFixed(0) +
+   'px / 駅間の半分 ' + (stGap / 2).toFixed(0) + 'px');
+
+/* 番線どうしの縦の間隔。列車表示 (高さ18＋編成番号10) が重ならない値を
+   下回る駅が無いこと。以前は大阪・京都で18〜22pxしかなかった。 */
+const bigStations = ['大阪', '京都', '尼崎', '高槻', '新大阪', '西明石', '草津', '米原'];
+let worstName = '', worst = 9999;
+let labelWorstName = '', labelWorst = 9999;
+bigStations.forEach(n => {
+    const L = tidStationLayout(n, 600, false);
+    const idx = L.ys.map((y, i) => i).sort((a, b) => L.ys[a] - L.ys[b]);
+    for (let k = 1; k < idx.length; k++) {
+        const a = idx[k - 1], b = idx[k];
+        const d = L.ys[b] - L.ys[a];
+        if (d < worst) { worst = d; worstName = n; }
+        // 両側から列車表示が出る所 (いちばん広さが要る)
+        if (L.sides[a] === +1 && L.sides[b] === -1 && d < labelWorst) {
+            labelWorst = d; labelWorstName = n;
+        }
+    }
+});
+/* 番線がいちばん多い新大阪 (11番線) だけは、線路の帯に入りきらないので
+   laneFloor まで詰める。それ以外の駅は laneMinGap を満たす。 */
+ok('どの主要駅でも番線が laneFloor (' + TID_GEO.laneFloor + 'px) より詰まっていない',
+   worst >= TID_GEO.laneFloor - 0.5,
+   'いちばん狭いのは ' + worstName + ' の ' + worst.toFixed(1) + 'px');
+/* 列車表示は線路から 16px 離れ、高さ18px。編成番号の帯を上下に付けると
+   さらに11px。向かい合う所にはその倍が要る (=76px)。
+   入りきらない駅では編成番号を表示の左に並べるので、必要なのは
+   (16+9)×2 = 50px まで下がる。ここではその値を下回らないことを見る。 */
+ok('列車表示が向かい合う所に、表示どうしが重ならない間隔がある (50px以上)',
+   labelWorst >= 50,
+   'いちばん狭いのは ' + labelWorstName + ' の ' + labelWorst.toFixed(1) + 'px');
+ok('ホームを挟む2線に、ホーム帯と番線札が入る間隔がある',
+   tidStationLayout('大阪', 600, false).ys.length === 9, '大阪 9番線');
 
 head('駅名札の余白');
 ok('上の札からいちばん上の線路までの余白が実物と同じ比 (' + REF.plateTopGap + ')',

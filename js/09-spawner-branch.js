@@ -83,7 +83,12 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         /* 分岐線の普通だけは、折り返しで走り続けて実際の2倍以上になるので
            在線本数の目安 (js/10-timetable.js) を見て抑える。
            快速・区間快速は本数が足りていないので抑えない。 */
-        const budget = (ty) => ty !== "普通" || !ttOverBudget(this.game, "branch", "普通");
+        /* ★線区ごとの目安で見る。以前は3線区の合計で見ていたので、
+             湖西線だけが実際の2倍以上走っていても抑えられなかった。
+             JR宝塚線と JR東西線は行先で分かれるので、両方に空きがあるかで見る。 */
+        const budget = (ty) => ty !== "普通" ||
+            !ttOverBudget(this.game, "fukuchi", "普通") ||
+            !ttOverBudget(this.game, "tozai", "普通");
         let timeFactor = 0.83; 
         if ((h >= 6.0 && h < 8.5) || (h >= 17 && h < 19.5)) {
             timeFactor = 0.42;  
@@ -271,7 +276,7 @@ Spawner.prototype.checkKoseiSpawns = function (ct) {
             timeFactor = 0.75;  
         }
 
-        const koseiOk = !ttOverBudget(this.game, "branch", "普通");
+        const koseiOk = !ttOverBudget(this.game, "kosei", "普通");
         if (ct >= this.nextKoseiLocalUp && koseiOk) {
             let destOptions = [{d:"近江今津", w:91}, {d:"永原", w:9}];
             let dest = this.weightedRandom(destOptions);

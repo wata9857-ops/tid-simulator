@@ -192,6 +192,9 @@ class SimBus {
             faults: g.signals.faults.map(f => ({
                 trackId: f.trackId, start: f.start, end: f.end, reason: f.reason })),
             incidents: g.incidents.list(),
+            /* 指令連絡 (js/31-comms.js)。応答はどちらの画面からでもできるよう、
+               本体が抱えている一覧をそのまま流す。 */
+            comms: g.comms ? g.comms.list() : [],
             logs: g.ui.logHistory.slice(0, 80)
         };
     }
@@ -248,6 +251,8 @@ class SimBus {
         if (s.logs) g.ui.logHistory = s.logs;
         // --- 輸送障害 (一覧の表示だけ)
         this._incidents = s.incidents || [];
+        // --- 指令連絡 (一覧の表示だけ。応答は本体へ転送される)
+        this._comms = s.comms || [];
 
         // 従側でも時計を進める (本体の時刻に合わせる)
         if (g.ui && g.ui.updateClock) g.ui.updateClock(g.currentTime);
@@ -258,4 +263,7 @@ class SimBus {
 
     /** 従側で輸送障害の一覧を出すための橋渡し */
     incidentList() { return this._incidents || []; }
+
+    /** 従側で指令連絡の一覧を出すための橋渡し */
+    commList() { return this._comms || []; }
 }

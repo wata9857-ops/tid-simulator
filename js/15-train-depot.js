@@ -243,8 +243,11 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
 Train.prototype.tryConvertDeadhead = function (stName) {
         if (this.type === "貨物" || this.type === "回送") return false;
 
-        // --- 1. まず折り返しを試す
-        if (this.game.ops.preferTurnback(this, stName)) return true;
+        /* --- 1. まず折り返しを試す
+           ★ただし「その種別が走りすぎているので運用を終える」と決められた列車
+             (js/14-train-turnback.js の retiredByBudget) は折り返さない。
+             ここで折り返してしまうと、在線本数の目安がまったく効かなくなる。 */
+        if (!this.retiredByBudget && this.game.ops.preferTurnback(this, stName)) return true;
 
         // --- 2. 折り返せないときだけ車両所へ回送する
         const DEADHEAD_TO = { "京都": "向日町操", "須磨": "西明石", "大久保": "西明石",

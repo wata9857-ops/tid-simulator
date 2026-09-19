@@ -106,6 +106,21 @@ const ORIGIN_BACKING = {
     "京都":     { from: "向日町操", ratio: 0.30 }
 };
 
+/**
+ * その出区計画が本線のものか、分岐線 (湖西・JR宝塚・JR東西) のものかを返す。
+ * 在線本数の目安 (js/10-timetable.js の TT_ACTIVE_BUDGET) は線区ごとに
+ * 分かれているので、出区を抑えるときも同じ区分けで見る。
+ */
+function dutyLineOf(depotName, w) {
+    if (w && w.kosei) return "kosei";
+    if (depotName === "新三田") return "fukuchi";
+    if (depotName === "放出") return "tozai";
+    const dests = Array.isArray(w && w.dest) ? w.dest : [(w && w.dest) || ""];
+    if (dests.every(d => TOZAI_THROUGH_DESTS.indexOf(d) >= 0)) return "tozai";
+    if (dests.every(d => FUKUCHI_THROUGH_DESTS.indexOf(d) >= 0)) return "fukuchi";
+    return "main";
+}
+
 class OperationsManager {
     constructor(game) {
         this.game = game;
@@ -155,6 +170,12 @@ class OperationsManager {
                 if (ct < this.dutyNext[key]) continue;
                 this.dutyNext[key] = ct + w.every * (0.85 + Math.random() * 0.3);
                 if (Math.random() > w.ratio) continue;
+                /* ★その種別が走りすぎているときは出区させない。
+                   ここを見ていなかったため、出区計画だけで朝の2時間に
+                   普通が約100本も本線に出ていた。生成側 (trySpawn) は
+                   在線本数の目安を見て止まっているのに、こちらが素通しに
+                   なっていたので、目安がまったく効いていなかった。 */
+                if (ttOverBudget(this.game, dutyLineOf(duty.depot, w), w.as)) continue;
                 // 留置場に空きが無い(出区待ちが詰まっている)ときは見送る
                 if (depot.trains.length >= depot.capacity) continue;
                 // 在庫が無いときも見送る
@@ -326,7 +347,12 @@ class OperationsManager {
             if (occupied.length === 0) worst = hi - lo;
             if (worst <= gapBlocks) continue;
 
-            // 普通が走りすぎているときは増発しない
+            /* 普通が走りすぎているときは増発しない。
+               ★ここを 1.25倍まで許してみたところ、穴埋めが次々に走って
+                 昼間の増発が 4本から 57本に膨れ、線路が詰まって
+                 1駅あたり8分 (実際の3倍) まで落ちた。
+                 空いた所を埋めるより、在線本数を守るほうが先。
+                 目安ちょうどで止める。 */
             if (ttOverBudget(this.game, "main", "普通")) continue;
 
             // 手前の車両所から1本出す

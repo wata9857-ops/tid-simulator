@@ -52,6 +52,11 @@ window.onload = function () {
     game.tidUI = new TidUI(game);
     game.renderer = game.tidRenderer;      // メインループから描かれるようにする
     game.tidUI.init();
+    // 線路図の拡大縮小・移動 (js/43-tid-zoom.js)
+    game.tidZoom = new TidZoom(game.tidRenderer);
+    // 編成検索・行路表 (js/44-tid-duty.js) と 指令連絡 (js/45-tid-comms.js)
+    game.tidDuty = new TidDuty(game);
+    game.tidComms = new TidComms(game);
 
     // 起動時は大阪を中央に
     game.tidRenderer.scrollToStation("大阪");
@@ -65,6 +70,9 @@ window.onload = function () {
     // 1秒ごとに指令パッド・情報パネルを描き直す (線路図は毎フレーム)
     setInterval(() => {
         try { game.tidUI.render(); } catch (e) { console.error(e); }
+        // 指令連絡は残り時間が動くので毎秒、行路表は開いているときだけ
+        try { game.tidComms.render(); } catch (e) { console.error(e); }
+        try { game.tidDuty.tick(); } catch (e) { console.error(e); }
     }, 1000);
 
     // メインループ開始

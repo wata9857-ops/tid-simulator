@@ -33,6 +33,8 @@
         <label class="tid-inline">表示区間
             <select id="tid-jump"></select>
         </label>
+        <button id="tid-duty-open" class="tid-link tid-link-btn" type="button"
+                title="編成番号から、その編成のその日の行路 (仕業のつながり) を出します">編成検索・行路表</button>
         <a class="tid-link" href="index.html">旅客案内画面へ</a>
     </div>
 </header>
@@ -45,6 +47,14 @@
     <label><input type="checkbox" id="tid-show-route" checked> 進路</label>
     <label><input type="checkbox" id="tid-show-platform" checked> のりば</label>
     <label><input type="checkbox" id="tid-show-fleet" checked> 編成番号</label>
+    <span class="tid-zoomctl">
+        <b>表示倍率</b>
+        <button id="tid-zoom-out" class="tid-zbtn" title="縮小 (キー -)">−</button>
+        <span id="tid-zoom-val" class="tid-zoom-val">100%</span>
+        <button id="tid-zoom-in" class="tid-zbtn" title="拡大 (キー +)">＋</button>
+        <button id="tid-zoom-reset" class="tid-zbtn tid-zbtn-w" title="等倍に戻す (キー 0)">等倍</button>
+        <button id="tid-zoom-fit" class="tid-zbtn tid-zbtn-w" title="線路図の高さを画面に合わせる">全線</button>
+    </span>
     <span class="tid-legend">
         <i class="lg lg-g"></i>進行
         <i class="lg lg-y"></i>注意・減速
@@ -60,11 +70,37 @@
     <canvas id="tid-canvas"></canvas>
     <div id="tid-scroll"><div id="tid-spacer"></div></div>
     <div id="tid-station" class="tid-station"></div>
+
+    <!-- 編成検索・行路表 (線路図の上にかぶせて出す) -->
+    <div id="tid-duty" class="tid-duty">
+        <div class="tid-station-head">
+            <b>編成検索・行路表</b>
+            <button id="tid-duty-close" class="tid-x" type="button">閉じる</button>
+        </div>
+        <div class="tid-duty-search">
+            <input id="tid-duty-q" type="search" placeholder="編成番号 (例 W1 / ホシW1 / S60)"
+                   autocomplete="off" inputmode="latin">
+            <button id="tid-duty-go" class="tid-btn tid-btn-exec" type="button">検索</button>
+            <button id="tid-duty-cur" class="tid-btn" type="button"
+                    title="線路図で選んでいる列車の編成を引きます">選択中の列車から</button>
+        </div>
+        <div id="tid-duty-hints" class="tid-duty-hints"></div>
+        <div id="tid-duty-body" class="tid-duty-body">
+            <p class="tid-empty">編成番号を入れて「検索」を押してください。（例: W1 / ホシW1 / S60 / MA05 / V4）</p>
+        </div>
+    </div>
     <div id="tid-toast" class="tid-toast"></div>
 </div>
 
 <!-- ===================================================== 下段: 指令パッドと情報 -->
 <div id="tid-dock">
+
+    <section class="tid-panel tid-panel-comm">
+        <h2>指令連絡 <span id="tid-comm-count" class="tid-comm-count"></span></h2>
+        <div id="tid-comm-list" class="tid-comm-list">
+            <p class="tid-empty">現場からの連絡はありません。</p>
+        </div>
+    </section>
 
     <section class="tid-panel tid-panel-train">
         <h2>列車情報</h2>
@@ -282,10 +318,15 @@
 <script src="js/27-operations.js"></script>
 <script src="js/28-dispatch.js"></script>
 <script src="js/29-sim-bus.js"></script>
+<script src="js/30-duty-log.js"></script>
+<script src="js/31-comms.js"></script>
 <!-- Super-TID 画面 -->
 <script src="js/40-tid-theme.js"></script>
 <script src="js/41-tid-render.js"></script>
 <script src="js/42-tid-ui.js"></script>
+<script src="js/43-tid-zoom.js"></script>
+<script src="js/44-tid-duty.js"></script>
+<script src="js/45-tid-comms.js"></script>
 <script src="js/49-tid-boot.js"></script>
 
 </body>

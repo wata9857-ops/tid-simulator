@@ -140,8 +140,11 @@ class TrackManager {
                         if (trk.id==="Up_Out" || trk.id==="Up_In" || trk.id==="Down_Out") laneCount = 2;
                         if (trk.id==="Down_In") laneCount = 3;
                     } else if (stName === "新大阪") {
+                        /* 上り2面4線・下り2面4線・おおさか東線ホームで 11番線。
+                           下り外は 1・2番のりばの2本 (以前は1本しかなく、
+                           番線の定義 11本と線路の本数 10本が合っていなかった)。 */
                         if (trk.id==="Up_Out" || trk.id==="Up_In" || trk.id==="Down_In") laneCount = 3;
-                        if (trk.id==="Down_Out") laneCount = 1;
+                        if (trk.id==="Down_Out") laneCount = 2;
                     // ★追加: 加古川の隣に「宝殿」を追加し、内部的な待避容量を確保
                     } else if (["京都", "尼崎", "西明石", "姫路", "高槻", "加古川", "宝殿", "草津", "野洲", "河瀬", "安土", "米原", "長浜", "近江塩津", "敦賀"].includes(stName)) {
                         laneCount = 2;

@@ -47,6 +47,9 @@ function startServer() {
     let area = 'main';
     const ai = args.indexOf('--area');
     if (ai >= 0) { area = args[ai + 1]; args.splice(ai, 2); }
+    let zoom = 1;
+    const zi = args.indexOf('--zoom');
+    if (zi >= 0) { zoom = parseFloat(args[zi + 1]); args.splice(zi, 2); }
     const stations = args.length ? args : ['大津', '山科', '京都', '向日町操'];
 
     fs.mkdirSync(OUT, { recursive: true });
@@ -70,18 +73,23 @@ function startServer() {
     if (area !== 'main') {
         await page.evaluate(a => { game.tidRenderer.applyArea(a); }, area);
     }
+    if (zoom !== 1) {
+        await page.evaluate(z => { game.tidZoom.set(z); }, zoom);
+        console.log('  拡大率 ' + zoom + ' (画面の表示は ' +
+            await page.evaluate(() => document.getElementById('tid-zoom-val').textContent) + ')');
+    }
 
     for (const st of stations) {
         const info = await page.evaluate(s => {
             game.tidRenderer.scrollToStation(s);
             game.tidRenderer.draw();
             const r = game.tidRenderer;
-            return { w: r.canvas.width, h: r.canvas.height, rows: r.rows.length,
+            return { w: r.canvas.width, h: r.canvas.height, rows: r.rows().length,
                      scroll: game.scrollContainer ? game.scrollContainer.scrollLeft : -1 };
         }, st);
         await page.waitForTimeout(120);
         const el = await page.$('#tid-canvas');
-        const file = path.join(OUT, st + '.png');
+        const file = path.join(OUT, st + (zoom !== 1 ? '-z' + zoom : '') + '.png');
         await el.screenshot({ path: file });
         console.log('  ' + st + ' -> ' + file + '  canvas=' + info.w + 'x' + info.h +
                     ' rows=' + info.rows + ' scrollLeft=' + info.scroll);
@@ -91,7 +99,7 @@ function startServer() {
     const geom = await page.evaluate(() => {
         const r = game.tidRenderer;
         return {
-            rows: r.rows.map(x => ({ id: x.id, label: x.label, y: x.y })),
+            rows: r.rows().map(x => ({ id: x.id, label: x.label, y: r.trackY[x.id] })),
             stations: (typeof STATIONS !== 'undefined')
                 ? ['膳所', '大津', '山科', '京都', '西大路', '桂川', '向日町']
                     .map(n => ({ n: n, x: r.stationX ? r.stationX(n) : null })) : []

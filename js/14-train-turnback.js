@@ -1,6 +1,9 @@
 /* このファイルは index.html から分割されたものです。
    Train: 折り返し・車両故障などの小トラブル・所要時間計算 */
 Train.prototype.executeTurnBack = function () {
+        // 前回の判定を持ち越さない (出区して営業に戻った編成が、次の終着で
+        // 理由もなく運用を終えてしまうのを防ぐ)
+        this.retiredByBudget = false;
         const blks = this.game.trackMgr.blocks[this.trackId];
         const blk = blks[this.currBlockIndex];
         const stName = blockStationName(blk);
@@ -63,9 +66,23 @@ Train.prototype.executeTurnBack = function () {
            (js/10-timetable.js の ttRetireChance) */
         if (this.nextAction !== "depot" && !this.serviceChange &&
             ["普通", "快速"].indexOf(this.type) >= 0) {
-            const ttLine = ttIsBranch(this) ? "branch" : "main";
-            if (Math.random() < ttRetireChance(this.game, ttLine, this.type)) {
+            const ttLine = ttLineOf(this);   // main / kosei / fukuchi / tozai
+            /* ★折り返した先に続く列車がいないときは、目安を超えていても
+               運用を終えない (js/10-timetable.js の ttStillNeeded)。
+               ここを見ずに割合だけで切っていたため、京都から大阪方面へ
+               9〜10駅ぶん列車がいない時間帯ができていた。 */
+            if (!ttStillNeeded(this.game, this, stName) &&
+                Math.random() < ttRetireChance(this.game, ttLine, this.type)) {
                 this.nextAction = "depot";
+                /* ★この印を付けておかないと、この決定がすぐ取り消されていた。
+                   下の "depot" の処理は、その駅に留置場が無い (または満線の) とき
+                   tryConvertDeadhead() を呼ぶが、その中の最初の手が
+                   「まず折り返しを試す」(preferTurnback) なので、
+                   運用を終えたはずの列車がそのまま折り返して走り続けていた。
+                   本線の普通は目安42本に対して実測130本前後まで増え、
+                   大阪の上り普通が実際の時刻表の2倍 (16.7本/時) になっていた。
+                   印が付いているときは折り返さず、車両所へ回送するか運用を終える。 */
+                this.retiredByBudget = true;
             }
         }
 

@@ -194,11 +194,32 @@ function ttPhase(type, dirName) {
 */
 const TT_ACTIVE_BUDGET = {
     /* 普通 … 8本/時 × 西明石〜京都 片道約1.9時間 × 上下 ＝ 約30本
-              ＋ 琵琶湖線・北陸線・姫路口ぶん ＝ 約50本
-       快速 … 6本/時 × 約1.6時間 × 上下 ＝ 約20本 (+姫路口) ＝ 28本
-       新快速 8本/時 × 約2.0時間 × 上下 ＝ 約32本
-       回送 … 実際の回送は多くないので少なめに抑える */
-    main:   { "普通": 42, "快速": 28, "新快速": 34, "特急": 18, "貨物": 20, "回送": 14 },
+              ＋ 琵琶湖線・北陸線・姫路口ぶん ＝ 約38本
+       快速 … 6本/時 × 約1.6時間 × 上下 ＝ 約20本 (+姫路口) ＝ 32本
+       新快速 8本/時 × 約2.0時間 × 上下 ＝ 約31本
+       回送 … 実際の回送は多くないので少なめに抑える
+
+       ★2026-09 の見直し
+         この目安は前からあったが、まったく効いていなかった。
+           ・車両所からの出区計画 (js/27-operations.js) が目安を見ていなかった
+           ・目安を超えて「運用を終える」と決めた列車が、
+             入区できないとそのまま折り返して走り続けていた
+         実測では本線の普通が目安42本に対して130本前後まで増え、
+         大阪の上り普通が実際の時刻表の2倍 (16.7本/時) になっていた。
+         両方を直したうえで、実測した発車本数が駅時刻表に合うように
+         数値を詰め直した。 */
+    main:   { "普通": 44, "快速": 34, "新快速": 30, "特急": 18, "貨物": 20, "回送": 14 },
+
+    /* 分岐線は3線区あわせて見ると、湖西線だけが実際の2倍以上になっていた
+       (京都駅の時刻表では湖西線の普通は毎時3本)。線区ごとに分けて見る。
+         湖西線   3本/時 × 京都〜近江今津 片道約1.3時間 × 上下 ＝ 約8本
+         JR宝塚線 4本/時 × 尼崎〜新三田 片道約0.8時間 × 上下 ＝ 約12本 (+快速)
+         JR東西線 4本/時 × 尼崎〜放出 片道約0.6時間 × 上下 ＝ 約10本 */
+    kosei:   { "普通": 8,  "快速": 4 },
+    fukuchi: { "普通": 12, "快速": 9 },
+    tozai:   { "普通": 10, "快速": 8 },
+
+    // 3線区をまとめて見るときの目安 (線区を区別しない呼び出し用)
     branch: { "普通": 30, "快速": 16, "回送": 6 }
 };
 
@@ -209,23 +230,46 @@ function ttIsBranch(t) {
            t.trackId.indexOf("Tozai") === 0;
 }
 
-/** いま走っている本数 (線区・種別ごと) */
+/**
+ * その列車がいま走っている線区。
+ * いま乗っている線路で決める (行先ではない)。
+ * 尼崎・山科より手前を走っているあいだは本線として数える。
+ */
+function ttLineOf(t) {
+    if (t.trackId.indexOf("Kosei") === 0)   return "kosei";
+    if (t.trackId.indexOf("Fukuchi") === 0) return "fukuchi";
+    if (t.trackId.indexOf("Tozai") === 0)   return "tozai";
+    return "main";
+}
+
+/** いま走っている本数 (線区・種別ごと)。line に "branch" を渡すと3線区の合計。 */
 function ttActiveCount(game, line, type) {
     let n = 0;
     for (const t of game.trains) {
         if (t.state === "finished" || t.state === "in_depot") continue;
         if (t.type !== type) continue;
-        if ((ttIsBranch(t) ? "branch" : "main") !== line) continue;
+        const l = ttLineOf(t);
+        if (line === "branch") { if (l === "main") continue; }
+        else if (l !== line) continue;
         n++;
     }
     return n;
 }
 
-/** その種別が在線本数の目安を超えているか */
-function ttOverBudget(game, line, type) {
+/**
+ * その種別が在線本数の目安を超えているか。
+ *   allow … 目安の何倍まで許すか (省略すると 1.0)
+ *
+ * 穴埋めの増発 (js/27-operations.js の checkLocalGapFill) だけは
+ * 少しだけ超過を許す。目安ちょうどで止めてしまうと、
+ * 折り返しで運用を終えた直後にできた「列車のいない区間」を
+ * 埋められず、10駅以上の空きがそのまま残ってしまう。
+ * 実際のダイヤでも、間隔が開いたときは臨時に1本入れる。
+ */
+function ttOverBudget(game, line, type, allow) {
     const b = (TT_ACTIVE_BUDGET[line] || {})[type];
     if (b === undefined) return false;
-    return ttActiveCount(game, line, type) >= b;
+    return ttActiveCount(game, line, type) >= b * (allow || 1.0);
 }
 
 /**
@@ -238,10 +282,57 @@ function ttOverBudget(game, line, type) {
  * そこで、超えているぶんに応じた割合だけ運用を終えるようにして、
  * どの区間も列車が途切れないまま本数が落ち着くようにする。
  */
+/**
+ * その駅で折り返した先の区間に、続く列車がいるか。
+ *
+ * 在線本数の目安を超えていても、折り返した先がガラガラなら
+ * 運用を終えてはいけない。そこを見ずに割合だけで切っていたため、
+ * 京都から大阪方面へ 9〜10駅 (約25分) 列車がいない時間帯ができていた。
+ * 実際の指令でも、後続がいない所で列車を打ち切ることはしない。
+ *
+ *   train  … 折り返そうとしている列車
+ *   stName … いまいる駅
+ * 戻り値 true = まだこの列車が要る (運用を終えない)
+ */
+function ttStillNeeded(game, train, stName) {
+    if (["普通", "快速"].indexOf(train.type) < 0) return false;
+    const newDir = train.dir * -1;
+    // 折り返した先の線路
+    let tid;
+    const t0 = train.trackId;
+    if (t0.indexOf("Kosei") === 0)        tid = newDir === 1 ? "Kosei_Up" : "Kosei_Down";
+    else if (t0.indexOf("Fukuchi") === 0) tid = newDir === 1 ? "Fukuchi_Up" : "Fukuchi_Down";
+    else if (t0.indexOf("Tozai") === 0)   tid = newDir === 1 ? "Tozai_Up" : "Tozai_Down";
+    else tid = (newDir === 1 ? "Up_" : "Down_") + (t0.indexOf("In") >= 0 ? "In" : "Out");
+    const blks = game.trackMgr.blocks[tid];
+    const idx = STATION_MAP[stName];
+    if (!blks || idx === undefined) return false;
+    const here = blks.find(b => b.stationIdx === idx && b.x !== -1000);
+    if (!here) return false;
+
+    /* 折り返した先、5駅ぶんに同じ向きの普通・快速が何本いるか。
+       5駅は、シミュレーターの1駅あたり約4.6分で 約23分ぶん。
+       実際のダイヤで、いちばん空く時間帯 (神戸線の西半分で毎時4本) でも
+       このあいだには必ず1本は入る。 */
+    let n = 0;
+    for (let k = 1; k <= UNITS_PER_STATION * 5; k++) {
+        const i = here.index + newDir * k;
+        if (i < 0 || i >= blks.length) break;
+        const b = blks[i];
+        if (!b || b.x === -1000) continue;
+        n += b.lanes.filter(l => l && l.dir === newDir &&
+                                 ["普通", "快速"].indexOf(l.type) >= 0).length;
+    }
+    return n < 2;
+}
+
 function ttRetireChance(game, line, type) {
     const b = (TT_ACTIVE_BUDGET[line] || {})[type];
     if (!b) return 0;
     const n = ttActiveCount(game, line, type);
     if (n <= b) return 0;
-    return Math.min(0.85, (n - b) / b * 4.0);
+    /* ★上限を 0.85 から 0.92 に上げた。分岐線からの直通列車のように
+       生成側の目安が効かない流入があるので、0.85 のままだと
+       本線の普通が目安の1.5倍あたりで釣り合ってしまっていた。 */
+    return Math.min(0.92, (n - b) / b * 4.0);
 }

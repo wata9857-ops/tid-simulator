@@ -24,6 +24,13 @@ class GameSystem {
         this.incidents = new IncidentSystem(this);
         // 運用計画 (js/27-operations.js)。出区・送り込み・増発・復旧回送。
         this.ops = new OperationsManager(this);
+        /* 編成ごとの行路の記録 (js/30-duty-log.js)。
+           「この編成が今日どう回っているか」を実際に起きたことから書き留める。 */
+        this.duty = new DutyLog(this);
+        /* 指令と現場のやりとり (js/31-comms.js)。
+           自動の運転整理はそのままで、その上に「連絡 → 指令の判断」を足す。
+           答えが無いときは別の指令員が引き取るので、運転は止まらない。 */
+        this.comms = new CommSystem(this);
         /* 画面どうしで同じシミュレーションを共有する仕組み (js/29-sim-bus.js)。
            同じブラウザで開いた画面のうち1つが本体になり、残りはその状態を映す。 */
         this.bus = null;
@@ -229,6 +236,7 @@ class GameSystem {
         this.incidents.update();          // 輸送障害の発生・進行・復旧
         this.spawner.update(this.currentTime);
         this.ops.update(this.currentTime); // 出区計画・間隔の穴埋め
+        this.comms.update();               // 指令と現場のやりとり
         this.trains = this.trains.filter(t => t.state !== "finished");
         this.trains.sort((a,b)=>PRIORITY[b.type]-PRIORITY[a.type]);
         this.trains.forEach(t => t.update());
@@ -242,6 +250,8 @@ class GameSystem {
         });
 
         
+        this.duty.update();                // 編成ごとの行路を書き留める
+
         this.ui.updateClock(this.currentTime);
         
         // ★毎分業務連絡を更新

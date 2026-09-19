@@ -256,8 +256,21 @@ function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY-15, upOutY+15, upInY-15, upInY+15, downInY, downOutY];
     }
     else if (stationName === "新大阪") {
-         let startY = upOutY - 20;
-        rule.lanes.forEach((_, i) => yPositions.push(startY + (i * 35)));
+        /* ★以前は「上り外の少し上から 35 ずつ下へ」という並べ方だった。
+           この関数は 4本の線路の縦位置を引数で受け取る作りなので、
+           35 という決め打ちの間隔では、11本ぜんぶが上り外に属する
+           ことになってしまう (番線と線路の対応表 stationLaneMap も、
+           線路図の取付線も、すべて上り外に集まっていた)。
+           実際の新大阪は 上り2面4線＋下り2面4線＋おおさか東線 なので、
+           4本の線路にそれぞれ割り当てる。
+             上り外 … 上通 / 10 / 9
+             上り内 … 8 / 7 / 6
+             下り内 … 5 / 4 / 3
+             下り外 … 2 / 1 (おおさか東線ホーム側) */
+        yPositions = [upOutY - 26, upOutY, upOutY + 26,
+                      upInY - 26, upInY, upInY + 26,
+                      downInY - 26, downInY, downInY + 26,
+                      downOutY - 13, downOutY + 13];
     }
     else if (["舞子","垂水","須磨","芦屋","甲南山手","さくら夙川","西宮","摩耶","朝霧","須磨海浜公園","新長田","JR総持寺","島本","桂川","東姫路","御着","塩屋"].includes(stationName)) {
         if (rule.lanes.length === 6) { 
@@ -358,6 +371,12 @@ function _trackOfVirtual(v) {
  *   label    … 番線名 ("4" / "上待" など)
  *   platform … ホームがあるか
  *   virt     … 縦位置の仮想座標 (上り外=0, 上り内=K, 下り内=2K, 下り外=3K)
+ *   index    … STATION_PLATFORM_RULES[駅].labels の何番目か
+ *               (自動で足した待避線は -1)。
+ *               ★線路図はこの番号で縦位置を引く。以前は入れていなかったので、
+ *                 Super-TID の laneY() が必ず「線路の定位置から18pxずつ」という
+ *                 代替の計算に落ちていた。そのため大きな駅では
+ *                 列車が番線と違う高さに描かれ、表示どうしも重なっていた。
  *
  * シミュレーションのレーン数のほうが多い駅では、余ったレーンを
  * 待避線 (副本線) として自動で足す。配線略図でも、これらの駅の
@@ -377,7 +396,7 @@ function stationLaneMap(stationName, trackMgr) {
     for (let i = 0; i < ys.length && i < rule.labels.length; i++) {
         const k = _trackOfVirtual(ys[i]);
         out[STATION_TRACK_ORDER[k]].push({
-            label: rule.labels[i], platform: !!rule.lanes[i], virt: ys[i]
+            label: rule.labels[i], platform: !!rule.lanes[i], virt: ys[i], index: i
         });
     }
 
@@ -398,7 +417,9 @@ function stationLaneMap(stationName, trackMgr) {
                 arr.push({
                     label: (tid.indexOf("Up") === 0 ? "上待" : "下待") + (n > 1 ? n : ""),
                     platform: false,
-                    virt: anchor + outward * (30 + 20 * n)
+                    virt: anchor + outward * (30 + 20 * n),
+                    index: -1,              // 番線の定義には無い (自動で足した待避線)
+                    outward: outward * n    // 線路の外側へ何本目か
                 });
                 n++;
             }
@@ -407,6 +428,31 @@ function stationLaneMap(stationName, trackMgr) {
         });
     }
     _stationLaneMapCache[stationName] = out;
+    return out;
+}
+
+/**
+ * その駅の番線が「どの線路に属するか」を、labels と同じ並びで返す。
+ *
+ * 線路図で番線を描くとき、その番線を本線のどの線につなげばよいかを
+ * 知る必要がある。stationLaneMap() は線路IDごとに分けた表を作るが、
+ * 「labels の i 番目はどの線路か」を直接引ける形が無かったので用意した。
+ * (Super-TID の線路図が、待避線を「いちばん近い線路」につないでいたため、
+ *  上り待避線が下り線につながって見えることがあった)
+ *
+ * 戻り値は STATION_PLATFORM_RULES[stationName].labels と同じ長さの配列で、
+ * 中身は "Up_Out" / "Up_In" / "Down_In" / "Down_Out" のいずれか。
+ */
+const _stationLaneTrackCache = {};
+function stationLaneTracks(stationName) {
+    const cached = _stationLaneTrackCache[stationName];
+    if (cached) return cached;
+    const rule = STATION_PLATFORM_RULES[stationName];
+    if (!rule) return [];
+    const K = 1000;
+    const ys = stationLaneYPositions(stationName, 0, K, 2 * K, 3 * K);
+    const out = ys.map(v => STATION_TRACK_ORDER[_trackOfVirtual(v)]);
+    _stationLaneTrackCache[stationName] = out;
     return out;
 }
 

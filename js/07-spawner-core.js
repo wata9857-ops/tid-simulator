@@ -167,7 +167,12 @@ Spawner.prototype.checkFixedSpawns = function (ct) {
             this.sannomiyaUpStartersSpawned++; this.nextSannomiyaUpSpawn += 1200;
         }
         if (ct >= this.nextNishiAkashiSpawn) {
-            if (Math.random() < 0.7) this.game.addTrain({type:"普通", dir:1, trackId:"Up_In", dest:"高槻", startName:"西明石"});
+            /* ★在線本数の目安を見る。ここは1日じゅう25分おきに回っていて、
+               どの駅時刻表にも対応しない「素通しの増発」になっていた。
+               本線の普通が目安を超えているときは出さない。 */
+            if (Math.random() < 0.7 && !ttOverBudget(this.game, "main", "普通")) {
+                this.game.addTrain({type:"普通", dir:1, trackId:"Up_In", dest:"高槻", startName:"西明石"});
+            }
             this.nextNishiAkashiSpawn += 1500;
         }
         if (this.earlyKyotoUpSpawned < 4 && ct >= this.nextEarlyKyotoUpSpawn) {

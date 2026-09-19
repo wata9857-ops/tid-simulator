@@ -129,6 +129,29 @@ const TID_GEO = {
     turnoutW:    9,     // 転てつ器の白い四角
     turnoutH:    10,
     platformW:   83,    // ホーム帯の幅 (実物は 83px)
+
+    /* ------------------------------------------------ 駅の中の寸法 (倍率を掛ける前)
+       実物の Super-TID は、駅を
+         本線 ─ 転てつ器 ─ 斜めの取付線 ─ 着発線(枠付き) ─ 斜めの取付線 ─ 転てつ器 ─ 本線
+       という形で描き、渡り線 (内外の転線) はその外側の「のど」に置いている。
+       ホームの帯を斜めの線が横切ることは無い。
+       (以前は渡り線を駅の中心に描いていたので、ホームと番線札の上を
+        斜めの線が突き抜けていた) */
+    stationBoxW: 114,   // 着発線 (構内) の長さ
+    leadW:       36,    // 本線から着発線へ取り付く斜めの線の長さ
+    throatGap:   6,     // 取付線と渡り線のあいだの余白
+
+    /* となり合う番線の縦の最小間隔 [px] (倍率を掛けたあとの値)。
+       列車表示は高さ18px＋編成番号の帯10pxで、線路の上下16pxの所に出る。
+       これより詰まると、大阪・京都・尼崎のような番線の多い駅で
+       列車表示どうしや、番線札との重なりが避けられない。
+       この値を下回る所だけ、駅の中で上下に振り分けて広げる。 */
+    laneMinGap:  38,
+    /* ホームを挟まない線どうし (どちらも外側へ列車表示を出す所) の間隔。
+       列車表示は線路から 36px ぶん (表示18px＋編成番号の帯) 離れる。 */
+    laneLabelGap: 76,
+    /* どうしても入りきらない駅 (新大阪は番線11本) で、ここまでは詰めてよい値。 */
+    laneFloor:   32,
     /* 番線の縦位置を計算するときの「仮想の線路間隔」。
        旅客向けの線路図 (js/17-renderer.js) は線路が 120px 間隔で並んでいて、
        stationLaneYPositions() の数値もそれを前提に書かれている。
@@ -182,11 +205,185 @@ function buildTidTrackY(groups) {
  *   branch    … 分岐線 (上下2本だけ) なら true
  */
 function tidStationLaneYs(stName, refUpOutY, branch) {
+    return tidStationLayout(stName, refUpOutY, branch).ys;
+}
+
+/* 駅ごとの縦位置の計算結果を覚えておく (描画のたびに作り直さない) */
+const _tidLayoutCache = {};
+
+/**
+ * 駅の中の縦位置をまとめて決める。
+ *
+ * ■ なぜ「広げる」処理が要るか
+ *   番線の縦位置は、旅客向けの線路図と同じ並び (stationLaneYPositions) を
+ *   4本の線路の間隔で比例配分して決めている。そのため大阪 (9番線) や
+ *   京都 (8番線) のように番線の多い駅では、となり合う番線が
+ *   18〜22px しか離れず、列車表示 (高さ18px＋編成番号10px) どうしや
+ *   「N番のりば」の札と重なって読めなくなっていた。
+ *
+ * ■ どう広げるか
+ *   実物の Super-TID と同じ考え方で、駅の中だけ上下に広げる。
+ *   となり合う番線が laneMinGap より近いときだけ、その組を
+ *   駅全体の中心から上下へ振り分けて押し広げる。
+ *   広がったぶんは、駅の入口・出口に斜めの取付線 (分岐) を描いてつなぐので、
+ *   線路として筋が通った形になる (実物の京都駅もこの形をしている)。
+ *   広げるのは詰まっている駅だけなので、2〜4番線の駅は今までどおり。
+ *
+ * ■ 戻り値
+ *   ys       … STATION_PLATFORM_RULES[stName].labels と同じ並びの縦位置
+ *   homeYs   … その番線が属する本線の縦位置 (取付線をどこへ引くか)
+ *   spread   … 広げた駅かどうか
+ */
+function tidStationLayout(stName, refUpOutY, branch) {
+    const key = stName + "|" + Math.round(refUpOutY) + "|" + (branch ? 1 : 0);
+    const hit = _tidLayoutCache[key];
+    if (hit) return hit;
+
     const K = TID_GEO.virtualGap;
+    const rule = STATION_PLATFORM_RULES[stName] || { labels: [], lanes: [] };
     const virt = branch
         ? stationLaneYPositions(stName, 0, 0, K, K)
         : stationLaneYPositions(stName, 0, K, 2 * K, 3 * K);
-    return virt.map(v => tidVirtualToY(v, refUpOutY, branch));
+    const ys = virt.map(v => tidVirtualToY(v, refUpOutY, branch));
+
+    // その番線がつながっている本線の縦位置 (取付線の付け根)
+    const tracks = stationLaneTracks(stName);
+    const homeOf = (tid) => {
+        if (!branch) return tidVirtualToY(
+            { Up_Out: 0, Up_In: K, Down_In: 2 * K, Down_Out: 3 * K }[tid] || 0, refUpOutY, false);
+        // 分岐線は上下2本だけ。上り側/下り側のどちらに属するかで振り分ける。
+        const up = (tid === "Up_Out" || tid === "Up_In");
+        return tidVirtualToY(up ? 0 : K, refUpOutY, true);
+    };
+    const homeYs = ys.map((_, i) => homeOf(tracks[i] || "Up_Out"));
+
+    /* ------------------------------------------------ 列車表示をどちら側に出すか
+       ホームの帯と「N番のりば」の札は、島式ホームを挟む2線のあいだに入る。
+       そこへ列車表示まで出すと必ず重なるので、列車表示はホームと反対側
+       (線路の外側) に出す。ホームに面していない線 (待避線) は、
+       これまでどおり進行方向で決める。
+         -1 … 線路の上に出す / +1 … 線路の下に出す / 0 … 進行方向で決める */
+    const sides = ys.map(() => 0);
+    const order = ys.map((y, i) => i).sort((a, b) => ys[a] - ys[b]);
+    const platOrder = order.filter(i => !!rule.lanes[i]);
+    for (let i = 0; i + 1 < platOrder.length; i += 2) {
+        sides[platOrder[i]] = -1;        // 上側の線 … 表示は線路の上
+        sides[platOrder[i + 1]] = +1;    // 下側の線 … 表示は線路の下
+    }
+    if (platOrder.length % 2 === 1) sides[platOrder[platOrder.length - 1]] = -1;
+
+    const out = { ys: ys, homeYs: homeYs, sides: sides,
+                  tight: ys.map(() => false), spread: false };
+    if (ys.length < 2) { _tidLayoutCache[key] = out; return out; }
+
+    /* ------------------------------------------------ 近すぎる所だけ押し広げる
+       必要な間隔は、そのあいだに何が入るかで変わる。
+         ホームを挟む2線   … ホーム帯＋番線札ぶん (laneMinGap)
+         別のホームどうし  … 両側から列車表示が出るぶん (laneLabelGap)
+       実物の Super-TID も、駅の中では線路の間隔が場所ごとに違う。 */
+    const gapPair = TID_GEO.laneMinGap;                 // ホームを挟む2線
+    const gapLabel = TID_GEO.laneLabelGap;              // 表示が向かい合う所
+    const need = [];
+    for (let k = 0; k + 1 < order.length; k++) {
+        const a = order[k], b = order[k + 1];
+        const aOut = (sides[a] === +1);     // 下へ表示を出す
+        const bOut = (sides[b] === -1);     // 上へ表示を出す
+        need.push((aOut && bOut) ? gapLabel : gapPair);
+    }
+
+    const sorted = order.map(i => ys[i]);
+    let touched = false;
+    for (let k = 0; k < need.length; k++) {
+        if (sorted[k + 1] - sorted[k] < need[k] - 0.5) { touched = true; break; }
+    }
+    if (!touched) { _tidLayoutCache[key] = out; return out; }
+
+    const fixed = sorted.slice();
+    for (let k = 1; k < fixed.length; k++) {
+        if (fixed[k] - fixed[k - 1] < need[k - 1]) fixed[k] = fixed[k - 1] + need[k - 1];
+    }
+
+    /* 広げすぎて線路の帯からはみ出す駅 (新大阪のように番線が11本ある所) は、
+       入るところまで縮める。縮めても laneFloor は下回らない。
+       足りないぶんは画面の拡大 (js/43-tid-zoom.js) で見てもらう。 */
+    const room = tidStationRoom(refUpOutY, branch);
+    let span = fixed[fixed.length - 1] - fixed[0];
+    if (span > room && span > 0) {
+        const floor = TID_GEO.laneFloor;
+        const gaps = [];
+        for (let k = 1; k < fixed.length; k++) gaps.push(fixed[k] - fixed[k - 1]);
+        const fixedPart = gaps.reduce((t, g) => t + Math.min(g, floor), 0);
+        const flexPart = span - fixedPart;
+        const scale = (flexPart > 0) ? Math.max(0, (room - fixedPart) / flexPart) : 0;
+        let acc = fixed[0];
+        for (let k = 0; k < gaps.length; k++) {
+            const base = Math.min(gaps[k], floor);
+            acc += base + (gaps[k] - base) * scale;
+            fixed[k + 1] = acc;
+        }
+        span = fixed[fixed.length - 1] - fixed[0];
+    }
+
+    // 中心を動かさずに置き直す
+    const before = (sorted[0] + sorted[sorted.length - 1]) / 2;
+    const after = (fixed[0] + fixed[fixed.length - 1]) / 2;
+    const shift = before - after;
+    order.forEach((idx, k) => { ys[idx] = fixed[k] + shift; });
+
+    /* 縮めた結果、列車表示を出す側の隙間が足りなくなった番線に印を付ける。
+       そこだけ編成番号の帯を表示の左側に並べて、高さを詰める。 */
+    out.tight = ys.map(() => false);
+    for (let k = 0; k < order.length; k++) {
+        const i = order[k];
+        const sd = sides[i];
+        if (sd === 0) continue;
+        const nb = (sd === +1) ? order[k + 1] : order[k - 1];
+        if (nb === undefined) continue;
+        if (Math.abs(fixed[k] - fixed[(sd === +1) ? k + 1 : k - 1]) < gapLabel - 0.5) {
+            out.tight[i] = true;
+        }
+    }
+
+    out.spread = true;
+    _tidLayoutCache[key] = out;
+    return out;
+}
+
+/**
+ * 駅の中で番線を広げてよい縦の幅。
+ * 線路の帯そのものに、上下の駅名札との余白を足したぶんまで。
+ * ここを超えると駅名札や隣の線区に掛かってしまう。
+ */
+function tidStationRoom(refUpOutY, branch) {
+    const K = TID_GEO.virtualGap;
+    const band = branch
+        ? Math.abs(tidVirtualToY(K, refUpOutY, true) - refUpOutY)
+        : Math.abs(tidVirtualToY(3 * K, refUpOutY, false) - refUpOutY);
+    const margin = (TID_GEO.plateTopGap - 30 + TID_GEO.plateBotGap - 30) * TID_SCALE_Y;
+    return band + Math.max(0, margin);
+}
+
+/* ------------------------------------------------------------------ 駅の中の横位置
+
+   実物の Super-TID の駅は、左から
+     [渡り線のある のど] [取付線] [着発線 (枠付き)] [取付線] [渡り線のある のど]
+   の順に並ぶ。ホームの帯は着発線のまんなかに置く。
+   渡り線を駅の中心に描くとホームと番線札を突き抜けるので、
+   ここで求めた「のど」の位置に置く。 */
+
+/** 着発線 (構内) の長さ */
+function tidStationBoxW() { return tidW(TID_GEO.stationBoxW); }
+/** 本線から着発線へ取り付く斜めの線の長さ */
+function tidLeadW() { return tidW(TID_GEO.leadW); }
+/** 渡り線の横幅 */
+function tidCrossoverW() { return tidW(BLOCK_WIDTH) * 0.52; }
+/**
+ * 駅の「のど」(渡り線を置く場所) の中心。
+ *   side … "L" 画面の左 (草津・米原方) / "R" 画面の右 (姫路方)
+ */
+function tidThroatX(cx, side) {
+    const d = tidStationBoxW() / 2 + tidLeadW() + tidW(TID_GEO.throatGap) + tidCrossoverW() / 2;
+    return (side === "R") ? (cx + d) : (cx - d);
 }
 
 /**
@@ -264,10 +461,18 @@ const TID_WORLD_W = 100 + ((STATIONS.length - 1) * UNITS_PER_STATION) * BLOCK_WI
      (線路の間隔 72:59:73、駅名札までの余白 113/84) はそのまま保たれる。
 
    ■ 大きさ
-     1駅 360px × 2.2 = 792px、全線で約 68,500px。
+     1駅 360px × 1.3 = 468px、全線で約 40,000px。
      キャンバスは画面ぶんだけ描いて余白は spacer の div が持つので、
      iPad のキャンバス面積の上限には掛からない。 */
-const TID_SCALE   = 2.4;    // 横 (駅の間隔・閉塞の長さ)
+/* ★2026-09 の見直し
+     2.4倍は、駅の中の要素 (番線・ホーム・分岐・列車表示) が重ならないように
+     するための値だったが、1駅が 864px になって駅間 (閉塞) が間延びし、
+     画面に2駅ぶんしか入らなくなっていた。
+     重なりは「駅の中を縦に広げる」(tidStationLayout) と
+     「渡り線を駅の外の のど に置く」(TID_JUNCTIONS の side) で直したので、
+     横の倍率は元の見た目に近い所まで戻す。
+     足りないときは画面の拡大縮小 (js/43-tid-zoom.js) で拡げられる。 */
+const TID_SCALE   = 1.3;    // 横 (駅の間隔・閉塞の長さ)
 /* 縦の倍率は横より小さくする。
    重なって読めなかったのは主に横方向 (駅の中に番線・ホーム・分岐・
    列車表示が詰まる) で、縦は 72px でも足りていた。
@@ -560,20 +765,31 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
         ctx.fillText(String(delay), x + w + dw / 2, y + h / 2 + 0.5);
     }
 
-    // 編成番号 (車両所ごとの色帯)
+    /* 編成番号 (車両所ごとの色帯)。
+       ふだんは列車番号の上か下に付けるが、番線の間隔が足りない駅
+       (新大阪のように11番線ある所) では、表示の高さを詰めるため
+       左どなりに並べる (opt.inlineFleet)。 */
+    let padL = 12, padT = 12, padB = 12;
     if (opt.showFleet && t.vehicles && t.vehicles.length) {
         const fc = TID_FLEET_COLORS[t.vehicles[0].group] || { bg: "#444", text: "#fff" };
         const label = t.vehicles.map(v => v.id).join("+");
         ctx.font = "9px 'Meiryo UI', sans-serif";
         const fw = ctx.measureText(label).width + 8;
-        const fx = x, fy = opt.below ? (y + h + 1) : (y - 11);
+        let fx, fy, fh = 10;
+        if (opt.inlineFleet) {
+            fx = x - fw - 2; fy = y + (h - fh) / 2;
+            padL = fw + 14;
+        } else {
+            fx = x; fy = opt.below ? (y + h + 1) : (y - 11);
+            if (opt.below) padB = 24; else padT = 24;
+        }
         ctx.fillStyle = fc.bg;
-        ctx.fillRect(fx, fy, fw, 10);
+        ctx.fillRect(fx, fy, fw, fh);
         ctx.fillStyle = fc.text;
-        ctx.fillText(label, fx + fw / 2, fy + 5.5);
+        ctx.fillText(label, fx + fw / 2, fy + fh / 2 + 0.5);
     }
 
-    return { x: x - 12, y: y - 12, w: w + 30, h: h + 24 };
+    return { x: x - padL, y: y - padT, w: w + padL + 18, h: h + padT + padB };
 }
 
 /* ------------------------------------------------------------------ 分岐・渡り線
@@ -582,8 +798,18 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
    旅客向けの線路図には分岐が無いが、Super-TID では実物と同じように
    渡り線 (内外の転線)、他線区との合流・分岐、線内で終わる支線を描く。
 
-     crossovers … 駅構内の渡り線。[上側の線路ID, 下側の線路ID, 形] の配列。
+     crossovers … 駅の渡り線。[上側の線路ID, 下側の線路ID, 形, 置く場所] の配列。
                   形は "x"(両渡り) / "l"(片渡り) / "r"(片渡り 逆向き)
+
+                  ★置く場所 (4つめ) は "L"(画面の左＝米原・草津方) /
+                    "R"(画面の右＝姫路方) / "B"(両側)。省略したときは
+                      両渡り("x")   … "B" (実物の主要駅は駅の前後に1組ずつある)
+                      片渡り("l"/"r") … "L"
+                    とする。
+                    いずれにしても渡り線は「のど」(着発線の外側) に描く。
+                    以前は駅の中心に描いていたため、ホームの帯と
+                    「N番のりば」の札を斜めの線が突き抜けていた。
+                    (IMG_0332 / IMG_0333 で指摘された所)
      junctions  … シミュレーターに線路として入っている他線区との合流・分岐。
                   [本線側の線路ID, 分岐側の線路ID, "in"(合流) / "out"(分岐)]
      stubs      … 画面の外へ出ていく線。{ side:"L"|"R", from:線路ID, up:上へ出すか, label:線名 }
@@ -704,9 +930,13 @@ const TID_JUNCTIONS = {
                         { side: "L", from: "Tozai_Down", up: false, label: "放出電留線" }] }
 };
 
-/** 渡り線 (片渡り・両渡り) を描く */
+/**
+ * 渡り線 (片渡り・両渡り) を描く。
+ * cx は駅の中心ではなく「のど」の中心 (tidThroatX) を渡すこと。
+ * 駅の中心に描くと、ホームの帯と番線札を斜めの線が突き抜けてしまう。
+ */
 function tidDrawCrossover(ctx, cx, yTop, yBot, shape) {
-    const w = tidW(BLOCK_WIDTH) * 0.62;
+    const w = tidCrossoverW();
     const draw = (x1, x2) => {
         ctx.strokeStyle = TID_COLORS.railEdge;
         ctx.lineWidth = 5;
@@ -726,7 +956,7 @@ function tidDrawCrossover(ctx, cx, yTop, yBot, shape) {
 
 /** 他線区との合流・分岐 (シミュレーター内に線路がある側) */
 function tidDrawJunction(ctx, cx, yMain, yBranch, mode) {
-    const w = tidW(BLOCK_WIDTH) * 1.15;
+    const w = tidW(BLOCK_WIDTH) * 0.9;
     // 合流は分岐側が本線へ寄ってくる形、分岐はその逆
     const x1 = (mode === "in") ? cx - w : cx + w;
     ctx.strokeStyle = TID_COLORS.railEdge;
@@ -741,8 +971,8 @@ function tidDrawJunction(ctx, cx, yMain, yBranch, mode) {
 
 /** 画面の外へ出ていく線 (支線・車両所への引上線など) */
 function tidDrawStub(ctx, cx, y, goUp, label, side, order) {
-    const dx = (side === "L" ? -1 : 1) * (tidW(BLOCK_WIDTH) * 0.8);
-    const dy = (goUp ? -1 : 1) * (24 + order * 14);
+    const dx = (side === "L" ? -1 : 1) * (tidW(BLOCK_WIDTH) * 0.55);
+    const dy = (goUp ? -1 : 1) * (22 + order * 13);
     const x2 = cx + dx, y2 = y + dy;
     ctx.strokeStyle = TID_COLORS.railEdge;
     ctx.lineWidth = 4;
