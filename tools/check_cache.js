@@ -1,6 +1,9 @@
 /* 「前に開いたことのある端末」で、新しく公開した版がちゃんと反映されるかを確かめる。
 
-   使い方: node tools/check_cache.js
+   使い方:
+     node tools/check_cache.js            # 1つ前のコミットを旧版として確かめる
+     node tools/check_cache.js 6cbc198    # 旧版のコミットを指定する
+                                          #   (利用者の端末に残っている版で確かめる)
 
    ■ なぜ要るか
      GitHub Pages は js/css を `Cache-Control: max-age=600` で配ります。
@@ -75,7 +78,10 @@ function startServer(state) {
 (async () => {
     /* --- 1つ前のコミットを旧版として取り出す。
            git worktree を使う (tar は Windows のパスをうまく扱えない)。 */
-    const prev = execSync('git rev-parse HEAD~1', { cwd: ROOT }).toString().trim();
+    /* 旧版はコマンドラインで指定できる (既定は1つ前のコミット)。
+       「利用者の端末に残っている版」を指定して確かめられるようにしてある。 */
+    const arg = process.argv.slice(2).filter(a => a.indexOf('--') !== 0)[0] || 'HEAD~1';
+    const prev = execSync('git rev-parse ' + arg, { cwd: ROOT }).toString().trim();
     try { execSync('git worktree remove --force "' + OLDROOT + '"', { cwd: ROOT, stdio: 'ignore' }); }
     catch (e) { /* 無ければそれでよい */ }
     // 前回の後始末が残っていると worktree を作れないので掃除する
@@ -105,10 +111,16 @@ function startServer(state) {
     await page.waitForFunction('typeof game !== "undefined" && game.tidRenderer', { timeout: 20000 });
     const before = await page.evaluate(() => ({
         scale: TID_SCALE,
-        gap: Math.abs(tidStationX(1) - tidStationX(0))
+        gap: Math.abs(tidStationX(1) - tidStationX(0)),
+        zoomObj: typeof game.tidZoom !== 'undefined' && !!game.tidZoom,
+        dutyObj: typeof game.tidDuty !== 'undefined' && !!game.tidDuty
     }));
-    ok('旧版が読み込まれている (倍率 2.4 / 1駅 864px)',
-       Math.abs(before.scale - 2.4) < 0.01, '倍率 ' + before.scale + ' / 1駅 ' + Math.round(before.gap) + 'px');
+    /* 旧版が本当にその版として読み込まれているか。
+       旧版のソースから読み取った値と突き合わせる (数字の決め打ちにしない)。 */
+    const oldScale = scaleOf(OLDROOT);
+    ok('旧版が読み込まれている', Math.abs(before.scale - oldScale) < 0.01,
+       '倍率 ' + before.scale + ' / 1駅 ' + Math.round(before.gap) + 'px' +
+       ' / 仕組み zoom=' + before.zoomObj + ' duty=' + before.dutyObj);
 
     head('2. 配信元を新版に差し替えて、同じブラウザで再読み込み');
     state.root = ROOT; state.tag = 'new';
@@ -164,9 +176,12 @@ function startServer(state) {
     process.exit(failures === 0 ? 0 : 1);
 })();
 
-/** 作業ツリーの js/40-tid-theme.js に書いてある横倍率 */
-function TIDSCALE_EXPECTED() {
-    const src = fs.readFileSync(path.join(ROOT, 'js', '40-tid-theme.js'), 'utf8');
+/** そのディレクトリの js/40-tid-theme.js に書いてある横倍率 */
+function scaleOf(dir) {
+    const src = fs.readFileSync(path.join(dir, 'js', '40-tid-theme.js'), 'utf8');
     const m = /const\s+TID_SCALE\s*=\s*([\d.]+)/.exec(src);
     return m ? parseFloat(m[1]) : 1.3;
 }
+
+/** 作業ツリー (新版) の横倍率 */
+function TIDSCALE_EXPECTED() { return scaleOf(ROOT); }
