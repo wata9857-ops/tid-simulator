@@ -17,7 +17,8 @@ const js = jsFiles.map(f => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')).j
 const css = fs.readdirSync(path.join(ROOT, 'css')).filter(f => f.endsWith('.css'))
     .map(f => fs.readFileSync(path.join(ROOT, 'css', f), 'utf8')).join('\n');
 
-const SCRIPT_RE = /<script src="js\/([^"]+)"><\/script>/g;
+// ?v=... の版の印 (tools/stamp_version.js) が付いていても読めるようにする
+const SCRIPT_RE = /<script src="js\/([^"?]+)(?:\?[^"]*)?"><\/script>/g;
 
 let failures = 0;
 function ok(label, cond, detail) {
@@ -121,6 +122,18 @@ const leftovers = [
 leftovers.forEach(([needle, what]) => {
     ok('分割前の名残が無い: ' + what, !js.includes(needle), needle);
 });
+
+// ---------------------------------------------- 版の印 (キャッシュ対策)
+/* GitHub Pages は js/css を `Cache-Control: max-age=600` で配るので、
+   URL が同じままだと、前に開いたことのあるブラウザは古い js を使い続ける。
+   実際にこれで「新しいボタンは出ているのに押しても何も起きない」という
+   壊れ方をした。tools/stamp_version.js が付ける版の印が、
+   いまの中身と合っているかをここで見る。 */
+const stampTool = require('./stamp_version.js');
+const stampState = stampTool.checkStamp();
+ok('js/css の版の印が中身と合っている (キャッシュ対策)', stampState.ok,
+   stampState.ok ? 'v=' + stampState.want
+                 : '想定 v=' + stampState.want + ' / node tools/stamp_version.js を実行すること');
 
 console.log('\n' + (failures === 0 ? '>>> すべて合格' : '>>> ' + failures + ' 件 不合格'));
 process.exitCode = failures ? 1 : 0;

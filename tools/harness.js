@@ -22,7 +22,8 @@ const USE_ORIG = process.argv.indexOf('--orig') >= 0;
 function scriptsOf(htmlName) {
     return fs.readFileSync(path.join(ROOT, htmlName), 'utf8')
         .split('\n')
-        .map(l => /<script src="js\/([^"]+)"><\/script>/.exec(l))
+        // ?v=... の版の印 (tools/stamp_version.js) が付いていても読めるようにする
+        .map(l => /<script src="js\/([^"?]+)(?:\?[^"]*)?"><\/script>/.exec(l))
         .filter(Boolean)
         .map(m => m[1]);
 }

@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>JR西日本 輸送指令 Super TID</title>
-<link rel="stylesheet" href="css/header-log.css">
-<link rel="stylesheet" href="css/depot-view.css">
-<link rel="stylesheet" href="css/tid.css">
+<link rel="stylesheet" href="css/header-log.css?v=56df0e8d">
+<link rel="stylesheet" href="css/depot-view.css?v=56df0e8d">
+<link rel="stylesheet" href="css/tid.css?v=56df0e8d">
 </head>
 <body class="tid-body">
 
@@ -77,16 +77,21 @@
             <b>編成検索・行路表</b>
             <button id="tid-duty-close" class="tid-x" type="button">閉じる</button>
         </div>
+        <div class="tid-duty-pick">
+            <label for="tid-duty-sel">編成</label>
+            <select id="tid-duty-sel"><option value="">編成を選んでください</option></select>
+            <span id="tid-duty-count" class="tid-duty-count"></span>
+        </div>
         <div class="tid-duty-search">
-            <input id="tid-duty-q" type="search" placeholder="編成番号 (例 W1 / ホシW1 / S60)"
-                   autocomplete="off" inputmode="latin">
+            <input id="tid-duty-q" type="search" placeholder="絞り込み (例 W / ホシ / 223系 / 網干)"
+                   autocomplete="off">
             <button id="tid-duty-go" class="tid-btn tid-btn-exec" type="button">検索</button>
+            <button id="tid-duty-clear" class="tid-btn" type="button">解除</button>
             <button id="tid-duty-cur" class="tid-btn" type="button"
                     title="線路図で選んでいる列車の編成を引きます">選択中の列車から</button>
         </div>
-        <div id="tid-duty-hints" class="tid-duty-hints"></div>
         <div id="tid-duty-body" class="tid-duty-body">
-            <p class="tid-empty">編成番号を入れて「検索」を押してください。（例: W1 / ホシW1 / S60 / MA05 / V4）</p>
+            <p class="tid-empty">上の一覧から編成を選んでください。（絞り込み欄に W / 223系 / 網干 などを入れると一覧が短くなります）</p>
         </div>
     </div>
     <div id="tid-toast" class="tid-toast"></div>
@@ -289,45 +294,88 @@
 </div>
 
 <!-- シミュレーション本体。index.html とまったく同じ順序で読み込む。 -->
-<script src="js/01-config.js"></script>
-<script src="js/02-fleet-data.js"></script>
-<script src="js/03-stations.js"></script>
-<script src="js/04-depots.js"></script>
-<script src="js/05-track-manager.js"></script>
-<script src="js/06-fleet.js"></script>
-<script src="js/07-spawner-core.js"></script>
-<script src="js/08-spawner-mainline.js"></script>
-<script src="js/09-spawner-branch.js"></script>
-<script src="js/10-timetable.js"></script>
-<script src="js/11-train-core.js"></script>
-<script src="js/12-train-move.js"></script>
-<script src="js/13-train-hold.js"></script>
-<script src="js/14-train-turnback.js"></script>
-<script src="js/15-train-depot.js"></script>
-<script src="js/16-train-adjust.js"></script>
-<script src="js/17-renderer.js"></script>
-<script src="js/18-ui-core.js"></script>
-<script src="js/19-ui-log.js"></script>
-<script src="js/20-ui-cmd.js"></script>
-<script src="js/21-ui-board.js"></script>
-<script src="js/22-depot-view.js"></script>
-<script src="js/23-game.js"></script>
-<script src="js/24-service-rules.js"></script>
-<script src="js/25-signals.js"></script>
-<script src="js/26-incidents.js"></script>
-<script src="js/27-operations.js"></script>
-<script src="js/28-dispatch.js"></script>
-<script src="js/29-sim-bus.js"></script>
-<script src="js/30-duty-log.js"></script>
-<script src="js/31-comms.js"></script>
+<script src="js/01-config.js?v=56df0e8d"></script>
+<script src="js/02-fleet-data.js?v=56df0e8d"></script>
+<script src="js/03-stations.js?v=56df0e8d"></script>
+<script src="js/04-depots.js?v=56df0e8d"></script>
+<script src="js/05-track-manager.js?v=56df0e8d"></script>
+<script src="js/06-fleet.js?v=56df0e8d"></script>
+<script src="js/07-spawner-core.js?v=56df0e8d"></script>
+<script src="js/08-spawner-mainline.js?v=56df0e8d"></script>
+<script src="js/09-spawner-branch.js?v=56df0e8d"></script>
+<script src="js/10-timetable.js?v=56df0e8d"></script>
+<script src="js/11-train-core.js?v=56df0e8d"></script>
+<script src="js/12-train-move.js?v=56df0e8d"></script>
+<script src="js/13-train-hold.js?v=56df0e8d"></script>
+<script src="js/14-train-turnback.js?v=56df0e8d"></script>
+<script src="js/15-train-depot.js?v=56df0e8d"></script>
+<script src="js/16-train-adjust.js?v=56df0e8d"></script>
+<script src="js/17-renderer.js?v=56df0e8d"></script>
+<script src="js/18-ui-core.js?v=56df0e8d"></script>
+<script src="js/19-ui-log.js?v=56df0e8d"></script>
+<script src="js/20-ui-cmd.js?v=56df0e8d"></script>
+<script src="js/21-ui-board.js?v=56df0e8d"></script>
+<script src="js/22-depot-view.js?v=56df0e8d"></script>
+<script src="js/23-game.js?v=56df0e8d"></script>
+<script src="js/24-service-rules.js?v=56df0e8d"></script>
+<script src="js/25-signals.js?v=56df0e8d"></script>
+<script src="js/26-incidents.js?v=56df0e8d"></script>
+<script src="js/27-operations.js?v=56df0e8d"></script>
+<script src="js/28-dispatch.js?v=56df0e8d"></script>
+<script src="js/29-sim-bus.js?v=56df0e8d"></script>
+<script src="js/30-duty-log.js?v=56df0e8d"></script>
+<script src="js/31-comms.js?v=56df0e8d"></script>
 <!-- Super-TID 画面 -->
-<script src="js/40-tid-theme.js"></script>
-<script src="js/41-tid-render.js"></script>
-<script src="js/42-tid-ui.js"></script>
-<script src="js/43-tid-zoom.js"></script>
-<script src="js/44-tid-duty.js"></script>
-<script src="js/45-tid-comms.js"></script>
-<script src="js/49-tid-boot.js"></script>
+<script src="js/40-tid-theme.js?v=56df0e8d"></script>
+<script src="js/41-tid-render.js?v=56df0e8d"></script>
+<script src="js/42-tid-ui.js?v=56df0e8d"></script>
+<script src="js/43-tid-zoom.js?v=56df0e8d"></script>
+<script src="js/44-tid-duty.js?v=56df0e8d"></script>
+<script src="js/45-tid-comms.js?v=56df0e8d"></script>
+<script src="js/49-tid-boot.js?v=56df0e8d"></script>
+
+<!-- ===================================================== 版の食い違いの見張り
+     GitHub Pages は js を `Cache-Control: max-age=600` で配るので、
+     前に開いたことのあるブラウザは古い js を使い続けることがある。
+     HTML だけ新しく、js が古いと
+       ・線路図の倍率が古いまま (駅の間隔が変わらない)
+       ・新しいボタンは出ているのに、押しても何も起きない
+       ・JavaScript のエラーも出ない
+     という、いちばん分かりにくい壊れ方になる。実際にこれが起きた。
+
+     ふだんは読み込み URL の版の印 (tools/stamp_version.js) で防いでいるが、
+     印を入れる前の HTML がキャッシュに残っている端末は、それだけでは
+     救えない。そこでここで「必要な部品がそろっているか」を確かめ、
+     足りなければ一度だけキャッシュを避けて読み直す。
+     読み直しは1回だけ (sessionStorage で見張る)。 -->
+<script>
+(function () {
+    var okAll = true;
+    try {
+        okAll = (typeof TidZoom !== "undefined") && (typeof TidDuty !== "undefined") &&
+                (typeof TidComms !== "undefined") && (typeof DutyLog !== "undefined") &&
+                (typeof CommSystem !== "undefined");
+    } catch (e) { okAll = false; }
+    if (okAll) return;
+
+    var KEY = "tid-version-reload";
+    var already = false;
+    try { already = !!sessionStorage.getItem(KEY); } catch (e) { already = false; }
+    if (!already) {
+        try { sessionStorage.setItem(KEY, "1"); } catch (e) { /* 使えなくても続ける */ }
+        // キャッシュを避けて読み直す (新しい HTML → 新しい js が読まれる)
+        location.replace(location.pathname + "?r=" + Date.now());
+        return;
+    }
+    // 読み直しても駄目だったときは、黙って壊れたままにせず知らせる
+    var el = document.getElementById("tid-loading");
+    if (el) {
+        el.style.display = "flex";
+        el.innerHTML = "表示用のデータが古いままです。<br>" +
+            "ブラウザの再読み込み (iPad は画面を下に引っぱる) をお願いします。";
+    }
+})();
+</script>
 
 </body>
 </html>

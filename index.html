@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JR West Super TID</title>
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/header-log.css">
-<link rel="stylesheet" href="css/depot-view.css">
+<link rel="stylesheet" href="css/style.css?v=56df0e8d">
+<link rel="stylesheet" href="css/header-log.css?v=56df0e8d">
+<link rel="stylesheet" href="css/depot-view.css?v=56df0e8d">
 </head>
 <body>
 
@@ -298,38 +298,56 @@
 
 
 <!-- 読み込み順に意味があります。データ定義 -> クラス本体 -> prototype への追加 -> 起動 -->
-<script src="js/01-config.js"></script>
-<script src="js/02-fleet-data.js"></script>
-<script src="js/03-stations.js"></script>
-<script src="js/04-depots.js"></script>
-<script src="js/05-track-manager.js"></script>
-<script src="js/06-fleet.js"></script>
-<script src="js/07-spawner-core.js"></script>
-<script src="js/08-spawner-mainline.js"></script>
-<script src="js/09-spawner-branch.js"></script>
-<script src="js/10-timetable.js"></script>
-<script src="js/11-train-core.js"></script>
-<script src="js/12-train-move.js"></script>
-<script src="js/13-train-hold.js"></script>
-<script src="js/14-train-turnback.js"></script>
-<script src="js/15-train-depot.js"></script>
-<script src="js/16-train-adjust.js"></script>
-<script src="js/17-renderer.js"></script>
-<script src="js/18-ui-core.js"></script>
-<script src="js/19-ui-log.js"></script>
-<script src="js/20-ui-cmd.js"></script>
-<script src="js/21-ui-board.js"></script>
-<script src="js/22-depot-view.js"></script>
-<script src="js/23-game.js"></script>
-<script src="js/24-service-rules.js"></script>
-<script src="js/25-signals.js"></script>
-<script src="js/26-incidents.js"></script>
-<script src="js/27-operations.js"></script>
-<script src="js/28-dispatch.js"></script>
-<script src="js/29-sim-bus.js"></script>
-<script src="js/30-duty-log.js"></script>
-<script src="js/31-comms.js"></script>
-<script src="js/39-boot.js"></script>
+<script src="js/01-config.js?v=56df0e8d"></script>
+<script src="js/02-fleet-data.js?v=56df0e8d"></script>
+<script src="js/03-stations.js?v=56df0e8d"></script>
+<script src="js/04-depots.js?v=56df0e8d"></script>
+<script src="js/05-track-manager.js?v=56df0e8d"></script>
+<script src="js/06-fleet.js?v=56df0e8d"></script>
+<script src="js/07-spawner-core.js?v=56df0e8d"></script>
+<script src="js/08-spawner-mainline.js?v=56df0e8d"></script>
+<script src="js/09-spawner-branch.js?v=56df0e8d"></script>
+<script src="js/10-timetable.js?v=56df0e8d"></script>
+<script src="js/11-train-core.js?v=56df0e8d"></script>
+<script src="js/12-train-move.js?v=56df0e8d"></script>
+<script src="js/13-train-hold.js?v=56df0e8d"></script>
+<script src="js/14-train-turnback.js?v=56df0e8d"></script>
+<script src="js/15-train-depot.js?v=56df0e8d"></script>
+<script src="js/16-train-adjust.js?v=56df0e8d"></script>
+<script src="js/17-renderer.js?v=56df0e8d"></script>
+<script src="js/18-ui-core.js?v=56df0e8d"></script>
+<script src="js/19-ui-log.js?v=56df0e8d"></script>
+<script src="js/20-ui-cmd.js?v=56df0e8d"></script>
+<script src="js/21-ui-board.js?v=56df0e8d"></script>
+<script src="js/22-depot-view.js?v=56df0e8d"></script>
+<script src="js/23-game.js?v=56df0e8d"></script>
+<script src="js/24-service-rules.js?v=56df0e8d"></script>
+<script src="js/25-signals.js?v=56df0e8d"></script>
+<script src="js/26-incidents.js?v=56df0e8d"></script>
+<script src="js/27-operations.js?v=56df0e8d"></script>
+<script src="js/28-dispatch.js?v=56df0e8d"></script>
+<script src="js/29-sim-bus.js?v=56df0e8d"></script>
+<script src="js/30-duty-log.js?v=56df0e8d"></script>
+<script src="js/31-comms.js?v=56df0e8d"></script>
+<script src="js/39-boot.js?v=56df0e8d"></script>
+
+<!-- ===================================================== 版の食い違いの見張り
+     詳しくは tid.html の同じ部分を参照。古い js がキャッシュから使われている
+     ときに、一度だけキャッシュを避けて読み直す。 -->
+<script>
+(function () {
+    var okAll = true;
+    try { okAll = (typeof DutyLog !== "undefined") && (typeof CommSystem !== "undefined"); }
+    catch (e) { okAll = false; }
+    if (okAll) return;
+    var KEY = "tid-version-reload";
+    var already = false;
+    try { already = !!sessionStorage.getItem(KEY); } catch (e) { already = false; }
+    if (already) return;
+    try { sessionStorage.setItem(KEY, "1"); } catch (e) { /* 使えなくても続ける */ }
+    location.replace(location.pathname + "?r=" + Date.now());
+})();
+</script>
 
 </body>
 </html>

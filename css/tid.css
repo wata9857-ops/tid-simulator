@@ -344,7 +344,15 @@
     padding: 8px 10px; z-index: 25;
 }
 .tid-duty.is-on { display: block; }
-.tid-duty-search { display: flex; gap: 5px; margin: 6px 0 4px; }
+.tid-duty-pick { display: flex; gap: 6px; align-items: center; margin: 6px 0 4px; }
+.tid-duty-pick label { flex: 0 0 auto; font-size: 12px; color: var(--tid-sub); }
+.tid-duty-pick select {
+    flex: 1 1 auto; min-width: 0; padding: 6px; font-size: 14px; font-family: inherit;
+    border: 1px solid #9AA5C0; border-radius: 3px; background: #fff; min-height: 34px;
+}
+.tid-duty-count { flex: 0 0 auto; font-size: 11px; color: var(--tid-sub);
+                  font-variant-numeric: tabular-nums; }
+.tid-duty-search { display: flex; gap: 5px; margin: 0 0 6px; }
 .tid-duty-search input {
     flex: 1 1 auto; padding: 6px; font-size: 13px; font-family: inherit;
     border: 1px solid #9AA5C0; border-radius: 3px; min-height: 32px;

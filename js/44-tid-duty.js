@@ -1,30 +1,39 @@
 /* Super-TID の「編成検索・行路表」。
 
    ■ 何をする画面か
-     編成番号 (W1 / ホシW1 / S60 など) を入れると、その編成の
-       ・形式・両数・所属・備考         (js/02-fleet-data.js の元データ)
+     編成を選ぶと、その編成の
+       ・形式・両数・所属・備考         (js/02-fleet-data.js の在籍表)
        ・いまどこに居るか               (運用中の列車 / 留置場)
        ・その日の行路 (仕業のつながり)   (js/30-duty-log.js の記録)
      を出す。実際の行路表 (仕業表) と同じ読み方ができる。
 
+   ■ 編成の選び方
+     一覧 (プルダウン) から選びます。在籍は400本を超えるので、
+       ・「所属 形式」ごとの見出し (optgroup) でまとめる
+       ・編成番号は W1 → W2 → … → W10 の順に並べる (文字の順ではない)
+       ・絞り込み欄に文字を入れると一覧がその場で短くなる
+         (編成番号でも「223系」「網干」のような形式・所属でも引ける)
+     一覧の中身は在籍表から作ります。画面側に編成番号を書き写すと、
+     車両の増減に付いていけなくなるためです。
+
    ■ 作り話をしない
      列車番号・始発駅・終着駅・時刻は、すべてシミュレーションで
-     実際に起きたことの記録から出している。
-     元データに無い編成番号は「該当なし」と出す。
-     まだ動いていない編成は、行路の欄に「記録なし」と出す。
+     実際に起きたことの記録から出しています。
+     在籍表に無い編成番号は「該当なし」と出します。
+     まだ動いていない編成は、行路の欄に「記録なし」と出します。
 
    ■ 記録が始まる前のこと
-     このシミュレーターは 04:00 から始まるので、行路もそこからになる。
-     始発より前の運用は存在しない。
+     このシミュレーターは 04:00 から始まるので、行路もそこからになります。
 */
 
 class TidDuty {
     constructor(game) {
         this.game = game;
-        this.query = "";
+        this.filter = "";
         this.selected = null;     // いま開いている編成 (fullId)
         this.open = false;
         this.bind();
+        this.fillSelect();
     }
 
     el(id) { return document.getElementById(id); }
@@ -36,10 +45,23 @@ class TidDuty {
         };
         on("tid-duty-open", "click", () => this.toggle(true));
         on("tid-duty-close", "click", () => this.toggle(false));
-        on("tid-duty-go", "click", () => this.search());
-        on("tid-duty-q", "keydown", (e) => { if (e.key === "Enter") this.search(); });
-        on("tid-duty-q", "input", () => this.renderHints());
-        // 選択中の列車の編成をそのまま引く
+        // 一覧から選ぶ
+        on("tid-duty-sel", "change", () => {
+            const v = this.el("tid-duty-sel").value;
+            if (!v) { this.selected = null; this.render(); return; }
+            this.selected = v;
+            this.render();
+        });
+        // 絞り込み (入れたそばから一覧を短くする)
+        on("tid-duty-q", "input", () => this.applyFilter());
+        on("tid-duty-q", "keydown", (e) => { if (e.key === "Enter") this.pickFirst(); });
+        on("tid-duty-go", "click", () => this.pickFirst());
+        on("tid-duty-clear", "click", () => {
+            const q = this.el("tid-duty-q");
+            if (q) q.value = "";
+            this.applyFilter();
+        });
+        // 線路図で選んでいる列車の編成をそのまま引く
         on("tid-duty-cur", "click", () => this.fromSelectedTrain());
     }
 
@@ -47,23 +69,82 @@ class TidDuty {
         this.open = (v === undefined) ? !this.open : v;
         const p = this.el("tid-duty");
         if (p) p.classList.toggle("is-on", this.open);
-        if (this.open) {
-            const q = this.el("tid-duty-q");
-            if (q) q.focus();
-            this.render();
+        if (this.open) this.render();
+    }
+
+    // ============================================================ 編成の一覧
+    /** 在籍表から一覧 (プルダウン) を作る */
+    fillSelect() {
+        const sel = this.el("tid-duty-sel");
+        if (!sel) return;
+        const groups = dutyFleetGroups(this.filter);
+        const keep = this.selected;
+        let n = 0;
+        let html = '<option value="">' +
+            (groups.length ? "編成を選んでください" : "該当する編成がありません") + "</option>";
+        groups.forEach(g => {
+            html += '<optgroup label="' + escapeLogHtml(g.label) + '">';
+            g.items.forEach(v => {
+                n++;
+                html += '<option value="' + escapeLogHtml(v.fullId) + '">' +
+                    escapeLogHtml(v.fullId) + "　" + v.cars + "両</option>";
+            });
+            html += "</optgroup>";
+        });
+        sel.innerHTML = html;
+        // 絞り込みで消えていなければ、選んでいた編成をそのまま残す
+        if (keep) sel.value = keep;
+
+        const info = this.el("tid-duty-count");
+        if (info) {
+            info.textContent = this.filter
+                ? n + " / " + dutyFleetCount() + " 本"
+                : "在籍 " + dutyFleetCount() + " 本";
         }
+    }
+
+    applyFilter() {
+        const q = this.el("tid-duty-q");
+        this.filter = q ? q.value.trim() : "";
+        this.fillSelect();
+    }
+
+    /** 絞り込んだ一覧のいちばん上を選ぶ (検索ボタン / Enter) */
+    pickFirst() {
+        this.applyFilter();
+        const groups = dutyFleetGroups(this.filter);
+        if (!groups.length || !groups[0].items.length) {
+            this.selected = null;
+            this.setMessage("「" + this.filter + "」に当てはまる編成は在籍表にありません。" +
+                "編成番号 (例: W1 / ホシW1 / S60) か、形式・所属 (例: 223系 / 網干) を入れてください。");
+            return;
+        }
+        /* 絞り込みの文字とちょうど同じ編成があれば、それを優先する。
+           (「W1」と入れたときに W1 ではなく W10 が選ばれないように) */
+        const exact = dutyFindFleets(this.filter, 1)[0];
+        this.selected = exact ? exact.fullId : groups[0].items[0].fullId;
+        const sel = this.el("tid-duty-sel");
+        if (sel) sel.value = this.selected;
+        this.render();
     }
 
     /** 線路図で選んでいる列車の編成を引く */
     fromSelectedTrain() {
         const t = this.game.tidUI ? this.game.tidUI.selected() : null;
         if (!t || !t.vehicles || !t.vehicles.length) {
-            this.setMessage("列車を選んでから押してください。");
+            this.setMessage("線路図で列車を選んでから押してください。");
             return;
         }
+        const id = t.vehicles[0].fullId || t.vehicles[0].id;
+        // 一覧から消えていると選べないので、絞り込みを解除してから合わせる
         const q = this.el("tid-duty-q");
-        if (q) q.value = t.vehicles[0].fullId || t.vehicles[0].id;
-        this.search();
+        if (q) q.value = "";
+        this.filter = "";
+        this.fillSelect();
+        this.selected = id;
+        const sel = this.el("tid-duty-sel");
+        if (sel) sel.value = id;
+        this.render();
     }
 
     setMessage(m) {
@@ -71,50 +152,16 @@ class TidDuty {
         if (e) e.innerHTML = '<p class="tid-empty">' + escapeLogHtml(m) + "</p>";
     }
 
-    /** 入力の途中で候補を出す */
-    renderHints() {
-        const q = this.el("tid-duty-q");
-        const e = this.el("tid-duty-hints");
-        if (!q || !e) return;
-        const v = q.value.trim();
-        if (v.length < 1) { e.innerHTML = ""; return; }
-        const list = dutyFindFleets(v, 8);
-        e.innerHTML = list.map(f =>
-            '<button class="tid-duty-hint" data-id="' + escapeLogHtml(f.fullId) + '">' +
-            escapeLogHtml(f.fullId) + "</button>").join("");
-        Array.prototype.forEach.call(e.querySelectorAll(".tid-duty-hint"), b => {
-            b.addEventListener("click", () => {
-                q.value = b.getAttribute("data-id");
-                this.search();
-            });
-        });
-    }
-
-    search() {
-        const q = this.el("tid-duty-q");
-        this.query = q ? q.value.trim() : "";
-        const list = dutyFindFleets(this.query, 12);
-        const hints = this.el("tid-duty-hints");
-        if (hints) hints.innerHTML = "";
-        if (!list.length) {
-            this.selected = null;
-            this.setMessage("「" + this.query + "」に当てはまる編成は在籍表にありません。" +
-                "編成番号 (例: W1 / ホシW1 / S60 / MA05) を入れてください。");
-            return;
-        }
-        this.selected = list[0].fullId;
-        this.render();
-    }
-
     /** 1秒ごとに呼ばれる (開いているときだけ描き直す) */
     tick() { if (this.open && this.selected) this.render(); }
 
+    // ============================================================ 行路表
     render() {
         const e = this.el("tid-duty-body");
         if (!e) return;
         if (!this.selected) {
-            e.innerHTML = '<p class="tid-empty">編成番号を入れて「検索」を押してください。' +
-                "（例: W1 / ホシW1 / S60 / MA05 / V4）</p>";
+            e.innerHTML = '<p class="tid-empty">上の一覧から編成を選んでください。' +
+                "（絞り込み欄に W / 223系 / 網干 などを入れると一覧が短くなります）</p>";
             return;
         }
         const info = dutyFindFleets(this.selected, 1)[0];
@@ -183,9 +230,6 @@ class TidDuty {
             '<span class="tid-duty-t">' + dutyTime(r.dep) +
             (r.arr === null ? "〜運転中" : "〜" + dutyTime(r.arr)) + "</span></li>").join("");
 
-        const other = dutyFindFleets(this.query, 12)
-            .filter(f => f.fullId !== info.fullId).slice(0, 8);
-
         e.innerHTML =
             '<div class="tid-duty-head">' +
                 '<b class="tid-duty-id">' + escapeLogHtml(info.fullId) + "</b>" +
@@ -194,22 +238,9 @@ class TidDuty {
             "</div>" +
             '<div class="tid-kv"><span>現在</span><b>' + now + "</b></div>" +
             (info.notes ? '<div class="tid-note">' + escapeLogHtml(info.notes) + "</div>" : "") +
-            (other.length
-                ? '<div class="tid-duty-other">ほかの候補: ' + other.map(f =>
-                    '<button class="tid-duty-hint" data-id="' + escapeLogHtml(f.fullId) + '">' +
-                    escapeLogHtml(f.fullId) + "</button>").join("") + "</div>"
-                : "") +
             '<div class="tid-station-sub">行路 (本日の運用)</div>' +
             table +
             (flow ? '<div class="tid-station-sub">運用のつながり</div>' +
                     '<ol class="tid-duty-flow">' + flow + "</ol>" : "");
-
-        Array.prototype.forEach.call(e.querySelectorAll(".tid-duty-hint"), b => {
-            b.addEventListener("click", () => {
-                const q = this.el("tid-duty-q");
-                if (q) q.value = b.getAttribute("data-id");
-                this.search();
-            });
-        });
     }
 }

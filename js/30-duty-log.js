@@ -184,6 +184,71 @@ function dutyFindFleets(query, limit) {
     return out;
 }
 
+/* ------------------------------------------------------------------ 編成の一覧
+
+   画面の「編成を選ぶ」一覧を作るための並べ替えとまとめ。
+   一覧は在籍表 (js/02-fleet-data.js の EXCEL_VEHICLES) からそのまま作る。
+   編成番号を画面側に書き写すと、車両の増減に付いていけなくなる。 */
+
+/** 編成番号の並べ替え用の鍵 ("W10" は "W9" の次、"W2" の前にしない) */
+function dutySortKey(id) {
+    const m = /^([^0-9]*)(\d*)([\s\S]*)$/.exec(String(id || ""));
+    return { head: m[1] || "", num: m[2] ? parseInt(m[2], 10) : -1, tail: m[3] || "" };
+}
+
+/** 編成番号どうしの並び順 */
+function dutyCompareId(a, b) {
+    const x = dutySortKey(a), y = dutySortKey(b);
+    if (x.head !== y.head) return x.head < y.head ? -1 : 1;
+    if (x.num !== y.num) return x.num - y.num;
+    return x.tail < y.tail ? -1 : (x.tail > y.tail ? 1 : 0);
+}
+
+/* 車両所の並び順 (画面の一覧もこの順に出す) */
+const DUTY_GROUP_ORDER = ["ABOSHI", "AKASHI", "MIYAHARA", "KYOTO"];
+
+/**
+ * 「所属・形式」ごとにまとめた編成の一覧を返す。
+ *   filter … 文字が入っていれば、編成番号・形式・所属で絞り込む
+ *
+ * 戻り値: [{ label: "網干総合車両所 223系1000番台",
+ *            items: [{ id, fullId, type, cars, base, group, notes }, ...] }, ...]
+ */
+function dutyFleetGroups(filter) {
+    const q = dutyNormalizeId(filter);
+    const raw = String(filter || "").trim();
+    const bag = {};
+    EXCEL_VEHICLES.forEach(v => {
+        const code = VEHICLE_CODE[v.g] || "";
+        const fullId = code + v.i;
+        if (q || raw) {
+            const hitId = dutyNormalizeId(fullId).indexOf(q) >= 0 ||
+                          dutyNormalizeId(v.i).indexOf(q) >= 0;
+            // 形式・所属は日本語なので、そのままの文字でも探せるようにする
+            const hitText = !!raw && ((v.t || "").indexOf(raw) >= 0 ||
+                                      (v.b || "").indexOf(raw) >= 0 ||
+                                      code.indexOf(raw) >= 0);
+            if (!hitId && !hitText) return;
+        }
+        const key = (v.b || "") + " " + (v.t || "");
+        if (!bag[key]) bag[key] = { label: key, group: v.g, type: v.t, items: [] };
+        bag[key].items.push({ id: v.i, fullId: fullId, type: v.t, cars: v.c,
+                              base: v.b, group: v.g, notes: v.n });
+    });
+    const out = Object.keys(bag).map(k => bag[k]);
+    out.forEach(g => g.items.sort((a, b) => dutyCompareId(a.id, b.id)));
+    out.sort((a, b) => {
+        const ga = DUTY_GROUP_ORDER.indexOf(a.group), gb = DUTY_GROUP_ORDER.indexOf(b.group);
+        const ia = ga < 0 ? 99 : ga, ib = gb < 0 ? 99 : gb;
+        if (ia !== ib) return ia - ib;
+        return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);
+    });
+    return out;
+}
+
+/** 在籍している編成の総数 (一覧の件数表示用) */
+function dutyFleetCount() { return EXCEL_VEHICLES.length; }
+
 /** その編成がいま入っている列車 (無ければ null) */
 function dutyTrainOf(game, fullId) {
     for (const t of game.trains) {
