@@ -383,3 +383,17 @@
     .tid-duty { left: 6px; right: 6px; width: auto; }
     .tid-duty-search { flex-wrap: wrap; }
 }
+
+/* 指令連絡の重要度 */
+.tid-comm-lv { font-size: 10px; font-weight: bold; color: #fff;
+               border-radius: 2px; padding: 1px 6px; flex: 0 0 auto; }
+.tid-comm-lv-minor     { background: #6B7490; }
+.tid-comm-lv-important { background: #C06A00; }
+.tid-comm-lv-critical  { background: #C2121B; }
+.tid-comm-critical  { border-left-color: #C2121B; background: #FFF4F4; }
+.tid-comm-important { border-left-color: #E57B1A; background: #FFF9F0; }
+.tid-comm-follow { font-size: 11px; color: #3F4658; margin: 0 0 4px;
+                   border-left: 3px solid #B6C0DA; padding-left: 6px; }
+.tid-comm-urge   { font-size: 11px; color: #C2121B; font-weight: bold; margin: 0 0 4px; }
+.tid-comm-held   { font-size: 10px; color: #8A3A00; background: #FFF0D8;
+                   border-radius: 2px; padding: 3px 5px; margin-bottom: 5px; }

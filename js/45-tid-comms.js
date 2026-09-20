@@ -6,12 +6,17 @@
 
    ■ 見え方
      連絡ごとに
-       [発信元] 見出し
-       本文
+       [重要度] [発信元] 見出し
+       本文 / 続報 / 催促
+       「当該列車を抑止しています」の注意書き
        [答えのボタン]×2〜4      … それぞれの下に、その処置の意味を小さく書く
        残り時間のバー
      を出す。残り時間が 0 になると、別の指令員が引き取って処理し、
      連絡は一覧から消える (記録には残る)。
+
+   ■ ここに出るのは「指令の判断が要るもの」だけ
+     日常の照会 (minor) は当務の指令員が処理するので、ここには出ない。
+     業務連絡の記録には残るので、あとから追える。
 
    ■ 2画面で開いているとき
      シミュレーション本体でない画面 (従) でも一覧は見える。
@@ -65,17 +70,20 @@ class TidComms {
         }
 
         if (!rows.length) {
-            box.innerHTML = '<p class="tid-empty">現場からの連絡はありません。' +
-                "（連絡が入ると、ここで指令の判断を選べます）</p>";
+            box.innerHTML = '<p class="tid-empty">指令の判断が要る連絡はありません。' +
+                "（日常の照会は当務の指令員が処理しています。記録は業務連絡に残ります）</p>";
             return;
         }
 
         box.innerHTML = rows.map(p => {
             const src = LOG_SOURCES[p.cat] || LOG_SOURCES.unten;
             const pct = Math.max(0, Math.min(100, Math.round(p.remain * 100 / (p.limit || 1))));
-            const urgent = p.remain <= 20;
-            return '<div class="tid-comm' + (urgent ? " is-urgent" : "") + '">' +
+            const urgent = p.level === "critical" || p.remain <= 30;
+            return '<div class="tid-comm tid-comm-' + (p.level || "minor") +
+                       (urgent ? " is-urgent" : "") + '">' +
                 '<div class="tid-comm-head">' +
+                    '<span class="tid-comm-lv tid-comm-lv-' + (p.level || "minor") + '">' +
+                        escapeLogHtml(p.levelLabel || "") + "</span>" +
                     '<span class="tid-log-chip" style="background:' + src.hue + '">' +
                         src.tag + "</span>" +
                     '<span class="tid-comm-from">' + escapeLogHtml(p.from) + "</span>" +
@@ -83,11 +91,15 @@ class TidComms {
                     '<span class="tid-comm-remain">残り ' + p.remain + "秒</span>" +
                 "</div>" +
                 '<div class="tid-comm-text">' + escapeLogHtml(p.text) + "</div>" +
+                (p.follow ? '<div class="tid-comm-follow">' + escapeLogHtml(p.follow) + "</div>" : "") +
+                (p.urge ? '<div class="tid-comm-urge">' + escapeLogHtml(p.urge) + "</div>" : "") +
+                (p.held ? '<div class="tid-comm-held">当該列車 ' + p.held +
+                          "本を現地に抑止しています。指令の指示があるまで発車しません。</div>" : "") +
                 '<div class="tid-comm-opts">' +
                     p.options.map(o =>
                         '<button class="tid-comm-btn" data-id="' + escapeLogHtml(p.id) +
                         '" data-key="' + escapeLogHtml(o.key) + '">' +
-                        '<b>' + escapeLogHtml(o.label) + "</b>" +
+                        "<b>" + escapeLogHtml(o.label) + "</b>" +
                         (o.hint ? "<i>" + escapeLogHtml(o.hint) + "</i>" : "") +
                         "</button>").join("") +
                 "</div>" +

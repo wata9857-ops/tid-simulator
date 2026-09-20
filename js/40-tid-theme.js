@@ -240,14 +240,16 @@ function tidStationLayout(stName, refUpOutY, branch) {
     if (hit) return hit;
 
     const K = TID_GEO.virtualGap;
-    const rule = STATION_PLATFORM_RULES[stName] || { labels: [], lanes: [] };
-    const virt = branch
-        ? stationLaneYPositions(stName, 0, 0, K, K)
-        : stationLaneYPositions(stName, 0, K, 2 * K, 3 * K);
-    const ys = virt.map(v => tidVirtualToY(v, refUpOutY, branch));
+    /* 実際にあるレーンぜんぶを受け取る (番線の定義ぶんだけではない)。
+       js/03-stations.js の stationLaneSlots を参照。 */
+    const slots = branch
+        ? stationLaneSlots(stName, 0, 0, K, K)
+        : stationLaneSlots(stName, 0, K, 2 * K, 3 * K);
+    const rule = { labels: slots.map(s => s.label), lanes: slots.map(s => s.platform) };
+    const ys = slots.map(s => tidVirtualToY(s.y, refUpOutY, branch));
 
     // その番線がつながっている本線の縦位置 (取付線の付け根)
-    const tracks = stationLaneTracks(stName);
+    const tracks = slots.map(s => s.track);
     const homeOf = (tid) => {
         if (!branch) return tidVirtualToY(
             { Up_Out: 0, Up_In: K, Down_In: 2 * K, Down_Out: 3 * K }[tid] || 0, refUpOutY, false);
@@ -265,14 +267,58 @@ function tidStationLayout(stName, refUpOutY, branch) {
          -1 … 線路の上に出す / +1 … 線路の下に出す / 0 … 進行方向で決める */
     const sides = ys.map(() => 0);
     const order = ys.map((y, i) => i).sort((a, b) => ys[a] - ys[b]);
-    const platOrder = order.filter(i => !!rule.lanes[i]);
-    for (let i = 0; i + 1 < platOrder.length; i += 2) {
-        sides[platOrder[i]] = -1;        // 上側の線 … 表示は線路の上
-        sides[platOrder[i + 1]] = +1;    // 下側の線 … 表示は線路の下
-    }
-    if (platOrder.length % 2 === 1) sides[platOrder[platOrder.length - 1]] = -1;
+    const at = {};                       // 番線 -> 上から何番目か
+    order.forEach((i, k) => { at[i] = k; });
 
-    const out = { ys: ys, homeYs: homeYs, sides: sides,
+    /* 島式ホームの組を作る。
+       ★「ホームのある線を上から2本ずつ」ではなく、
+         「となり合っている2本」だけを組にする。
+         あいだに別の線路 (待避線など) が入っている2本を組にすると、
+         ホームの帯がその線路をまたいで描かれ、「N番のりば」の札が
+         あいだの線路の列車表示と重なる (実測 392px² の重なり)。
+         実物でも、島式ホームに面するのはとなり合う2本だけ。 */
+    const partner = ys.map(() => -1);
+    const platOrder = order.filter(i => !!rule.lanes[i]);
+    for (let k = 0; k < platOrder.length; k++) {
+        const i = platOrder[k], j = platOrder[k + 1];
+        if (partner[i] >= 0) continue;
+        if (j !== undefined && partner[j] < 0 && at[j] === at[i] + 1) {
+            partner[i] = j; partner[j] = i;
+            sides[i] = -1;               // 上側の線 … 表示は線路の上
+            sides[j] = +1;               // 下側の線 … 表示は線路の下
+        }
+    }
+
+    /* 片面ホーム (相手のいないホーム) と、ホームに面していない線。
+       ★これまでは進行方向まかせだったので、となりのホームの帯と
+         番線の札が入っている隙間へ表示を出してしまうことがあった。
+         空いているほう (上下の隙間の広いほう) へ出す。
+       片面ホームの帯は、表示と反対側に置く。 */
+    const barSide = ys.map(() => 0);
+    for (let k = 0; k < order.length; k++) {
+        const i = order[k];
+        if (sides[i] !== 0) continue;
+        const above = (k === 0) ? Infinity : (ys[i] - ys[order[k - 1]]);
+        const below = (k === order.length - 1) ? Infinity : (ys[order[k + 1]] - ys[i]);
+        sides[i] = (above >= below) ? -1 : +1;
+        if (rule.lanes[i]) barSide[i] = -sides[i];
+    }
+
+    /* ★ホームに面していない線 (待避線・通過線) も、ここで向きを決める。
+       これまでは進行方向まかせだったので、となりのホームの帯と
+       「N番のりば」の札が入っている隙間へ表示を出してしまい、
+       番線の札の上に列車表示が乗ることがあった (実測 392px² の重なり)。
+       空いているほう (上下の隙間の広いほう) へ出す。 */
+    for (let k = 0; k < order.length; k++) {
+        const i = order[k];
+        if (sides[i] !== 0) continue;
+        const above = (k === 0) ? Infinity : (ys[i] - ys[order[k - 1]]);
+        const below = (k === order.length - 1) ? Infinity : (ys[order[k + 1]] - ys[i]);
+        sides[i] = (above >= below) ? -1 : +1;
+    }
+
+    const out = { ys: ys, homeYs: homeYs, sides: sides, slots: slots,
+                  partner: partner, barSide: barSide,
                   tight: ys.map(() => false), spread: false };
     if (ys.length < 2) { _tidLayoutCache[key] = out; return out; }
 
@@ -283,12 +329,16 @@ function tidStationLayout(stName, refUpOutY, branch) {
        実物の Super-TID も、駅の中では線路の間隔が場所ごとに違う。 */
     const gapPair = TID_GEO.laneMinGap;                 // ホームを挟む2線
     const gapLabel = TID_GEO.laneLabelGap;              // 表示が向かい合う所
+    /* そのあいだに何が入るかで、必要な間隔を決める。
+         列車表示 … 線路から16px 離れ、編成番号の帯まで入れて 36px
+         ホーム帯＋番線の札 … 24px
+       島式ホームの2線のあいだには表示を出さないので、帯と札だけでよい。 */
+    const needSide = (i, dir) => (sides[i] === dir ? 36 : 0) + (barSide[i] === dir ? 24 : 0);
     const need = [];
     for (let k = 0; k + 1 < order.length; k++) {
         const a = order[k], b = order[k + 1];
-        const aOut = (sides[a] === +1);     // 下へ表示を出す
-        const bOut = (sides[b] === -1);     // 上へ表示を出す
-        need.push((aOut && bOut) ? gapLabel : gapPair);
+        if (partner[a] === b) { need.push(gapPair); continue; }   // 島式ホームの2線
+        need.push(Math.min(gapLabel, Math.max(gapPair, 8 + needSide(a, +1) + needSide(b, -1))));
     }
 
     const sorted = order.map(i => ys[i]);
@@ -612,6 +662,29 @@ function tidDrawPlate(ctx, name, cx, cy) {
  *   yUpper / yLower … その帯に面した2本の線路の縦位置
  *   labelUpper / labelLower … それぞれの番線番号 (片面ホームなら片方を null)
  */
+/* 描いた札の位置を記録するための入れ物。
+   null のときは何もしない (ふだんの描画では使わない)。
+   重なりを測る検証 (tools/check_overlap.js) がここに配列を入れて集める。
+   「画面で見て大丈夫そう」で済ませると、今回のように
+   実際には重なっているものを見落とすため。 */
+let TID_BOXES = null;
+function tidRecordBox(kind, x, y, w, h, note) {
+    if (!TID_BOXES) return;
+    TID_BOXES.push({ kind: kind, x: x, y: y, w: w, h: h, note: note || "" });
+}
+
+/**
+ * 片面ホーム (相手のいないホーム) の帯。
+ * 列車表示と反対側 (barDir: -1 上 / +1 下) に置く。
+ * 線路の上に帯を重ねると、在線の丸と列車表示に掛かってしまう。
+ */
+function tidDrawPlatformSingle(ctx, cx, y, label, barDir) {
+    const d = (barDir === -1) ? -1 : 1;
+    // 帯の中心が線路から 13px 離れるように、仮の相手を置いて同じ描き方をする
+    if (d === 1) tidDrawPlatform(ctx, cx, y, y + 26, null, label);
+    else         tidDrawPlatform(ctx, cx, y - 26, y, label, null);
+}
+
 function tidDrawPlatform(ctx, cx, yUpper, yLower, labelUpper, labelLower) {
     const w = tidW(TID_GEO.platformW);
     const x = cx - w / 2;
@@ -630,8 +703,15 @@ function tidDrawPlatform(ctx, cx, yUpper, yLower, labelUpper, labelLower) {
        (以前は何でも「番のりば」を付けていたので
         「京番のりば」のような文字になっていた) */
     const nameOf = (v) => (/^[0-9]+$/.test(String(v)) ? v + "番のりば" : String(v));
-    if (labelUpper) ctx.fillText(nameOf(labelUpper), cx, py - 7);
-    if (labelLower) ctx.fillText(nameOf(labelLower), cx, py + 13);
+    const put = (v, ty) => {
+        const t = nameOf(v);
+        const tw = ctx.measureText(t).width;
+        ctx.fillText(t, cx, ty);
+        tidRecordBox("platform", cx - tw / 2, ty - 5, tw, 10, t);
+    };
+    if (labelUpper) put(labelUpper, py - 7);
+    if (labelLower) put(labelLower, py + 13);
+    tidRecordBox("platformBar", x, py, w, 4, "");
 }
 
 /**
@@ -746,6 +826,7 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
     ctx.font = "11px 'Meiryo UI', 'Yu Gothic', sans-serif";
     ctx.fillText(destText, x + noW + destW / 2, y + h / 2 + 0.5);
 
+    tidRecordBox("train", x, y, w, h, t.trainNo || "");
     // 枠
     ctx.strokeStyle = "#5A5A66";
     ctx.lineWidth = 0.9;
@@ -787,6 +868,7 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
         ctx.fillRect(fx, fy, fw, fh);
         ctx.fillStyle = fc.text;
         ctx.fillText(label, fx + fw / 2, fy + fh / 2 + 0.5);
+        tidRecordBox("fleet", fx, fy, fw, fh, label);
     }
 
     return { x: x - padL, y: y - padT, w: w + padL + 18, h: h + padT + padB };
@@ -1055,6 +1137,7 @@ function tidDrawPredictPlate(ctx, cx, cy, rowLabel, train) {
     ctx.strokeStyle = TID_COLORS.plateEdge;
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    tidRecordBox("predict", x, y, w, h, noText);
 
     // 線名の小札 (実物は札の左上にはみ出して付く)
     if (rowLabel) {

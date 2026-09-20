@@ -135,40 +135,19 @@ class TrackManager {
                     else if (TOZAI_STATIONS[i]) { stName = TOZAI_STATIONS[i].name; laneCount = TOZAI_STATIONS[i].lanes; specialStation = true; }
                     else { stName = "東西線通過"; laneCount = 1; specialStation = true; }
                 } else {
-                    // 本線レーン設定
-                    if (stName === "大阪") {
-                        if (trk.id==="Up_Out" || trk.id==="Up_In" || trk.id==="Down_Out") laneCount = 2;
-                        if (trk.id==="Down_In") laneCount = 3;
-                    } else if (stName === "新大阪") {
-                        /* 上り2面4線・下り2面4線・おおさか東線ホームで 11番線。
-                           下り外は 1・2番のりばの2本 (以前は1本しかなく、
-                           番線の定義 11本と線路の本数 10本が合っていなかった)。 */
-                        if (trk.id==="Up_Out" || trk.id==="Up_In" || trk.id==="Down_In") laneCount = 3;
-                        if (trk.id==="Down_Out") laneCount = 2;
-                    // ★追加: 加古川の隣に「宝殿」を追加し、内部的な待避容量を確保
-                    } else if (["京都", "尼崎", "西明石", "姫路", "高槻", "加古川", "宝殿", "草津", "野洲", "河瀬", "安土", "米原", "長浜", "近江塩津", "敦賀"].includes(stName)) {
-                        laneCount = 2;
-                    } else if (stName === "能登川" && trk.id.includes("Up")) { laneCount = 2; }
-                    else if (stName === "近江八幡" && trk.id.includes("Down")) { laneCount = 2; }
-                    else if (["芦屋", "須磨", "神戸"].includes(stName) && trk.id.includes("In")) { laneCount = 2;
-                    }
-                    else if (stName === "大久保") { laneCount = 2;
-                    }
-                    else if (["ひめじ別所", "鷹取", "西大路"].includes(stName) && trk.id.includes("Out")) { laneCount = 2;
-                    }
-                    /* ★配線略図 (スクリーンショット(692).png など) にある待避線。
-                       外側線の外側に、駅の前後で本線から分かれて戻る線があり、
-                       優等列車の待避に使われる。シミュレーターでは
-                       「外側線の2本目のレーン」として持たせる。
-                       線路図に描くだけでなく、実際に列車が入れる線になる。 */
-                    else if (["膳所", "石山"].includes(stName) && trk.id.includes("Out")) { laneCount = 2;
-                    }
-                    else if (["摩耶", "西宮", "茨木"].includes(stName)) { laneCount = 2; }
+                    /* 本線のレーン数。
+                       ★数え方は js/03-stations.js の stationMainLaneCount() に
+                         まとめてある。以前はここに if の連なりで書いていて、
+                         番線の縦位置 (stationLaneBaseYs) と食い違っていた駅が
+                         86駅中 23駅あった。食い違うと、線路の描かれていない
+                         高さに列車が出て、別の番線の札や列車と重なる。 */
+                    laneCount = (stationTrackLanes(stName)[trk.id]) || 1;
                 }
 
                 // ★修正: 追加した路線の除外条件を反映しつつ blockY を適用
                 if (stName === "向日町操" && !isHoppo && !isKosei && !isFukuchi && !isTozai) {
-                    trackBlocks.push({ index: trackBlocks.length, trackId: trk.id, stationIdx: i, isStation: true, x: stationX, y: blockY, lanes: [null, null], hoppoStationName: "向日町操" });
+                    // レーン数は js/03-stations.js の1か所から取る (線路図と揃える)
+                    trackBlocks.push({ index: trackBlocks.length, trackId: trk.id, stationIdx: i, isStation: true, x: stationX, y: blockY, lanes: new Array(laneCount).fill(null), hoppoStationName: "向日町操" });
                 } else {
                     trackBlocks.push({ index: trackBlocks.length, trackId: trk.id, stationIdx: i, isStation: true, x: stationX, y: blockY, lanes: new Array(laneCount).fill(null), hoppoStationName: specialStation ? stName : null });
                 }

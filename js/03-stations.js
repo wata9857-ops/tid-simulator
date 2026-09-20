@@ -195,17 +195,19 @@ const EXTRA_TRAINS = [
 ];
 
 /**
- * その駅の「番線が並ぶ縦位置」を返す。
+ * 駅ごとに書き起こした「番線の縦位置」(素の配置)。
  *
  * 旅客向けの線路図 (js/17-renderer.js) と Super-TID の線路図
  * (js/41-tid-render.js) は、上下の並び順も間隔も違うが、
  * 「どの番線がどの線路の何番目にあるか」は同じ。
- * そこで、4本の基準線の縦位置を渡すと番線の縦位置の配列を返す形にして、
- * 両方の画面で同じ配置を使えるようにした。
+ * そこで、4本の基準線の縦位置を渡すと番線の縦位置の配列を返す形にした。
  *
- * 戻り値は STATION_PLATFORM_RULES[stationName].labels と同じ並び。
+ * ★ここが返すのは「書き起こしたぶんだけ」で、駅によっては
+ *   線路が実際に持っているレーンの数と食い違う。
+ *   その穴埋めは stationLaneSlots() が行う。
+ *   画面から呼ぶときは stationLaneSlots() / stationLaneYPositions() を使うこと。
  */
-function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
+function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
     const rule = STATION_PLATFORM_RULES[stationName];
     if (!rule) return [];
     let yPositions = [];
@@ -332,6 +334,194 @@ function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
     return yPositions;
 }
 
+/* ------------------------------------------------------------------ 線路ごとのレーン数
+
+   ■ なぜ1か所に出したか
+     「この駅のこの線路は何本のレーンを持つか」は、これまで
+     TrackManager.initBlocks() の中に if の連なりで書かれていた。
+     いっぽう番線の縦位置 (stationLaneBaseYs) は別に書かれていて、
+     両者が食い違っていた駅が 86駅中 23駅あった。
+
+     食い違うと、次のような壊れ方をする。
+       ・番線の定義のほうが多い (神戸・甲子園口・茨木・草津)
+         → 縦位置の無い番線が黙って捨てられ、そのレーンに入った列車は
+           「線路の描かれていない高さ」に描かれる。
+       ・レーンのほうが多い (高槻・西明石・尼崎・米原など)
+         → 余ったレーンが「上待」「下待」として自動で足されるが、
+           そこにも線路が描かれないので、やはり列車だけが宙に浮く。
+     どちらも、その列車の表示が別の番線の札や列車と重なる原因になる。
+     (実測: 草津で列車表示どうしが 1248px² 重なっていた)
+
+   ■ 直し方
+     レーン数をここ1か所に置き、TrackManager も線路図も同じ値を見る。
+     そのうえで stationLaneSlots() が「実際にあるレーンぜんぶ」の
+     縦位置を返すようにして、線路の無い所に列車が出ないようにした。 */
+
+const STATION_LANES_2 = ["京都", "尼崎", "西明石", "姫路", "高槻", "加古川", "宝殿",
+    "草津", "野洲", "河瀬", "安土", "米原", "長浜", "近江塩津", "敦賀"];
+
+/** その駅・その線路のレーン数 (本線のみ。0 ならその線路はその駅に無い) */
+function stationMainLaneCount(stName, trackId) {
+    const idx = STATION_MAP[stName];
+    const isInner = (trackId === "Up_In" || trackId === "Down_In");
+    // 内側線 (電車線) があるのは複々線の西明石〜草津だけ
+    if (isInner && (idx === undefined ||
+        idx < STATION_MAP["西明石"] || idx > STATION_MAP["草津"])) return 0;
+
+    if (stName === "大阪") {
+        return (trackId === "Down_In") ? 3 : 2;
+    }
+    if (stName === "新大阪") {
+        /* 上り2面4線・下り2面4線・おおさか東線ホームで 11番線。
+           下り外は 1・2番のりばの2本。 */
+        return (trackId === "Down_Out") ? 2 : 3;
+    }
+    /* 向日町操は吹田総合車両所京都支所の構内。発着線が並ぶので
+       4本とも2レーンずつ持つ (js/05-track-manager.js もこの値を使う)。 */
+    if (stName === "向日町操") return 2;
+    if (STATION_LANES_2.indexOf(stName) >= 0) return 2;
+    if (stName === "能登川" && trackId.indexOf("Up") === 0) return 2;
+    if (stName === "近江八幡" && trackId.indexOf("Down") === 0) return 2;
+    if (["芦屋", "須磨", "神戸"].indexOf(stName) >= 0 && isInner) return 2;
+    if (stName === "大久保") return 2;
+    if (["ひめじ別所", "鷹取", "西大路"].indexOf(stName) >= 0 &&
+        trackId.indexOf("Out") >= 0) return 2;
+    /* 配線略図 (スクリーンショット(692).png など) にある待避線。
+       外側線の外側に、駅の前後で本線から分かれて戻る線がある。 */
+    if (["膳所", "石山"].indexOf(stName) >= 0 && trackId.indexOf("Out") >= 0) return 2;
+    if (["摩耶", "西宮", "茨木"].indexOf(stName) >= 0) return 2;
+    return 1;
+}
+
+/**
+ * その駅の、本線4線ぶんのレーン数。
+ *
+ * ★書き起こした番線 (stationLaneBaseYs) のほうが多い線路は、そちらに合わせる。
+ *   例: 御着・東加古川・土山は「3番/2番/1番」の3面で、
+ *       上り線に2本 (本線＋中線) が要る。レーンを1本しか作らないと、
+ *       中線の番線が行き場を失い、線路の描かれていない高さに
+ *       列車が出ることになる。番線の定義のほうが実物に近いので、
+ *       線路の本数をそちらへ合わせる。
+ */
+function stationTrackLanes(stName) {
+    const out = {};
+    STATION_TRACK_ORDER.forEach(tid => { out[tid] = stationMainLaneCount(stName, tid); });
+    const rule = STATION_PLATFORM_RULES[stName];
+    if (!rule) return out;
+    const K = 1000;
+    const base = stationLaneBaseYs(stName, 0, K, 2 * K, 3 * K);
+    const cnt = { Up_Out: 0, Up_In: 0, Down_In: 0, Down_Out: 0 };
+    for (let i = 0; i < base.length && i < rule.labels.length; i++) {
+        cnt[STATION_TRACK_ORDER[_trackOfVirtual(base[i])]]++;
+    }
+    STATION_TRACK_ORDER.forEach(tid => {
+        // その駅に無い線路 (複線区間の内側線) は増やさない
+        if (out[tid] === 0) return;
+        if (cnt[tid] > out[tid]) out[tid] = cnt[tid];
+    });
+    return out;
+}
+
+/* ------------------------------------------------------------------ 番線のレーン
+
+   実際にあるレーンぜんぶについて
+     y        … 縦位置
+     label    … 番線名
+     platform … ホームがあるか
+     track    … どの線路に属するか
+   を返す。書き起こした番線 (stationLaneBaseYs) が足りないときは、
+   残りの番線名を順に割り当て、それでも足りなければ待避線として足す。
+   足す位置は「その線路の外側」で、線路図でもそこに線路を描く。 */
+
+const _stationSlotShape = {};      // 駅名 -> [{track, base, order}] (縦位置以外)
+
+/** 目印の座標 (0/1000/2000/3000) で1回だけ調べた、レーンの構成 */
+function _stationSlotShapeOf(stationName) {
+    const hit = _stationSlotShape[stationName];
+    if (hit) return hit;
+    const rule = STATION_PLATFORM_RULES[stationName];
+    if (!rule) return [];
+    const K = 1000;
+    const base = stationLaneBaseYs(stationName, 0, K, 2 * K, 3 * K);
+    const counts = stationTrackLanes(stationName);
+    const used = { Up_Out: 0, Up_In: 0, Down_In: 0, Down_Out: 0 };
+    const shape = [];
+
+    // 1. 書き起こした番線を、属する線路に割り当てる
+    for (let i = 0; i < base.length && i < rule.labels.length; i++) {
+        const tid = STATION_TRACK_ORDER[_trackOfVirtual(base[i])];
+        shape.push({ track: tid, label: rule.labels[i], platform: !!rule.lanes[i],
+                     base: base[i], order: 0, defined: true });
+        used[tid]++;
+    }
+
+    /* 2. 空いているレーンを埋める。
+          まだ使っていない番線名があればそれを当て、無ければ待避線にする。
+          ★ここで当てる番線名の割り当ては、配線略図をまだ写していない駅
+            (tools/check_topology.js 参照) では並び順までは保証できない。
+            それでも「番線名が消える」「線路の無い所に列車が出る」よりは
+            実物に近い。写した駅から順に stationLaneBaseYs へ移していく。 */
+    let next = base.length;
+    STATION_TRACK_ORDER.forEach(tid => {
+        let n = 0;
+        while (used[tid] < (counts[tid] || 0)) {
+            n++;
+            let label, plat;
+            if (next < rule.labels.length) {
+                label = rule.labels[next]; plat = !!rule.lanes[next]; next++;
+            } else {
+                label = (tid.indexOf("Up") === 0 ? "上待" : "下待") + (n > 1 ? n : "");
+                plat = false;
+            }
+            shape.push({ track: tid, label: label, platform: plat,
+                         base: null, order: n, defined: false });
+            used[tid]++;
+        }
+    });
+
+    _stationSlotShape[stationName] = shape;
+    return shape;
+}
+
+/**
+ * その駅の、実際にあるレーンぜんぶの縦位置。
+ * 4本の基準線の縦位置を渡すと [{y, label, platform, track, index}] を返す。
+ * index は STATION_PLATFORM_RULES.labels の番号 (自動で足した待避線は -1)。
+ */
+function stationLaneSlots(stationName, upOutY, upInY, downInY, downOutY) {
+    const rule = STATION_PLATFORM_RULES[stationName];
+    if (!rule) return [];
+    const shape = _stationSlotShapeOf(stationName);
+    const base = stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY);
+    const anchor = { Up_Out: upOutY, Up_In: upInY, Down_In: downInY, Down_Out: downOutY };
+    /* 外側へずらす幅。4本の線路の全幅に対する割合で決めるので、
+       旅客向け画面 (間隔120px) でも Super-TID (間隔を縮めている) でも
+       同じ見え方になる。 */
+    const step = (Math.abs(downOutY - upOutY) || 120) / 12;
+    const outward = (tid) => (tid === "Up_Out") ? -1 : 1;
+
+    const out = [];
+    let bi = 0;
+    shape.forEach(sh => {
+        let y;
+        if (sh.defined) { y = base[bi]; bi++; }
+        else y = anchor[sh.track] + outward(sh.track) * step * sh.order;
+        const li = rule.labels.indexOf(sh.label);
+        out.push({ y: y, label: sh.label, platform: sh.platform, track: sh.track,
+                   index: sh.defined ? (out.length) : (li >= 0 ? li : -1) });
+    });
+    return out;
+}
+
+/**
+ * その駅の「番線が並ぶ縦位置」。
+ * 実際にあるレーンぜんぶぶんを、STATION_PLATFORM_RULES.labels と同じ並びで返す。
+ * (labels より多い場合、余りは自動で足した待避線)
+ */
+function stationLaneYPositions(stationName, upOutY, upInY, downInY, downOutY) {
+    return stationLaneSlots(stationName, upOutY, upInY, downInY, downOutY).map(s => s.y);
+}
+
 /* ------------------------------------------------------------------ 番線の対応表
 
    ■ 何を解決するか
@@ -387,46 +577,21 @@ function _trackOfVirtual(v) {
 function stationLaneMap(stationName, trackMgr) {
     const cached = _stationLaneMapCache[stationName];
     if (cached) return cached;
-    const rule = STATION_PLATFORM_RULES[stationName];
     const out = { Up_Out: [], Up_In: [], Down_In: [], Down_Out: [] };
-    if (!rule) return out;
+    if (!STATION_PLATFORM_RULES[stationName]) return out;
 
+    /* ★レーンの構成は stationLaneSlots() が1か所で決める。
+       以前はここで独自に待避線を足していたので、線路図が描く位置と
+       この表が食い違うことがあった。 */
     const K = 1000;
-    const ys = stationLaneYPositions(stationName, 0, K, 2 * K, 3 * K);
-    for (let i = 0; i < ys.length && i < rule.labels.length; i++) {
-        const k = _trackOfVirtual(ys[i]);
-        out[STATION_TRACK_ORDER[k]].push({
-            label: rule.labels[i], platform: !!rule.lanes[i], virt: ys[i], index: i
+    const slots = stationLaneSlots(stationName, 0, K, 2 * K, 3 * K);
+    slots.forEach((sl, i) => {
+        out[sl.track].push({
+            label: sl.label, platform: sl.platform, virt: sl.y,
+            index: i,                    // stationLaneSlots の並びでの番号
+            side: !sl.platform           // ホームの無い側線か
         });
-    }
-
-    /* シミュレーションのレーン数に足りないぶんは待避線として足す。
-       (外側線の外側に置く。配線略図の待避線と同じ位置) */
-    const mgr = trackMgr || (typeof game !== "undefined" && game ? game.trackMgr : null);
-    if (mgr && STATION_MAP[stationName] !== undefined) {
-        STATION_TRACK_ORDER.forEach((tid, k) => {
-            const blks = mgr.blocks[tid];
-            if (!blks) return;
-            const b = blks.find(x => x.stationIdx === STATION_MAP[stationName] && x.x !== -1000);
-            if (!b) return;
-            const arr = out[tid];
-            const anchor = k * K;
-            const outward = (tid === "Up_Out") ? -1 : (tid === "Down_Out") ? +1 : +1;
-            let n = 1;
-            while (arr.length < b.lanes.length) {
-                arr.push({
-                    label: (tid.indexOf("Up") === 0 ? "上待" : "下待") + (n > 1 ? n : ""),
-                    platform: false,
-                    virt: anchor + outward * (30 + 20 * n),
-                    index: -1,              // 番線の定義には無い (自動で足した待避線)
-                    outward: outward * n    // 線路の外側へ何本目か
-                });
-                n++;
-            }
-            // 定義のほうが多い場合は、実際に使えるレーンぶんだけ残す
-            if (arr.length > b.lanes.length) arr.length = b.lanes.length;
-        });
-    }
+    });
     _stationLaneMapCache[stationName] = out;
     return out;
 }
@@ -447,13 +612,42 @@ const _stationLaneTrackCache = {};
 function stationLaneTracks(stationName) {
     const cached = _stationLaneTrackCache[stationName];
     if (cached) return cached;
-    const rule = STATION_PLATFORM_RULES[stationName];
-    if (!rule) return [];
+    if (!STATION_PLATFORM_RULES[stationName]) return [];
     const K = 1000;
-    const ys = stationLaneYPositions(stationName, 0, K, 2 * K, 3 * K);
-    const out = ys.map(v => STATION_TRACK_ORDER[_trackOfVirtual(v)]);
+    const out = stationLaneSlots(stationName, 0, K, 2 * K, 3 * K).map(sl => sl.track);
     _stationLaneTrackCache[stationName] = out;
     return out;
+}
+
+/* ------------------------------------------------------------------ 番線を共有する駅
+
+   尼崎は、本線・JR宝塚線・JR東西線の列車が同じ番線に入る。
+   TrackManager も、上り4本・下り4本のレーン配列を4つの線路で共有している
+   (js/05-track-manager.js の amaUpLanes / amaDownLanes)。
+
+   そのため番線は「線路IDごとの何番目か」ではなく
+   「上り側の通し番号 / 下り側の通し番号」で決まる。
+   ★ここを線路IDごとに引いていたため、レーン2・3の列車がどちらも
+     「その線路の最後のレーン」に丸められ、まったく同じ高さに
+     2本の列車が描かれていた (実測 1872px² の重なり)。 */
+const STATION_SHARED_LANES = { "尼崎": true };
+
+/**
+ * (駅, 線路ID, レーン番号) が指す番線のレーン情報を返す。無ければ null。
+ * 番線を共有する駅では、上り側・下り側の通し番号で引く。
+ */
+function stationLaneEntry(stationName, trackId, lane) {
+    const map = stationLaneMap(stationName);
+    const key = _laneKeyOf(trackId);
+    let arr;
+    if (STATION_SHARED_LANES[stationName]) {
+        const up = (key === "Up_Out" || key === "Up_In");
+        arr = up ? map.Up_Out.concat(map.Up_In) : map.Down_In.concat(map.Down_Out);
+    } else {
+        arr = map[key];
+    }
+    if (!arr || !arr.length) return null;
+    return arr[Math.min(Math.max(lane, 0), arr.length - 1)] || null;
 }
 
 /** 分岐線・北方貨物線の線路IDを、駅の配線での線路IDに読み替える */
@@ -467,25 +661,19 @@ function _laneKeyOf(trackId) {
 
 /** (駅, 線路ID, レーン番号) の番線名。無ければ null */
 function platformLabelOf(stationName, trackId, lane) {
-    const arr = stationLaneMap(stationName)[_laneKeyOf(trackId)];
-    if (!arr || !arr.length) return null;
-    const e = arr[Math.min(Math.max(lane, 0), arr.length - 1)];
+    const e = stationLaneEntry(stationName, trackId, lane);
     return e ? e.label : null;
 }
 
 /** その番線にホームがあるか (側線・待避線なら false) */
 function isPlatformLane(stationName, trackId, lane) {
-    const arr = stationLaneMap(stationName)[_laneKeyOf(trackId)];
-    if (!arr || !arr.length) return false;
-    const e = arr[Math.min(Math.max(lane, 0), arr.length - 1)];
+    const e = stationLaneEntry(stationName, trackId, lane);
     return e ? e.platform : false;
 }
 
 /** (駅, 線路ID, レーン番号) の縦位置の仮想座標。無ければ null */
 function laneVirtualY(stationName, trackId, lane) {
-    const arr = stationLaneMap(stationName)[_laneKeyOf(trackId)];
-    if (!arr || !arr.length) return null;
-    const e = arr[Math.min(Math.max(lane, 0), arr.length - 1)];
+    const e = stationLaneEntry(stationName, trackId, lane);
     return e ? e.virt : null;
 }
 

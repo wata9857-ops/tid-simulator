@@ -296,4 +296,25 @@ head('在線・信号・進路が線路の状態から出ているか');
        SIGNAL_ASPECTS['R'] !== undefined);
 }
 
+head('北方貨物線が途切れずに描かれるか');
+/* 北方貨物線は途中にホームの無い複線。本線の駅とは関係が無いので、
+   線路を通しで描く途中に穴を空けてはいけない。
+   ★以前は「その線路の駅」を線路IDから当てようとして外し、
+     本線の全86駅ぶんの穴を北方貨物線に空けていたため、
+     破線のように途切れて見えていた。 */
+(function () {
+    const R = Object.create(TidRenderer.prototype);
+    R.game = game;
+    R.trackY = buildTidTrackY(['北方貨物線', '本線']);
+    ['Up_Hoppo', 'Down_Hoppo'].forEach(tid => {
+        const gaps = R.trackGaps(tid, -1e9, 1e9);
+        ok(tid + ' が途切れていない', gaps.length === 0, gaps.length + ' 箇所で途切れている');
+    });
+    // 本線のほうは、駅で番線がずれる所に穴が空いている (そこは着発線で描く)
+    const mainGaps = R.trackGaps('Down_Out', -1e9, 1e9).length;
+    ok('本線は駅の所だけ着発線に譲っている', mainGaps > 0, mainGaps + ' 駅');
+    ok('北方貨物線に本線の番線を当てはめていない',
+       R.stationMainY('大阪', 'Up_Hoppo') === null);
+})();
+
 console.log('\n' + (failures === 0 ? '>>> すべて合格' : '>>> ' + failures + ' 件 不合格'));

@@ -300,6 +300,12 @@ class TidRenderer {
      */
     layoutFor(stName, trackId) {
         if (!STATION_PLATFORM_RULES[stName]) return null;
+        /* ★北方貨物線には本線の番線を当てはめない。
+           _laneKeyOf() が Up_Hoppo を Up_Out と読み替えるため、
+           そのままだと本線の着発線の高さを返してしまい、
+           北方貨物線に本線の駅の数だけ穴が空いて破線のように見えていた。
+           北方貨物線は途中にホームの無い複線なので、まっすぐ通す。 */
+        if (trackId.indexOf("Hoppo") >= 0) return null;
         const tY = this.trackY;
         if (trackId.indexOf("Kosei") === 0) {
             return (tY["Kosei_Up"] === undefined) ? null
@@ -352,21 +358,20 @@ class TidRenderer {
         const base = this.trackY[trackId];
         const half = tidStationBoxW() / 2 + tidLeadW();
         const out = [];
-        const add = (stName, i) => {
-            const y = this.stationMainY(stName, trackId);
-            if (y === null || y === undefined || Math.abs(y - base) < 1.2) return;
-            const cx = tidStationX(i);
-            if (cx + half < a || cx - half > b) return;
+        /* ★穴を開ける場所は、その線路が実際に持っているブロックから取る。
+           以前は線路IDから線区を当てようとして、当てはまらない線路
+           (北方貨物線) では本線の全駅を見に行っていた。 */
+        const blks = this.game.trackMgr.blocks[trackId];
+        if (!blks) return out;
+        for (let i = 0; i < blks.length; i++) {
+            const blk = blks[i];
+            if (!blk || blk.x === -1000) continue;
+            if (!isRealStationBlock(blk)) continue;
+            const y = this.stationMainY(blockStationName(blk), trackId);
+            if (y === null || y === undefined || Math.abs(y - base) < 1.2) continue;
+            const cx = tidX(blk.x);
+            if (cx + half < a || cx - half > b) continue;
             out.push([cx - half, cx + half]);
-        };
-        const maps = { Kosei: KOSEI_STATIONS_MAP, Fukuchi: FUKUCHI_STATIONS_MAP,
-                       Tozai: TOZAI_STATIONS_MAP };
-        const pre = trackId.split("_")[0];
-        if (maps[pre] || maps[trackId.split("_")[1]]) {
-            const m = maps[pre] || maps[trackId.split("_")[1]];
-            for (const k in m) add(m[k], Number(k));
-        } else {
-            STATIONS.forEach((st, i) => add(st.name, i));
         }
         out.sort((p, q) => p[0] - q[0]);
         return out;
@@ -592,13 +597,14 @@ class TidRenderer {
         const lead = tidLeadW();
         const x1 = cx - boxW / 2, x2 = cx + boxW / 2;
 
-        // 着発線を画面の上から下の順に並べ直す (ホームの組を作るため)
-        const n = Math.min(rule.lanes.length, L.ys.length);
-        const lanes = [];
-        for (let i = 0; i < n; i++) {
-            lanes.push({ y: L.ys[i], home: L.homeYs[i],
-                         label: rule.labels[i], plat: !!rule.lanes[i] });
-        }
+        /* 着発線を画面の上から下の順に並べ直す (ホームの組を作るため)。
+           ★描くのは「実際にあるレーンぜんぶ」(js/03-stations.js の
+             stationLaneSlots)。以前は番線の定義のぶんだけ描いていたので、
+             定義より線路のレーンが多い駅では、その番線に入った列車だけが
+             線路の無い高さに描かれ、ほかの札と重なっていた。 */
+        const lanes = L.slots.map((sl, i) => ({
+            y: L.ys[i], home: L.homeYs[i], label: sl.label, plat: sl.platform
+        }));
         lanes.sort((a, b) => a.y - b.y);
 
         const line = (xa, ya, xb, yb) => {
@@ -632,18 +638,25 @@ class TidRenderer {
                           lanes.some(l => Math.abs(l.y - l.home) > 1.2);
         if (hasPoints) lanes.forEach(ln => tidDrawTurnoutBox(ctx, x1 - 5, ln.y));
 
-        // ホーム帯。上から順に、ホームのある着発線を2本ずつ組にする。
+        /* ホーム帯。組にする相手は tidStationLayout が決めている
+           (となり合う2本だけを島式ホームとして組にする)。
+           相手のいないホームは、列車表示と反対側に帯を置く。 */
         if (this.show.platform) {
-            const p = lanes.filter(l => l.plat);
-            for (let i = 0; i < p.length; i += 2) {
-                const upper = p[i], lower = p[i + 1];
-                if (lower) {
-                    tidDrawPlatform(ctx, cx, upper.y, lower.y, upper.label, lower.label);
+            const done = {};
+            L.slots.forEach((sl, i) => {
+                if (!sl.platform || done[i]) return;
+                const j = L.partner[i];
+                if (j >= 0 && !done[j]) {
+                    done[i] = done[j] = true;
+                    const up = (L.ys[i] < L.ys[j]) ? i : j;
+                    const lo = (up === i) ? j : i;
+                    tidDrawPlatform(ctx, cx, L.ys[up], L.ys[lo],
+                                    L.slots[up].label, L.slots[lo].label);
                 } else {
-                    // 相手のいない片面ホームは、その線路のすぐ下に置く
-                    tidDrawPlatform(ctx, cx, upper.y, upper.y + 24, upper.label, null);
+                    done[i] = true;
+                    tidDrawPlatformSingle(ctx, cx, L.ys[i], sl.label, L.barSide[i] || 1);
                 }
-            }
+            });
         }
     }
 
@@ -779,9 +792,7 @@ class TidRenderer {
         if (!stName || !(blk.isStation || blk.hoppoStationName)) return none;
         const L = this.layoutFor(stName, t.trackId);
         if (!L || !L.sides) return none;
-        const arr = stationLaneMap(stName)[_laneKeyOf(t.trackId)];
-        if (!arr || !arr.length) return none;
-        const e = arr[Math.min(Math.max(t.lane, 0), arr.length - 1)];
+        const e = stationLaneEntry(stName, t.trackId, t.lane);
         if (!e || !(e.index >= 0)) return none;
         return { side: L.sides[e.index] || 0, tight: !!(L.tight && L.tight[e.index]) };
     }
@@ -796,21 +807,10 @@ class TidRenderer {
                    (js/03-stations.js の stationLaneMap)。
                    以前は「本線に近い順」に並べ替えてレーン番号で引いていたため、
                    画面に描く位置と、駅の在線表に出る番線名が食い違うことがあった。 */
-                const m = stationLaneMap(stName);
-                const arr = m[_laneKeyOf(t.trackId)];
-                if (arr && arr.length) {
-                    const e = arr[Math.min(Math.max(t.lane, 0), arr.length - 1)];
-                    if (e && e.index >= 0 && L.ys[e.index] !== undefined) return L.ys[e.index];
-                    /* 番線の定義に無い待避線 (自動で足したもの) は、
-                       その線路の本線位置から外側へずらして置く。 */
-                    if (e && e.outward) {
-                        const home = this.stationMainY(stName, t.trackId);
-                        const base0 = (home === null || home === undefined)
-                            ? this.trackY[t.trackId] : home;
-                        // 画面では上が下り方なので、外側は上下が入れ替わる
-                        return base0 - e.outward * TID_GEO.laneMinGap;
-                    }
-                }
+                /* ★番線を共有する駅 (尼崎) も含めて、
+                   js/03-stations.js の1か所で引く。 */
+                const e = stationLaneEntry(stName, t.trackId, t.lane);
+                if (e && e.index >= 0 && L.ys[e.index] !== undefined) return L.ys[e.index];
             }
         }
         return baseY + (t.lane > 0 ? t.lane * (t.dir === 1 ? 18 : -18) : 0);

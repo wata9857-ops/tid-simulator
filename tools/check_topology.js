@@ -158,10 +158,11 @@ head('番線の対応表そのものの整合');
             const blks = game.trackMgr.blocks[tid];
             const b = blks && blks.find(x => x.stationIdx === STATION_MAP[st.name] && x.x !== -1000);
             if (!b) return;
-            const arr = m[tid] || [];
-            if (arr.length !== b.lanes.length) {
-                mismatch.push(st.name + '/' + tid + ' 配線=' + arr.length + ' 番線=' + b.lanes.length);
+            const cnt = laneCountsOf(st.name, tid, m, b);
+            if (cnt.def !== cnt.sim) {
+                mismatch.push(st.name + '/' + tid + ' 配線=' + cnt.def + ' 番線=' + cnt.sim);
             }
+            const arr = m[tid] || [];
             for (let li = 0; li < b.lanes.length; li++) {
                 const lbl = platformLabelOf(st.name, tid, li);
                 if (lbl === null) { noLabel++; continue; }
@@ -210,6 +211,19 @@ head('列車の番線表示');
     ok('駅間の列車に番線を出していない', betweenWithPf === 0, betweenWithPf + '件');
 }
 
+/* 尼崎は本線・JR宝塚線・JR東西線が同じ番線を使うので、
+   レーン配列を4つの線路で共有している (js/05-track-manager.js)。
+   線路IDごとに数を比べても意味がないため、上り側・下り側の合計で見る。 */
+function laneCountsOf(stName, tid, m, b) {
+    if (STATION_SHARED_LANES[stName]) {
+        const up = (tid === 'Up_Out' || tid === 'Up_In');
+        return { def: up ? (m.Up_Out.length + m.Up_In.length)
+                         : (m.Down_In.length + m.Down_Out.length),
+                 sim: b.lanes.length };
+    }
+    return { def: (m[tid] || []).length, sim: b.lanes.length };
+}
+
 head('全駅の配線データの整合 (レーン数と番線定義)');
 {
     const bad = [];
@@ -219,9 +233,9 @@ head('全駅の配線データの整合 (レーン数と番線定義)');
         MAIN_TRACKS.forEach(tid => {
             const blks = game.trackMgr.blocks[tid];
             const b = blks && blks.find(x => x.stationIdx === STATION_MAP[st.name] && x.x !== -1000);
-            const sim = b ? b.lanes.length : 0;
-            const def = (m[tid] || []).length;
-            if (sim !== def) bad.push(st.name + '/' + tid + ' ' + def + '≠' + sim);
+            if (!b) return;
+            const cnt = laneCountsOf(st.name, tid, m, b);
+            if (cnt.sim !== cnt.def) bad.push(st.name + '/' + tid + ' ' + cnt.def + '≠' + cnt.sim);
         });
     });
     ok('全駅で「線路の数」と「番線の定義」が一致している', bad.length === 0,

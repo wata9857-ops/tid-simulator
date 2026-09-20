@@ -287,35 +287,123 @@ async function canvasFingerprint(page) {
     await page.screenshot({ path: path.join(OUT, 'tid-duty.png') });
     await page.click('#tid-duty-close');
 
-    // ---------------- 9. 指令連絡
-    head('指令連絡 (現場とのやりとり)');
-    const raised = await page.evaluate(() => {
-        for (let i = 0; i < 400; i++) {
-            game.comms.nextAt = game.currentTime;
-            game.update();
-            if (game.comms.pending.length > 0) return true;
-        }
-        return false;
+    // ---------------- 9. 指令連絡 (重要度・抑止・応答)
+    head('指令連絡 — 細かい連絡は指令に上げない');
+    const routing = await page.evaluate(() => {
+        const before = { asked: game.comms.stats.asked, minor: game.comms.stats.minor };
+        for (let i = 0; i < 4 * 3600 / CONFIG.TICK_SEC; i++) game.update();
+        return { asked: game.comms.stats.asked - before.asked,
+                 minor: game.comms.stats.minor - before.minor,
+                 auto: game.comms.stats.auto };
     });
-    ok('現場から連絡が届く', raised);
-    await page.evaluate(() => { game.tidComms.render(); });
-    ok('連絡がパネルに出る', (await page.$$('#tid-comm-list .tid-comm')).length > 0);
-    const optCount = await page.$$eval('#tid-comm-list .tid-comm:first-child .tid-comm-btn',
-        els => els.length);
-    ok('答えが複数用意されている', optCount >= 2, optCount + ' 択');
+    console.log('    4時間ぶん: 指令に上げた ' + routing.asked +
+                ' 件 / 当務の指令員が処理 ' + routing.minor + ' 件');
+    ok('細かい連絡は指令に上げず、ほかの指令員が処理する', routing.minor > 0,
+       routing.minor + ' 件');
+    ok('指令に上げる件数は絞られている (細かい連絡より少ない)',
+       routing.asked < routing.minor, routing.asked + ' < ' + routing.minor);
+    ok('細かい連絡も記録には残る', await page.evaluate(() =>
+        game.ui.logHistory.some(l => l.type === 'staff' && l.msg.indexOf('【処理済】') >= 0)));
+
+    head('指令連絡 — 重要な事象は指令に上がり、当該列車は抑止される');
+    /* 重要な場面を1件だけ起こす (どの場面が当てはまるかは走行状況しだい) */
+    const raised = await page.evaluate(() => {
+        for (let i = 0; i < 900; i++) {
+            if (game.comms.pending.length) break;
+            game.comms.nextAt = game.currentTime;
+            game.comms.lastMajorAt = -9999;
+            game.update();
+        }
+        const p = game.comms.pending[0];
+        if (!p) return null;
+        const held = game.trains.filter(t => t.commIncident === p.id);
+        return { level: p.level, title: p.title, options: p.options.length,
+                 heldCount: held.length,
+                 heldIds: held.map(t => t.id),
+                 heldPos: held.map(t => t.trackId + '#' + t.currBlockIndex),
+                 suspended: held.every(t => t.isManuallySuspended),
+                 trainNo: p.trainNo, id: p.id };
+    });
+    ok('指令の判断が要る連絡が上がる', !!raised, raised ? raised.title : 'なし');
+    if (raised) {
+        console.log('    ' + raised.level + ' / ' + raised.title +
+                    ' / 答え ' + raised.options + '択 / 抑止 ' + raised.heldCount + '本');
+        ok('重要度が important か critical', raised.level !== 'minor', raised.level);
+        ok('答えが複数用意されている', raised.options >= 2, raised.options + ' 択');
+        ok('当該列車が抑止されている', raised.heldCount > 0 && raised.suspended,
+           raised.heldCount + '本');
+
+        /* ★答えるまで動かないこと。
+           期限を超えるとほかの指令員が処理して動き出してよいので、
+           期限の手前 (6割) まで進めて、そのあいだ動いていないことを見る。 */
+        const stayed = await page.evaluate((r) => {
+            const p0 = game.comms.pending.find(p => p.id === r.id);
+            if (!p0) return null;
+            const span = Math.floor(p0.limit * 0.6);
+            const before = r.heldPos;
+            for (let sec = 0; sec < span; sec += CONFIG.TICK_SEC) game.update();
+            const still = game.comms.pending.some(p => p.id === r.id);
+            const now = r.heldIds.map(id => {
+                const t = game.getTrain(id);
+                return t ? t.trackId + '#' + t.currBlockIndex : 'gone';
+            });
+            return { span: span, still: still,
+                     suspended: r.heldIds.every(id => {
+                         const t = game.getTrain(id);
+                         return !t || t.isManuallySuspended;
+                     }),
+                     moved: now.filter((q, i) => q !== before[i] && q !== 'gone').length };
+        }, raised);
+        ok('期限内は連絡が残っている', !!stayed && stayed.still,
+           stayed ? stayed.span + '秒ぶん進めた' : '連絡が消えた');
+        ok('応答するまで当該列車が1ブロックも動かない',
+           !!stayed && stayed.moved === 0, stayed ? ('動いた本数 ' + stayed.moved) : '-');
+        ok('応答するまで抑止が続いている', !!stayed && stayed.suspended);
+    }
+
+    head('指令連絡 — 答えると処置が当たり、抑止が解ける');
+    const answered = await page.evaluate(() => {
+        // 新しい連絡を1件立てる
+        for (let i = 0; i < 900 && !game.comms.pending.length; i++) {
+            game.comms.nextAt = game.currentTime;
+            game.comms.lastMajorAt = -9999;
+            game.update();
+        }
+        const p = game.comms.pending[0];
+        if (!p) return null;
+        const ids = game.trains.filter(t => t.commIncident === p.id).map(t => t.id);
+        const n = game.comms.pending.length;
+        game.tidComms.render();
+        return { id: p.id, key: p.options[0].key, ids: ids, n: n };
+    });
+    ok('答える前の連絡がパネルに出ている',
+       (await page.$$('#tid-comm-list .tid-comm')).length > 0);
+    ok('抑止中の注意書きが出ている',
+       (await page.$$('#tid-comm-list .tid-comm-held')).length > 0);
+    ok('重要度の表示が出ている',
+       (await page.$$('#tid-comm-list .tid-comm-lv')).length > 0);
     await page.screenshot({ path: path.join(OUT, 'tid-comm.png') });
-    const before = await page.evaluate(() => game.comms.pending.length);
-    await page.click('#tid-comm-list .tid-comm:first-child .tid-comm-btn');
-    await page.waitForTimeout(150);
-    ok('答えを押すと、その連絡が処理されて一覧から消える',
-       (await page.evaluate(() => game.comms.pending.length)) === before - 1);
-    ok('応答が運転指令の記録に残る', await page.evaluate(() =>
-        game.ui.logHistory.some(l => l.type === 'cmd' && l.msg.indexOf('【指令】') === 0)));
+    if (answered) {
+        await page.click('#tid-comm-list .tid-comm:first-child .tid-comm-btn');
+        await page.waitForTimeout(150);
+        const after = await page.evaluate((a) => ({
+            pending: game.comms.pending.length,
+            stillHeld: game.trains.filter(t => t.commIncident === a.id).length,
+            answered: game.comms.stats.answered
+        }), answered);
+        ok('答えを押すと連絡が処理される', after.pending === answered.n - 1,
+           answered.n + ' → ' + after.pending);
+        ok('答えたあとは応答待ちの抑止が解ける', after.stillHeld === 0,
+           after.stillHeld + '本 残っている');
+        ok('指令の応答として数えられる', after.answered >= 1, String(after.answered));
+        ok('応答が運転指令の記録に残る', await page.evaluate(() =>
+            game.ui.logHistory.some(l => l.type === 'cmd' && l.msg.indexOf('【指令】') === 0)));
+    }
 
     head('応答が無いときの自動処理');
     const auto = await page.evaluate(() => {
         const b = game.comms.stats.auto;
-        for (let i = 0; i < 300; i++) {
+        for (let i = 0; i < 1200; i++) {
             game.comms.nextAt = Math.min(game.comms.nextAt, game.currentTime);
             game.update();
             if (game.comms.stats.auto > b) return game.comms.stats.auto - b;
@@ -326,10 +414,20 @@ async function canvasFingerprint(page) {
     ok('代行した旨が記録に残る', await page.evaluate(() =>
         game.ui.logHistory.some(l => l.msg.indexOf('【指令(代行)】') >= 0)));
     ok('同じ場面でも答えが1通りに決まっていない', await page.evaluate(() => {
+        const sc = COMM_SCENES.find(s => s.options.length >= 3);
         const seen = {};
-        for (let k = 0; k < 200; k++) seen[game.comms.autoChoice({ sceneId: COMM_SCENES[0].id })] = 1;
+        for (let k = 0; k < 300; k++) seen[game.comms.autoChoice({ sceneId: sc.id })] = 1;
         return Object.keys(seen).length;
     }) >= 2);
+    ok('抑止が残ったままの列車がいない', await page.evaluate(() =>
+        game.trains.filter(t => t.commIncident &&
+            !game.comms.pending.some(p => p.id === t.commIncident)).length) === 0);
+    console.log('    場面の数: ' + await page.evaluate(() => COMM_SCENES.length) +
+                ' (うち指令に上げるもの ' +
+                await page.evaluate(() =>
+                    COMM_SCENES.filter(s => (s.level || 'minor') !== 'minor').length) + ')');
+    ok('緊急・重要の場面が十分な種類ある', await page.evaluate(() =>
+        COMM_SCENES.filter(s => (s.level || 'minor') !== 'minor').length) >= 10);
 
     head('既存の自動処理');
     const still = await page.evaluate(() => {
