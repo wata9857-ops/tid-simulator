@@ -224,6 +224,29 @@ const DISPATCH = {
     clearRadio(game) {
         game.clearEmergency();
         return { ok: true, msg: "防護無線を解除しました。" };
+    },
+
+    /**
+     * シミュレーション時間の進み方の倍率。
+     * 変えるのは「1Tick進めるのに待つ実時間」だけで、
+     * 1Tickの中身 (CONFIG.TICK_SEC) には触らない。
+     * 2画面で開いているときは、本体のタブで時間が進むので
+     * ここを通して共有する。
+     */
+    timeScale(game, cmd) {
+        const v = setTimeScale(cmd.value);
+        game.ui.updateBanner(
+            `【設定】シミュレーション時間の進み方を ${v.toFixed(2)}倍にしました。`, "banner-blue");
+        return { ok: true, msg: `時間の倍率を ${v.toFixed(2)}倍にしました。`, value: v };
+    },
+
+    /** 曜日の種別 (平日 / 土休日)。快速の走行線路の規則が変わる。 */
+    dayType(game, cmd) {
+        const v = setDayType(cmd.value);
+        game.ui.updateBanner(
+            `【設定】ダイヤを${v === "holiday" ? "土曜・日曜・祝日" : "平日"}に切り替えました。`,
+            "banner-blue");
+        return { ok: true, msg: "ダイヤの曜日を切り替えました。", value: v };
     }
 };
 

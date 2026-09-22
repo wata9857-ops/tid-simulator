@@ -214,9 +214,21 @@ Spawner.prototype.trySpawn = function (type, dir) {
         let availableCandidates = [];
         for (let stName of candidates) {
             let checkTrackId = trackId;
-            if (["姫路","加古川"].includes(stName)) checkTrackId = checkTrackId.replace("In", "Out");
+            /* ★物理的に列車が現れる駅で判定する。
+               始発駅の候補には「網干」「播州赤穂」「上郡」のように
+               線路図の外にある駅が入っていて、これらは STATION_MAP に無い。
+               以前はそこで判定をまるごと飛ばし、無条件に生成していたため、
+               実際には全部が姫路の電留線から出るのに、姫路の着発線の空きも
+               続行間隔もまったく見ずに何本も湧いていた。
+               これが西明石のまわりで新快速が続けて3本並ぶ主な原因だった。
+               Train.initPosition() と同じ読み替えを使う。 */
+            let physName = stName;
+            if (["網干", "播州赤穂", "上郡"].includes(physName)) physName = "姫路";
+            else if (["松井山手", "四条畷"].includes(physName)) physName = "尼崎";
+
+            if (["姫路","加古川"].includes(physName)) checkTrackId = checkTrackId.replace("In", "Out");
             const blks = this.game.trackMgr.blocks[checkTrackId];
-            const stIdx = STATION_MAP[stName];
+            const stIdx = STATION_MAP[physName];
             if (!blks || stIdx === undefined) { availableCandidates.push(stName); continue; }
 
             const startBlk = blks.find(b => b.stationIdx === stIdx && b.x !== -1000);
@@ -234,7 +246,18 @@ Spawner.prototype.trySpawn = function (type, dir) {
                 if (b.x === -1000) break;
                 if (b.lanes.some(l => l !== null)) { clear = false; break; }
             }
-            if (clear) availableCandidates.push(stName);
+            if (!clear) continue;
+
+            /* ③ 同じ種別が近くを走っていないか (団子を作らない)。
+               実際の続行間隔 (新快速 約7.5分 = 約4駅) より内側にとる。
+               詳しくは js/16-train-adjust.js の「団子を作らない」を参照。 */
+            const gap = CONVOY_SPAWN_GAP[type];
+            if (gap !== undefined) {
+                const n = countSameTypeAhead(this.game, checkTrackId, startBlk.index,
+                                             dir, type, gap, null);
+                if (n > 0) continue;
+            }
+            availableCandidates.push(stName);
         }
 
         if (availableCandidates.length === 0) return false;

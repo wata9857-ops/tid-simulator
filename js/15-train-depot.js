@@ -120,7 +120,12 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
             let freeLane = -1;
             let lanes = startBlock.lanes;
             if (actualStart === "向日町操") { for(let l=lanes.length-1; l>=0; l--) if(lanes[l]===null) { freeLane=l; break; } }
-            else { for(let l=0; l<lanes.length; l++) if(lanes[l]===null) { freeLane=l; break; } }
+            else {
+                // 進路のつながっている番線から選ぶ (js/13-train-hold.js)
+                freeLane = pickRouteLane(startBlock, actualStart, targetTrackId, "depart",
+                                         this.depotOutConfig.type,
+                                         (this.game.currentTime / 3600) % 24, false);
+            }
 
             // ★追加: 満線(freeLane === -1)の場合のスタック時間加算
             if (this.depotStuckTime === undefined) this.depotStuckTime = 0;
@@ -249,10 +254,33 @@ Train.prototype.tryConvertDeadhead = function (stName) {
              ここで折り返してしまうと、在線本数の目安がまったく効かなくなる。 */
         if (!this.retiredByBudget && this.game.ops.preferTurnback(this, stName)) return true;
 
-        // --- 2. 折り返せないときだけ車両所へ回送する
-        const DEADHEAD_TO = { "京都": "向日町操", "須磨": "西明石", "大久保": "西明石",
-                              "高槻": "宮原操", "尼崎": "宮原操", "大阪": "宮原操" };
-        let targetDest = DEADHEAD_TO[stName];
+        /* --- 2. その駅に留置線があるなら、まずそこへ入れる。
+           ★以前はここが「決め打ちの回送先」の表だけだった。
+             京都には留置線が無い扱いだったので、京都止まりの列車は
+             折り返せないと必ず向日町操行きの回送になり、
+             「京都へ着いた列車が次々と向日町操へ回送される」状態になっていた。
+             配線略図 (スクリーンショット(693).png) のとおり京都駅には
+             引上線・留置線があるので、それを使う。 */
+        const depHere = DEPOTS[stName];
+        /* ★turnbackFirst の留置線 (京都・尼崎) は「運用の終わり」だけに使う。
+           折り返しの要になる駅なので、ここに入れると出区待ちの列に並び、
+           線区の列車が薄くなる (js/04-depots.js の turnbackFirst を参照)。 */
+        const stableOk = !!depHere && depHere.trains.length < depHere.capacity &&
+                         (!depHere.turnbackFirst || this.retiredByBudget);
+        if (this.type !== "貨物" && stableOk) {
+            this.enterDepot(stName);
+            return true;
+        }
+
+        /* --- 3. それでも置けないときだけ車両所へ回送する。
+           回送先は「いちばん近い、その編成を受け入れられる車両所」。
+           決め打ちの表だと、京都はすべて向日町操、大阪・尼崎・高槻は
+           すべて宮原操に集まってしまい、手前の電留線が使われなかった。 */
+        let targetDest = null;
+        {
+            const near = this.game.ops.nearestDepotAhead(this, stName);
+            if (near) targetDest = near.name;
+        }
         if (!targetDest) return false;
 
         let targetIdx = fleetIndexOf(targetDest);
@@ -291,8 +319,17 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         this.nextAction = "depot";
         this.isFinalStop = false;
         this.startName = stName;
-        // 回送は外側線(列車線)を走らせる。内側線にいれば次の待避駅で転線する。
+        /* 回送は外側線 (列車線) を走らせる。
+           ★以前は「内側線にいれば次の待避駅で転線する」だけで、
+             京都は待避駅の一覧 (OVERTAKE_STATIONS) に入っていないため、
+             京都 → 向日町操 の回送が内側線 (電車線) を走っていた。
+             ここで発車前に外側線へ移す。移れないときは
+             rerouteToOuter が次の駅で試し直す。 */
         this.rerouteToOuter = true;
+        if (!/Kosei|Fukuchi|Tozai|Hoppo/.test(this.trackId) &&
+            this.trackId.indexOf("In") >= 0) {
+            this.attemptTrackSwitch(this.trackId.replace("In", "Out"), 20, true);
+        }
 
         if (this.dir === nextDir) {
             // 方向が同じならそのまま延長

@@ -44,9 +44,36 @@ const DEPOT_DUTIES = [
         { h: [9.0, 16.0], every: 3600, dir: 1, via: "新大阪", as: "普通", dest: ["高槻", "京都"], ratio: 0.6 },
         { h: [16.0, 21.5], every: 1800, dir: 1, via: "新大阪", as: "普通", dest: ["高槻", "京都"], ratio: 1.0 },
         { h: [16.0, 21.5], every: 2400, dir: -1, via: "大阪", as: "普通", dest: ["西明石", "須磨"], ratio: 0.9 },
-        // JR宝塚線の丹波路快速・普通 (宮原の223系/225系6000番台)
+        /* JR宝塚線の丹波路快速・普通 (宮原の223系/225系6000番台)。
+           ★昼間の枠を足した。大阪のホームでは宝塚線方向へ方向を変えられない
+             ため (js/14-train-turnback.js の「大阪での方転」)、大阪止まりの
+             丹波路快速は宮原へ引き上げる。そのぶんを宮原から出し直さないと、
+             昼間のJR宝塚線の本数が 9本/時 → 3.7本/時 まで落ちる。
+             実際の運用も、丹波路快速の編成は宮原で方向を変えて折り返す。 */
         { h: [5.0, 9.0],  every: 2400, dir: -1, via: "尼崎", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 },
+        { h: [9.0, 16.0], every: 1800, dir: -1, via: "尼崎", as: "快速", dest: ["新三田", "篠山口"], ratio: 1.0 },
+        { h: [9.0, 16.0], every: 2400, dir: -1, via: "尼崎", as: "普通", dest: ["新三田"], ratio: 0.8 },
         { h: [16.0, 21.5], every: 2400, dir: -1, via: "尼崎", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 }
+    ]},
+    /* --- 京都駅 留置線・引上線 (配線略図 スクリーンショット(693).png)
+           京都始発のJR京都線 下り (大阪・西明石方面) と、
+           琵琶湖線 上りの一部を受け持つ。
+           ★留置線を持っていなかったため、これまで京都始発の列車は
+             すべて向日町操からの送り込みだった。 */
+    { depot: "京都", windows: [
+        { h: [4.5, 9.0],  every: 1800, dir: -1, via: "京都", as: "普通", dest: ["西明石", "高槻"], ratio: 1.0 },
+        { h: [4.5, 9.0],  every: 2700, dir: 1,  via: "京都", as: "普通", dest: ["草津", "野洲"], ratio: 0.8 },
+        { h: [16.0, 22.0], every: 2400, dir: -1, via: "京都", as: "普通", dest: ["西明石", "高槻"], ratio: 0.9 }
+    ]},
+    /* --- 尼崎駅 電留線 (配線略図 スクリーンショット(709).png)
+           本線・JR宝塚線・JR東西線が集まる駅。
+           神戸線の下りと、JR東西線の始発を受け持つ。 */
+    { depot: "尼崎", windows: [
+        { h: [4.5, 9.0],  every: 1500, dir: -1, via: "尼崎", as: "普通", dest: ["西明石", "須磨"], ratio: 1.0 },
+        { h: [4.5, 9.0],  every: 2400, dir: 1,  via: "尼崎", as: "普通", dest: ["放出", "京橋"], ratio: 0.9 },
+        { h: [9.0, 16.0], every: 2400, dir: -1, via: "尼崎", as: "普通", dest: ["西明石"], ratio: 0.8 },
+        { h: [9.0, 16.0], every: 2700, dir: 1,  via: "尼崎", as: "普通", dest: ["放出"], ratio: 0.8 },
+        { h: [16.0, 22.0], every: 1800, dir: -1, via: "尼崎", as: "普通", dest: ["西明石"], ratio: 0.9 }
     ]},
     // --- 網干総合車両所明石支所 高槻派出所
     { depot: "高槻", windows: [
@@ -68,7 +95,15 @@ const DEPOT_DUTIES = [
     // --- 放出電留線 (JR東西線・学研都市線)
     { depot: "放出", windows: [
         { h: [4.5, 9.0],  every: 1500, dir: -1, via: "放出", as: "普通", dest: ["西明石", "尼崎"], ratio: 1.0 },
-        { h: [16.0, 22.0], every: 2400, dir: -1, via: "放出", as: "普通", dest: ["尼崎", "西明石"], ratio: 0.8 }
+        /* ★JR東西線の快速 (学研都市線からの直通) の枠を足した。
+             京橋駅の時刻表では 快速系4本/時。放出からの出区が普通だけ
+             だったため、東西線の快速が 1本/時 しか走っていなかった。 */
+        { h: [4.5, 9.0],  every: 2400, dir: -1, via: "放出", as: "快速", dest: ["尼崎", "宝塚"], ratio: 0.9 },
+        /* ★昼間の出区は、列車生成 (js/09-spawner-branch.js) が
+             放出始発の快速・普通を出しているので、ここでは出さない。
+             両方から出すと放出の在庫が尽きて、かえって本数が落ちる。 */
+        { h: [16.0, 22.0], every: 2400, dir: -1, via: "放出", as: "普通", dest: ["尼崎", "西明石"], ratio: 0.8 },
+        { h: [16.0, 22.0], every: 2700, dir: -1, via: "放出", as: "快速", dest: ["尼崎"], ratio: 0.8 }
     ]},
     // --- 新三田電留線 (JR宝塚線の始発)
     { depot: "新三田", windows: [
@@ -144,6 +179,83 @@ class OperationsManager {
         if (this.game.isEmergency) return;
         this.checkDepotDuties(ct);
         this.checkLocalGapFill(ct);
+        this.checkStockBalance(ct);
+    }
+
+    /* ------------------------------------------------------------ 返却回送
+
+       ■ なぜ必要か
+         線区の列車は片道で流れる。JR東西線・学研都市線の207系・321系は
+         放出の電留線から出て、尼崎・西明石・宝塚まで直通し、そこで運用を
+         終える。返却先はその駅の留置線なので、放出の在庫は減るだけになる。
+         実測では昼過ぎに放出の在庫が0本になり、東西線の快速が
+         4本/時 → 1本/時 まで落ちた。
+
+         編成を離れた留置場から「借り出す」のをやめた (瞬間移動をしない)
+         ので、在庫の偏りはそのまま列車の本数に出る。
+
+       ■ どうするか
+         実際の運用と同じく、返却回送を走らせる。
+         在庫が尽きかけている留置場を見つけ、その編成を受け入れられる
+         いちばん近い留置場から回送を1本出す。
+         編成は線路の上を走って移るので、行路もつながったままになる。
+    */
+    checkStockBalance(ct) {
+        if (ct < (this.stockNext || 0)) return;
+        this.stockNext = ct + 600;                    // 10分おきに見る
+        const h = (ct / 3600) % 24;
+        if (h < 4.5 || h >= 22.0) return;
+
+        const fleet = this.game.fleet;
+        // 在庫の少ない留置場 (少ない順)
+        const short = FLEET_BASES
+            .filter(b => fleet.pools[b.name] && DEPOTS[b.name])
+            .map(b => ({ name: b.name, n: fleet.pools[b.name].length, groups: b.groups }))
+            .filter(b => b.n <= 2)
+            .sort((a, b) => a.n - b.n);
+        if (!short.length) return;
+
+        for (const to of short) {
+            const dep = DEPOTS[to.name];
+            if (!dep || dep.trains.length >= dep.capacity) continue;
+            // その編成を受け入れられる、いちばん近い「余っている」留置場
+            const toIdx = fleetIndexOf(to.name);
+            const from = FLEET_BASES
+                .filter(b => fleet.pools[b.name] && fleet.pools[b.name].length >= 5)
+                .filter(b => b.groups.some(g => to.groups.indexOf(g) >= 0))
+                .filter(b => fleetIndexOf(b.name) !== toIdx)
+                .sort((a, b) => Math.abs(fleetIndexOf(a.name) - toIdx) -
+                                Math.abs(fleetIndexOf(b.name) - toIdx))[0];
+            if (!from) continue;
+
+            /* 送る編成は、送り先の線区で使えるものを選ぶ。
+               放出なら 207系/321系 (JR東西線の規則) になる。 */
+            const dir = this.dirFromTo(from.name, to.name);
+            const no = this.deadheadNo();
+            const vs = fleet.assign(from.name, "回送",
+                                    depotTrackId(from.name, dir, "回送"),
+                                    to.name, no, { noBorrow: true });
+            if (!vs || !vs.length) continue;
+            /* 送り先の線区の運用に入れない編成を送っても意味がないので確かめる。
+               (東西線に223系を送っても使えない) */
+            if (!fleet.canServe(vs, to.name, "普通",
+                                depotTrackId(to.name, 1, "普通"), to.name)) {
+                fleet.release(from.name, vs);
+                continue;
+            }
+            const ok = this.game.addTrain({
+                type: "回送", dir: dir,
+                trackId: depotTrackId(from.name, dir, "回送"),
+                dest: to.name, startName: from.name,
+                name: no, dutyName: no, vehicles: vs, nextAction: "depot"
+            });
+            if (!ok) { fleet.release(from.name, vs); continue; }
+            this.stats.rebalance = (this.stats.rebalance || 0) + 1;
+            this.game.ui.updateBanner(
+                `【返却回送】${to.name}の車両が不足したため、${from.name}から ` +
+                `${no}(回送) を出します。`, "banner-blue");
+            return;                                   // 1回に1本だけ
+        }
     }
 
     // ============================================================= 出区計画
@@ -197,7 +309,8 @@ class OperationsManager {
            京都支所の221系が付いてしまい、京都で本線の普通に変わるときに
            わざわざ差し替えることになっていた。 */
         const serviceTrack = (w.dir === 1 ? "Up_In" : "Down_In");
-        const vs = this.game.fleet.assign(depotName, w.as, serviceTrack, dest, serviceNo);
+        const vs = this.game.fleet.assign(depotName, w.as, serviceTrack, dest, serviceNo,
+                                          { noBorrow: true });
         if (!vs || !vs.length) return false;
 
         /* 車両所と始発駅が「同じ場所」なら、送り込み回送は要らない。
@@ -243,31 +356,125 @@ class OperationsManager {
      * 置き換えたときは true を返す (呼び出し側は元の生成を行わない)。
      */
     backOrigin(config) {
-        const back = ORIGIN_BACKING[config.startName];
-        if (!back) return false;
         if (config.type === "貨物" || config.type === "特急" || config.type === "回送") return false;
         if (config.serviceChange) return false;           // 二重に付けない
-        if (Math.random() > back.ratio) return false;
         if (DEPOTS[config.startName]) return false;       // その駅に留置場があるなら不要
 
-        const depot = DEPOTS[back.from];
-        if (!depot || depot.trains.length >= depot.capacity) return false;
-        if (this.game.fleet.poolAt(back.from).length < 2) return false;
+        const back = ORIGIN_BACKING[config.startName];
+        let fromName = back ? back.from : null;
+        if (back && Math.random() > back.ratio) return false;
 
-        const dir = this.dirFromTo(back.from, config.startName);
+        /* ★表に無い駅も、留置場が無ければ送り込みが要る。
+
+           以前は ORIGIN_BACKING に書いた駅だけを見ていたため、
+           加古川・大久保のように留置場の無い駅が始発の列車は、
+           西明石の電留線にある編成をそのまま使っていた。
+           編成は線路を走らずに加古川へ現れるので、行路の記録では
+             739M 京都 → 須磨      (須磨で運用を終える)
+             1048M 加古川 → 野洲   (なぜか加古川から始まる)
+           のように、終着駅と次の始発駅が食い違っていた。
+           その駅の車両を受け持つ留置場 (fleetHomeOf) から回送を出す。 */
+        if (!fromName) {
+            const h = fleetHomeOf(config.startName);
+            if (!h || h === config.startName) return false;
+            if (!DEPOTS[h]) return false;
+            if (fleetIndexOf(h) === fleetIndexOf(config.startName)) return false;
+            fromName = h;
+        }
+
+        const depot = DEPOTS[fromName];
+        if (!depot || depot.trains.length >= depot.capacity) return false;
+        if (this.game.fleet.poolAt(fromName).length < 2) return false;
+
+        const dir = this.dirFromTo(fromName, config.startName);
         const serviceNo = config.name ||
             this.game.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId);
 
+        /* ★車両は「送り込んだ先で入る営業運用」の条件で選ぶ。
+
+           以前は車両を指定せずに addTrain へ渡していたので、回送の条件
+           (どの車両所でもよい・1両以上) で選ばれていた。その結果、
+           たとえば 西明石 → 加古川 の送り込みに明石の207系3両が付き、
+           加古川で「快速」に変わるところで条件を満たさず運休になっていた。
+           運休すると編成はその駅で消え、留置場へ「戻される」ので、
+           行路の記録では加古川から西明石への瞬間移動として現れる。 */
+        const serviceTrack = config.trackId || (config.dir === 1 ? "Up_In" : "Down_In");
+        const vs = this.game.fleet.assign(fromName, config.type, serviceTrack,
+                                          config.dest, serviceNo, { noBorrow: true });
+        if (!vs || !vs.length) return false;
+
         const ok = this.game.addTrain({
             type: "回送", dir: dir,
-            trackId: depotTrackId(back.from, dir, "回送"),
-            dest: config.startName, startName: back.from,
+            trackId: depotTrackId(fromName, dir, "回送"),
+            dest: config.startName, startName: fromName,
             name: this.deadheadNo(), dutyName: serviceNo,
+            vehicles: vs,
             serviceChange: { at: config.startName, type: config.type,
                              dest: config.dest, name: serviceNo }
         });
-        if (ok) this.stats.backing++;
+        if (!ok) { this.game.fleet.release(fromName, vs); return false; }
+        this.stats.backing++;
         return ok;
+    }
+
+    /**
+     * 始発駅に条件を満たす編成が無いときの送り込み回送。
+     *
+     * ★編成を離れた留置場から「借り出す」と、その編成が線路を走らずに
+     *   始発駅へ現れる (瞬間移動)。行路の記録で見ると
+     *     374M 京都→野洲 のあと 470M 京都→野洲
+     *   のように、終着駅と次の始発駅が食い違う。
+     *   実際の運用では、車両が足りない駅へは必ず回送で送り込む。
+     *
+     * ここでは、その運用の条件を満たす編成を持っている
+     * いちばん近い車両所から回送を1本出し、始発駅で営業列車に変える
+     * (serviceChange)。手配できたら true。
+     */
+    railInStock(config) {
+        if (!config || config.vehicles) return false;
+        if (config.type === "貨物" || config.type === "特急") return false;
+        if (config.serviceChange) return false;          // 二重に付けない
+        const startName = config.startName;
+        if (!startName) return false;
+
+        const fleet = this.game.fleet;
+        const prof = fleet.profileFor(startName, config.type, config.trackId,
+                                      config.dest, config.name);
+        if (prof.express || prof.freight) return false;  // 専用編成は在庫制で扱う
+
+        const home = fleetHomeOf(startName);
+        const from = fleet.findSupplier(home, prof);
+        if (!from) return false;
+
+        /* ★留置場 (出区待ちの枠) が無い駅でも送り込みは出せる。
+           尼崎・大阪・宝塚・京橋・敦賀・近江今津は、編成の滞泊地
+           (FLEET_BASES) ではあるが DEPOTS の枠を持たない。
+           ここで枠を要求していたため、そこにある編成がどこにも使えず、
+           列車が生成できずに間隔が開いていた。
+           枠が無い駅から出す場合は、本線の着発線へ直接出す
+           (Train.initPosition が受け持つ)。 */
+        const depot = DEPOTS[from];
+        if (depot && depot.trains.length >= depot.capacity) return false;
+
+        const serviceNo = config.name || this.game.spawner.generateTrainNumber(
+            config.type, config.dir, startName, config.trackId);
+        const vs = fleet.assign(from, config.type, config.trackId, config.dest,
+                                serviceNo, { noBorrow: true });
+        if (!vs || !vs.length) return false;
+
+        const dir = this.dirFromTo(from, startName);
+        const ok = this.game.addTrain({
+            type: "回送", dir: dir,
+            trackId: depotTrackId(from, dir, "回送"),
+            dest: startName, startName: from,
+            name: this.deadheadNo(), dutyName: serviceNo,
+            vehicles: vs,
+            serviceChange: { at: startName, type: config.type,
+                             dest: config.dest, name: serviceNo }
+        });
+        if (!ok) { fleet.release(from, vs); return false; }
+        this.stats.railIn = (this.stats.railIn || 0) + 1;
+        return true;
     }
 
     // ============================================================= 間隔の穴埋め
@@ -304,9 +511,14 @@ class OperationsManager {
               depots: ["宮原操"], dest: "新三田" },
             { trackId: "Fukuchi_Up",   dir: 1,  from: "新三田", to: "尼崎",
               depots: ["新三田"], dest: "尼崎" },
-            // JR東西線 (尼崎〜放出)
+            /* JR東西線 (尼崎〜放出)。
+               ★尼崎にも電留線があるので、上り (放出方) の穴埋めもできる。
+                 下り (尼崎方) だけを見ていたため、東西線の間隔が
+                 5.4駅まで開いても増発できなかった。 */
             { trackId: "Tozai_Down",   dir: -1, from: "放出",  to: "尼崎",
               depots: ["放出"], dest: "尼崎" },
+            { trackId: "Tozai_Up",     dir: 1,  from: "尼崎",  to: "放出",
+              depots: ["放出"], dest: "放出" },
             /* 琵琶湖線 (京都〜野洲)
                京都から東は複々線ではなく、内側線・外側線が1本ずつになる。
                普通も外側線を走るので、在線を見るときは両方まとめて数える。
@@ -353,18 +565,33 @@ class OperationsManager {
                  1駅あたり8分 (実際の3倍) まで落ちた。
                  空いた所を埋めるより、在線本数を守るほうが先。
                  目安ちょうどで止める。 */
-            if (ttOverBudget(this.game, "main", "普通")) continue;
+            /* ★線区ごとの目安で見る。
+               ここを "main" 決め打ちにしていたため、JR東西線・JR宝塚線・
+               湖西線の穴埋めが、本線の普通が目安に達しているだけで
+               いつも見送られていた (東西線の間隔が5.4駅まで開いても
+               増発されなかった)。 */
+            const scLine = sc.trackId.indexOf("Tozai") === 0 ? "tozai"
+                         : sc.trackId.indexOf("Fukuchi") === 0 ? "fukuchi"
+                         : sc.trackId.indexOf("Kosei") === 0 ? "kosei" : "main";
+            if (ttOverBudget(this.game, scLine, "普通")) continue;
 
             // 手前の車両所から1本出す
             for (const dname of sc.depots) {
                 const depot = DEPOTS[dname];
                 if (!depot || depot.trains.length >= depot.capacity) continue;
                 if (this.game.fleet.poolAt(dname).length < 2) continue;
+                /* ★車両を出す車両所が本線のものなら、本線の目安も見る。
+                   分岐線の穴埋めのために本線の車両所から次々に出すと、
+                   本線 (とくにJR神戸線) の列車が薄くなる。 */
+                const dLine = (dname === "放出") ? "tozai"
+                            : (dname === "新三田") ? "fukuchi" : "main";
+                if (dLine === "main" && ttOverBudget(this.game, "main", "普通")) continue;
                 const dest = sc.dest;
                 if (this.dirFromTo(dname, dest) !== sc.dir) continue;
                 const no = this.game.spawner.generateTrainNumber("普通", sc.dir, dname, sc.trackId);
                 // 車両は行先の運用の条件で選ぶ (東西線なら207系/321系 など)
-                const vs = this.game.fleet.assign(dname, "普通", sc.trackId, dest, no);
+                const vs = this.game.fleet.assign(dname, "普通", sc.trackId, dest, no,
+                                                  { noBorrow: true });
                 if (!vs || !vs.length) continue;
                 const ok = this.game.addTrain({
                     type: "普通", dir: sc.dir, trackId: depotTrackId(dname, sc.dir, "普通"),
@@ -529,7 +756,7 @@ OperationsManager.prototype.moveToOppositeTrack = function (train, stName, newDi
     if (!targetBlks) return false;
     const newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000);
     if (!newB) return false;
-    const lane = train.findFreeLane(newB);
+    const lane = train.findFreeLane(newB, newTrackId);
     if (lane === -1) return false;
 
     blk.lanes[train.lane] = null;
@@ -583,20 +810,65 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
 
     const blks = this.game.trackMgr.blocks[train.trackId];
     const blk = blks[train.currBlockIndex];
-    const targetBlks = this.game.trackMgr.blocks[newTrackId];
+    let targetBlks = this.game.trackMgr.blocks[newTrackId];
     if (!targetBlks) return false;
-    const newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000);
+    let newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000);
     if (!newB) return false;
 
-    /* 折り返し先の番線が空いていなければ、少し待ってから試し直す。
-       実際にも、到着した列車は反対方向のホームが空くのを待って折り返す。
-       何度待っても空かないときだけ車両所へ回送する。 */
-    const lane = train.findFreeLane(newB);
-    if (lane === -1) {
-        train.turnbackWait = (train.turnbackWait || 0) + 1;
-        if (train.turnbackWait <= 5) { train.timer = 60; return true; }
-        train.turnbackWait = 0;
-        return false;
+    /* ★折り返し先の番線が埋まっているときは、同じ向きのもう一方の線路
+       (内側線 ⇄ 外側線) も試す。駅には内外をつなぐ渡り線があるので、
+       空いているホームへ入れるのが実際の扱い。
+       ここを見ていなかったため、京都に着いた上り列車が
+       下り内側線 (4番・5番) の空きを待ちきれず、
+       次々と回送で打ち切られていた (実測 折り返し21本 / 回送29本)。 */
+    if (train.findFreeLane(newB, newTrackId) === -1 &&
+        /^(Up|Down)_(In|Out)$/.test(newTrackId) &&
+        /* 尼崎のように内側線・外側線で着発線を共有している駅では、
+           線路を入れ替えても使える番線は増えない。入れ替えると
+           「下り外側線に4番のりば」のような食い違いになる。 */
+        !STATION_SHARED_LANES[stName]) {
+        const alt = newTrackId.indexOf("In") >= 0
+            ? newTrackId.replace("In", "Out") : newTrackId.replace("Out", "In");
+        const altBlks = this.game.trackMgr.blocks[alt];
+        const altB = altBlks ? altBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000) : null;
+        if (altB && train.findFreeLane(altB, alt) !== -1) {
+            newTrackId = alt; targetBlks = altBlks; newB = altB;
+        }
+    }
+
+    /* ★同一ホーム折り返し。
+       渡り線のある駅では、線路を移さずに向きだけ変え、
+       発車のときに反対方向の線路へ入る (js/14-train-turnback.js と同じ)。
+       これで到着番線と発車番線が同じになる。
+       渡り線の無い駅では、これまでどおり反対方向の番線が空くのを待つ。 */
+    /* ★大阪・新大阪のホームでは向きを変えられない。尼崎の引上線は
+       4番・5番だけにつながっている (js/03-stations.js の
+       canTurnBackOnPlatform)。折り返せない駅では車両所へ回送する。 */
+    if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
+
+    const inPlace = !globalThis.__TB_OFF &&
+                    canTurnBackOnPlatform(stName, train.trackId, train.lane, newTrackId) &&
+                    /* ★その番線から折り返した先の線路へ出られること。
+                       尼崎のように上り側と下り側で着発線が別になっている駅では、
+                       ホームのまま向きを変えることはできない (引上線を使って
+                       上り側の番線へ移る)。 */
+                    canDepartTo(stName, train.trackId, train.lane, newTrackId) &&
+                    (SWITCHABLE_STATIONS.indexOf(stName) >= 0 ||
+                     OVERTAKE_STATIONS.indexOf(stName) >= 0);
+    let lane = train.lane;
+    if (!inPlace) {
+        lane = train.findFreeLane(newB, newTrackId);
+        if (lane === -1) {
+            train.turnbackWait = (train.turnbackWait || 0) + 1;
+            /* ★終着駅のホームが空くのを待つ回数。
+               主要駅で10回 (10分) まで待たせてみたが、京都の折り返し率は
+               変わらず (19/26)、そのぶん終着駅のホームが埋まって
+               本数が落ちた。実際の折り返し時間に近い5分で諦め、
+               車両所へ回送する。 */
+            if (train.turnbackWait <= 5) { train.timer = 60; return true; }
+            train.turnbackWait = 0;
+            return false;
+        }
     }
     train.turnbackWait = 0;
 
@@ -610,19 +882,26 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     if (!vs || !vs.length) return false;
     train.vehicles = vs;
 
-    // 本線から外して折り返し先へ
-    blk.lanes[train.lane] = null;
-    train.trackId = newTrackId;
-    train.dir = newDir;
-    train.currBlockIndex = newB.index;
-    train.lane = lane;
-    newB.lanes[lane] = train;
+    if (inPlace) {
+        // 到着した番線のまま。反対方向の線路へ入るのは発車のとき。
+        train.dir = newDir;
+        train.turnbackTrack = newTrackId;
+    } else {
+        // 本線から外して折り返し先へ (渡り線の無い駅。実際の入換にあたる)
+        const at = blk.lanes.indexOf(train);
+        if (at >= 0) blk.lanes[at] = null; else blk.lanes[train.lane] = null;
+        train.trackId = newTrackId;
+        train.dir = newDir;
+        train.currBlockIndex = newB.index;
+        train.lane = lane;
+        newB.lanes[lane] = train;
+    }
 
     this.game.spawner.activeTrainNos.delete(train.trainNo);
     train.trainNo = nextNo;
     train.dutyName = nextNo;
     this.game.spawner.activeTrainNos.add(nextNo);
-    train.startName = stName;
+    train.startName = stName || train.startName;
     train.dest = nextDest;
     train.nextAction = "turnback";
     train.updateKoseiRoute();
@@ -687,6 +966,35 @@ OperationsManager.prototype.canReach = function (train) {
     }
     if (dIdx === hereIdx) return true;            // 当駅止まり
     return (dIdx - hereIdx) * train.dir > 0;
+};
+
+/**
+ * その編成で走れない運用になっていたら、当駅止まりに短縮する。
+ *
+ * ★運転整理は行先を何か所からも書き換える。書き換えた結果、
+ *   いまの編成では走れない運用になることがある
+ *   (湖西線の京都支所の221系に「敦賀行き」が付くなど)。
+ *   個々の書き換えでも確かめているが、最後の関門としてここで必ず直す。
+ *   実際の指令でも「この列車はここまで」と行先を整理する。
+ */
+OperationsManager.prototype.fixIllegalStock = function (train) {
+    if (["回送", "貨物", "臨時", "特急"].indexOf(train.type) >= 0) return false;
+    if (!train.vehicles || !train.vehicles.length) return false;
+    if (this.game.fleet.canServe(train.vehicles, train.startName, train.type,
+                                 train.trackId, train.dest, train.dutyName)) return false;
+    const here = this.currentStationName(train);
+    if (!here || here === train.dest) return false;
+    const oldDest = train.dest;
+    train.dest = here;
+    train.isFinalStop = false;
+    train.updateKoseiRoute();
+    this.stats.stockFix = (this.stats.stockFix || 0) + 1;
+    if (Math.random() < 0.1) {
+        this.game.ui.updateBanner(
+            `【運転整理】${train.trainNo} は編成の運用範囲から外れるため、` +
+            `行先を ${oldDest} から ${here} に短縮します。`, "banner-orange");
+    }
+    return true;
 };
 
 /** たどり着けない行先を直す。直したら true。 */

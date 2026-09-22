@@ -8,6 +8,7 @@ UIManager.prototype.openCmdPanelForTrain = function (trainId) {
         }
         this.updateTrainSelector();
         this.updateDepotSelector();
+        this.fillSimSettings();
         
         const sel = document.getElementById("cmd-no");
         if (sel) {
@@ -23,6 +24,7 @@ UIManager.prototype.toggleCmdPanel = function () {
         if(p.style.display==="block") {
             this.updateTrainSelector();
             this.updateDepotSelector();
+            this.fillSimSettings();
             this.updateCmdActionOptions();
             this.updateCmdDepotActionOptions();
         }
@@ -132,6 +134,49 @@ UIManager.prototype.updateTrainSelector = function () {
             let op = document.createElement("option"); op.value=t.id; op.text=`${name} [${t.type}] ${t.dest||""} ${st}`; sel.add(op);
         });
         sel.value = val;
+};
+
+/* ------------------------------------------------------------------ 時間の倍率
+
+   シミュレーション時間の進み方を選ぶ。既定は 1.0倍 (これまでの速さ)。
+   変わるのは「1Tick進めるのに待つ実時間」だけで、1Tickの中身
+   (CONFIG.TICK_SEC = 15秒) には触らないので、列車の走行・時刻表・
+   信号・運転整理の判定はまったく変わらない。 */
+UIManager.prototype.fillSimSettings = function () {
+    const sp = document.getElementById("cmd-speed");
+    if (sp && !sp.options.length) {
+        TIME_SCALES.forEach(t => {
+            const o = document.createElement("option");
+            o.value = String(t.v); o.text = t.label;
+            sp.add(o);
+        });
+    }
+    if (sp) sp.value = String(CONFIG.timeScale);
+
+    const dt = document.getElementById("cmd-daytype");
+    if (dt && !dt.options.length) {
+        DAY_TYPES.forEach(t => {
+            const o = document.createElement("option");
+            o.value = t.v; o.text = t.label;
+            dt.add(o);
+        });
+    }
+    if (dt) dt.value = CONFIG.dayType;
+};
+
+UIManager.prototype.applyTimeScale = function () {
+    const sp = document.getElementById("cmd-speed");
+    if (!sp) return;
+    // 従側のタブでも表示がすぐ変わるように、手元にも反映してから指令を通す
+    setTimeScale(sp.value);
+    this.game.dispatch({ name: "timeScale", value: Number(sp.value) });
+};
+
+UIManager.prototype.applyDayType = function () {
+    const dt = document.getElementById("cmd-daytype");
+    if (!dt) return;
+    setDayType(dt.value);
+    this.game.dispatch({ name: "dayType", value: dt.value });
 };
 
 /* ここから下の指令は、実体を js/28-dispatch.js に置いている。

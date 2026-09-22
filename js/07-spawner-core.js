@@ -56,8 +56,8 @@ class Spawner {
  * 編成(Vehicle)の割り当て。実際の選定規則は FleetManager (js/06-fleet.js) が持つ。
  * 呼び出し側の互換のため、引数と戻り値は従来どおり。
  */
-Spawner.prototype.assignVehicles = function (startName, type, trackId, dest, trainNo = "") {
-    return this.game.fleet.assign(startName, type, trackId, dest, trainNo);
+Spawner.prototype.assignVehicles = function (startName, type, trackId, dest, trainNo = "", opts) {
+    return this.game.fleet.assign(startName, type, trackId, dest, trainNo, opts);
 };
 
 /** 編成を留置場へ返す。列車の消滅・入区・折り返しのときに呼ぶ。 */

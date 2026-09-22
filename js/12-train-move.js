@@ -5,7 +5,14 @@ Train.prototype.move = function () {
         const nextIdx = this.currBlockIndex + this.dir;
         if (nextIdx < 0 || nextIdx >= blks.length) { this.remove(); return; }
 
-        let nextBlock = blks[nextIdx];
+        /* ★折り返した直後は、到着した番線 (反対方向の線路) に留まっている。
+           前方は「発車で入る線路」で見る。自分の線路で見ると、
+           複々線・分岐線の端では線路の無い区間を指してしまう。 */
+        const aheadBlks = (this.turnbackTrack && this.game.trackMgr.blocks[this.turnbackTrack])
+            ? this.game.trackMgr.blocks[this.turnbackTrack] : blks;
+
+        let nextBlock = aheadBlks[nextIdx];
+        if (!nextBlock) { this.remove(); return; }
 
         /* ★線路の無い区間 (x === -1000 のプレースホルダ) へは進ませない。
            湖西線・JR宝塚線・JR東西線・北方貨物線は本線とインデックスを
@@ -14,6 +21,7 @@ Train.prototype.move = function () {
            列車が生まれていた。線区の端に着いたら、そこで運転を打ち切る。 */
         if (nextBlock.x === -1000) {
             const here = blks[this.currBlockIndex];
+            this.turnbackTrack = null;
             const endName = blockStationName(here);
             if (this.state !== "stopped") {
                 this.state = "stopped";
@@ -57,28 +65,29 @@ Train.prototype.move = function () {
             }
         }
 
-        // ★追加: 西明石・草津への進入時に、内側ホームが空いていれば内側へ、埋まっていれば外側へ進入させるロジック
-        if (nextBlock && nextBlock.stationIdx === STATION_MAP["西明石"] && this.dir === 1 && this.trackId.includes("Out") && ["普通", "快速"].includes(this.type)) {
-            let timeH = (this.game.currentTime / 3600) % 24;
-            let isMorningRushUpRapid = (this.type === "快速" && timeH >= 7.4 && timeH < 8.6);
-            if (!isMorningRushUpRapid) {
-                let inTrackId = this.trackId.replace("Out", "In");
-                let tBlks = this.game.trackMgr.blocks[inTrackId];
+        /* ------------------------------------------------ 複々線の端での内外の振り分け
+
+           西明石・草津は複々線 (内側線＋外側線) と複線の境目なので、
+           ここで内側線・外側線のどちらに入るかが決まる。
+           どちら側を走るかは js/24-service-rules.js の
+           serviceTrackSide() が1か所で決める。
+
+           ★以前はここに「快速は 7:24〜8:36 の上りだけ外側線」
+             「新快速は朝ラッシュ以外は内側線」という独自の条件が
+             書かれていて、いまのJR西日本の規則と食い違っていた。
+               新快速 … 該当区間を通して外側線
+               快速   … 平日朝の 高槻→大阪 だけ外側線、ほかは内側線 */
+        const fourTrackEdge = (idx) => idx === STATION_MAP["西明石"] || idx === STATION_MAP["草津"];
+
+        if (nextBlock && fourTrackEdge(nextBlock.stationIdx) &&
+            innerTrackExists(nextBlock.stationIdx) && this.trackId.includes("Out")) {
+            // 複々線へ入る向き (西明石は上り / 草津は下り) のときだけ内側線を選ぶ
+            const entering = (nextBlock.stationIdx === STATION_MAP["西明石"]) ? (this.dir === 1) : (this.dir === -1);
+            if (entering && this.wantTrackAt(nextBlock.stationIdx).includes("In")) {
+                const inTrackId = this.trackId.replace("Out", "In");
+                const tBlks = this.game.trackMgr.blocks[inTrackId];
                 if (tBlks) {
-                    let targetNextBlk = tBlks.find(b => b.stationIdx === nextBlock.stationIdx);
-                    if (targetNextBlk && this.findFreeLane(targetNextBlk) !== -1) {
-                        targetTrackId = inTrackId;
-                    }
-                }
-            }
-        } else if (nextBlock && nextBlock.stationIdx === STATION_MAP["草津"] && this.dir === -1 && this.trackId.includes("Out")) {
-            let timeH = (this.game.currentTime / 3600) % 24;
-            let isMorningRush = (timeH >= 7.0 && timeH < 9.0);
-            if (["普通", "快速"].includes(this.type) || (this.type === "新快速" && !isMorningRush)) {
-                let inTrackId = this.trackId.replace("Out", "In");
-                let tBlks = this.game.trackMgr.blocks[inTrackId];
-                if (tBlks) {
-                    let targetNextBlk = tBlks.find(b => b.stationIdx === nextBlock.stationIdx);
+                    const targetNextBlk = tBlks.find(b => b.stationIdx === nextBlock.stationIdx);
                     if (targetNextBlk && this.findFreeLane(targetNextBlk) !== -1) {
                         targetTrackId = inTrackId;
                     }
@@ -86,23 +95,27 @@ Train.prototype.move = function () {
             }
         }
 
-        // ★修正: 西明石・草津での発車時に直接内側・外側線へ転線させるロジック
-        if (currentBlock && currentBlock.stationIdx === STATION_MAP["西明石"] && this.dir === 1 && this.trackId.includes("Out") && ["普通", "快速"].includes(this.type)) {
-            let timeH = (this.game.currentTime / 3600) % 24;
-            let isMorningRushUpRapid = (this.type === "快速" && timeH >= 7.4 && timeH < 8.6);
-            if (!isMorningRushUpRapid) {
+        if (currentBlock && fourTrackEdge(currentBlock.stationIdx)) {
+            const here = currentBlock.stationIdx;
+            const entering = (here === STATION_MAP["西明石"]) ? (this.dir === 1) : (this.dir === -1);
+            if (entering && this.trackId.includes("Out") && this.wantTrackAt(here).includes("In")) {
                 targetTrackId = this.trackId.replace("Out", "In");
+            } else if (!entering && this.trackId.includes("In") &&
+                       blockStationName(currentBlock) !== this.dest) {
+                // 複々線から複線へ出るので、必ず外側線 (内側線はそこで終わる)
+                targetTrackId = this.trackId.replace("In", "Out");
             }
-        } else if (currentBlock && currentBlock.stationIdx === STATION_MAP["西明石"] && this.dir === -1 && this.trackId.includes("In") && this.dest !== "西明石") {
-            targetTrackId = this.trackId.replace("In", "Out");
-        } else if (currentBlock && currentBlock.stationIdx === STATION_MAP["草津"] && this.dir === -1 && this.trackId.includes("Out")) {
-            let timeH = (this.game.currentTime / 3600) % 24;
-            let isMorningRush = (timeH >= 7.0 && timeH < 9.0);
-            if (["普通", "快速"].includes(this.type) || (this.type === "新快速" && !isMorningRush)) {
-                targetTrackId = this.trackId.replace("Out", "In");
-            }
-        } else if (currentBlock && currentBlock.stationIdx === STATION_MAP["草津"] && this.dir === 1 && this.trackId.includes("In") && this.dest !== "草津") {
-            targetTrackId = this.trackId.replace("In", "Out");
+        }
+
+        /* ★折り返す列車は、到着のときから折り返し用の着発線に入れる。
+           こうしないと、折り返すたびに番線が変わってしまう。
+           詳しくは js/11-train-core.js の「折り返しと番線」を参照。 */
+        /* ★折り返した列車は、発車のときに反対方向の線路へ移る。
+           到着した番線のまま向きだけ変えてあるので (executeTurnBack)、
+           最初の1ブロックを進むときに駅の渡り線を通って本来の線路に入る。
+           これで「到着番線 → 折り返し → 同じ番線から発車」になる。 */
+        if (this.turnbackTrack && this.turnbackTrack !== this.trackId) {
+            targetTrackId = this.turnbackTrack;
         }
 
         let targetLane = -1;
@@ -114,18 +127,22 @@ Train.prototype.move = function () {
                 // ★修正: 尼崎固定のハードコーディングを廃止し、実際の進入先駅ブロックまたは同一座標で転線先を動的に決定
                 let targetNextBlk = tBlks.find(b => (nextBlock.stationIdx !== undefined && b.stationIdx === nextBlock.stationIdx) || Math.abs(b.x - nextBlock.x) < 20);
                 if (targetNextBlk) {
-                    targetLane = this.findFreeLane(targetNextBlk);
+                    // 入ってくる線路と出ていく線路の両方につながる番線を選ぶ
+                    targetLane = this.findFreeLane(targetNextBlk, targetTrackId);
                     actualNextBlock = targetNextBlk;
                 }
             }
         } else {
             // 通常移動の場合
             targetLane = this.findFreeLane(nextBlock);
+            actualNextBlock = nextBlock;
         }
 
         // 移動の確定（ブロックとレーンが確実に確保できた場合のみ実行）
         if (targetLane !== -1) {
             blks[this.currBlockIndex].lanes[this.lane] = null;
+            // 折り返し後の転線が済んだので、印を消す
+            if (this.turnbackTrack && targetTrackId === this.turnbackTrack) this.turnbackTrack = null;
             this.trackId = targetTrackId;
             this.currBlockIndex = actualNextBlock.index;
             this.lane = targetLane;

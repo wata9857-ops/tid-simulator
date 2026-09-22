@@ -21,6 +21,71 @@ class TidUI {
         this.selectedId = null;
         this.logTab = "cmd";
         this.stationName = null;
+        /* ------------------------------------------------ 一覧の作り直しの見張り
+
+           列車情報の一覧 (<select>) は毎秒作り直していた。
+           プルダウンを開いてスクロールしている最中に中身が入れ替わると、
+             ・スクロール位置が先頭に戻る
+             ・選びかけていた項目が別のものに変わる
+           ため、目当ての列車を選べなかった。
+
+           直し方は2つ。
+             1. 中身が変わっていないときは作り直さない (署名で比較)
+             2. 利用者がその一覧を触っているあいだは作り直さず、
+                閉じたときにまとめて反映する
+           在線データそのものは今までどおり毎秒更新するので、
+           表示や指令の即時性は落ちない。 */
+        this._selSig = {};        // select の id -> 直前の中身の署名
+        this._selBusy = {};       // select の id -> 利用者が操作中か
+        this._selDirty = {};      // select の id -> 操作中に届いた新しい中身
+    }
+
+    /**
+     * その <select> が「いま利用者が操作しているか」を見張る。
+     * 開いている (focus / pointerdown 中) あいだは作り直さない。
+     */
+    guardSelect(id) {
+        const e = this.el(id);
+        if (!e || e.__tidGuarded) return;
+        e.__tidGuarded = true;
+        const busy = (v) => {
+            this._selBusy[id] = v;
+            // 操作が終わったら、待たせていた中身を反映する
+            if (!v && this._selDirty[id]) {
+                const html = this._selDirty[id];
+                this._selDirty[id] = null;
+                this.writeSelect(id, html, e.value);
+            }
+        };
+        ["focus", "pointerdown", "mousedown", "touchstart", "keydown"]
+            .forEach(ev => e.addEventListener(ev, () => busy(true)));
+        // change / blur で操作の終わりとみなす
+        ["blur", "change"].forEach(ev => e.addEventListener(ev, () => busy(false)));
+    }
+
+    /**
+     * <select> の中身を、必要なときだけ書き換える。
+     *   html … 組み立てた option の並び
+     *   keep … 選択を保つ値
+     * 戻り値: 実際に書き換えたか
+     */
+    writeSelect(id, html, keep) {
+        const e = this.el(id);
+        if (!e) return false;
+        this.guardSelect(id);
+        if (this._selSig[id] === html) return false;      // 中身が同じなら触らない
+        if (this._selBusy[id]) {                          // 操作中なので後回し
+            this._selDirty[id] = html;
+            return false;
+        }
+        const cur = (keep === undefined) ? e.value : keep;
+        e.innerHTML = html;
+        this._selSig[id] = html;
+        /* 選んでいた値がもう無いときは空にする。
+           勝手に別の列車へ飛ばさないよう、値の代入は1回だけ行う。 */
+        e.value = cur || "";
+        if (cur && e.value !== cur) e.value = "";
+        return true;
     }
 
     // ============================================================ 起動
@@ -88,6 +153,18 @@ class TidUI {
             destE.innerHTML = '<option value="">変更なし</option>' + dests.map(n => opt(n)).join("");
         }
 
+        // シミュレーション時間の倍率と、ダイヤの曜日
+        const sp = this.el("tid-speed");
+        if (sp) {
+            sp.innerHTML = TIME_SCALES.map(t => opt(String(t.v), t.label)).join("");
+            sp.value = String(CONFIG.timeScale);
+        }
+        const dt = this.el("tid-daytype");
+        if (dt) {
+            dt.innerHTML = DAY_TYPES.map(t => opt(t.v, t.label)).join("");
+            dt.value = CONFIG.dayType;
+        }
+
         // 留置場
         this.refreshDepotSelect();
     }
@@ -95,12 +172,11 @@ class TidUI {
     refreshDepotSelect() {
         const sel = this.el("tid-depot");
         if (!sel) return;
-        const cur = sel.value;
-        sel.innerHTML = '<option value="">留置場を選択</option>' +
+        const html = '<option value="">留置場を選択</option>' +
             Object.keys(DEPOTS).map(n =>
                 `<option value="${n}">${n} (出区待ち ${DEPOTS[n].trains.length}/${DEPOTS[n].capacity} ・ 留置 ${this.game.fleet.poolAt(n).length})</option>`
             ).join("");
-        sel.value = cur;
+        this.writeSelect("tid-depot", html, sel.value);
         this.refreshDepotTrains();
     }
 
@@ -108,16 +184,18 @@ class TidUI {
         const dName = this.el("tid-depot") ? this.el("tid-depot").value : "";
         const sel = this.el("tid-depot-train");
         if (!sel) return;
-        sel.innerHTML = '<option value="">車両を選択</option>';
-        if (!dName || !DEPOTS[dName]) return;
-        DEPOTS[dName].trains.forEach((t, i) => {
-            const veh = (t.vehicles && t.vehicles.length)
-                ? t.vehicles.map(v => v.fullId).join("+") + "(" + t.vehicles.reduce((s, v) => s + v.cars, 0) + "両)"
-                : "編成未定";
-            const wait = (t.timer > 0) ? "出区まで" + Math.ceil(t.timer / 60) + "分"
-                : (t.timer === -1 ? "待機中" : "出区準備");
-            sel.innerHTML += `<option value="${t.id}">[${i + 1}] ${escapeLogHtml(t.trainNo || "予備車")} ${escapeLogHtml(veh)} / ${wait}</option>`;
-        });
+        let html = '<option value="">車両を選択</option>';
+        if (dName && DEPOTS[dName]) {
+            DEPOTS[dName].trains.forEach((t, i) => {
+                const veh = (t.vehicles && t.vehicles.length)
+                    ? t.vehicles.map(v => v.fullId).join("+") + "(" + t.vehicles.reduce((s, v) => s + v.cars, 0) + "両)"
+                    : "編成未定";
+                const wait = (t.timer > 0) ? "出区まで" + Math.ceil(t.timer / 60) + "分"
+                    : (t.timer === -1 ? "待機中" : "出区準備");
+                html += `<option value="${t.id}">[${i + 1}] ${escapeLogHtml(t.trainNo || "予備車")} ${escapeLogHtml(veh)} / ${wait}</option>`;
+            });
+        }
+        this.writeSelect("tid-depot-train", html, sel.value);
     }
 
     bindButtons() {
@@ -131,6 +209,16 @@ class TidUI {
             this.game.tidRenderer.scrollToStation(this.el("tid-jump").value);
         });
         onCh("tid-depot", () => this.refreshDepotTrains());
+        onCh("tid-speed", () => {
+            const v = Number(this.el("tid-speed").value);
+            setTimeScale(v);                       // 手元にもすぐ反映する
+            this.run({ name: "timeScale", value: v });
+        });
+        onCh("tid-daytype", () => {
+            const v = this.el("tid-daytype").value;
+            setDayType(v);
+            this.run({ name: "dayType", value: v });
+        });
         onCh("tid-train", () => this.selectTrain(this.el("tid-train").value));
         onCh("tid-chg-station", () => this.refreshTrackCandidates());
 
@@ -409,18 +497,26 @@ class TidUI {
     renderTrainSelect() {
         const sel = this.el("tid-train");
         if (!sel) return;
-        const cur = sel.value;
+        const cur = sel.value || this.selectedId || "";
         const list = this.game.trains
             .filter(t => t.state !== "finished")
             .sort((a, b) => String(a.trainNo || "ZZZ").localeCompare(String(b.trainNo || "ZZZ")));
-        sel.innerHTML = '<option value="">列車を選択</option>' + list.map(t => {
+        let html = '<option value="">列車を選択</option>' + list.map(t => {
             const mark = t.isManuallySuspended ? "【抑止】" :
                 t.minorTrouble ? "【障害】" :
                 t.state === "in_depot" ? "【留置】" : "";
             const veh = (t.vehicles && t.vehicles.length) ? " " + t.vehicles.map(v => v.id).join("+") : "";
             return `<option value="${t.id}">${mark}${escapeLogHtml(t.trainNo || "(待機)")} ${escapeLogHtml(t.type)} ${escapeLogHtml(t.dest || "")}${escapeLogHtml(veh)}</option>`;
         }).join("");
-        sel.value = cur;
+
+        /* ★選んでいた列車が一覧から消えた (運用を終えた) 場合。
+           黙って別の列車に飛ばすと、指令の操作先が入れ替わって危ないので、
+           「運用終了」と書いた項目として残し、選択をそのまま保つ。 */
+        if (cur && !list.some(t => t.id === cur)) {
+            html += '<option value="' + escapeLogHtml(cur) + '">' +
+                    '（運用終了・一覧から外れました）</option>';
+        }
+        this.writeSelect("tid-train", html, cur);
     }
 
     renderTrainInfo() {

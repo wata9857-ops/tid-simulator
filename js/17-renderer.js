@@ -499,12 +499,28 @@ class Renderer {
             }
 
             let dy = b.y;
-            if (b.stationIdx === 36) {
+            {
+                /* ★番線の縦位置は、番線名と同じ対応表から引く
+                   (js/03-stations.js の stationLaneY)。
+
+                   以前は 尼崎 (stationIdx 36) だけ4要素の決め打ち表を持っていた。
+                   尼崎は島式4面8線＋通過線で 上り5・下り4 の着発線があるので、
+                   レーン4の列車は undefined になり、その列車が乗っている線路
+                   (JR東西線・JR宝塚線) の帯の高さに落ちていた。
+                   そこには線路もホームも描かれていない。
+                   番線を共有する駅では、どの線区の列車も本線の着発線に描く。 */
+                const stName = blockStationName(b);
                 const tY = this.game.trackMgr.trackY;
-                if (t.dir === 1) dy = [tY["Up_Out"] - 20, tY["Up_Out"] + 10, tY["Up_In"] - 10, tY["Up_In"] + 20][t.lane];
-                else dy = [tY["Down_In"] - 20, tY["Down_In"] + 10, tY["Down_Out"] - 10, tY["Down_Out"] + 20][t.lane];
-            } else {
-                dy += (t.lane > 0) ? t.lane * (t.trackId.startsWith("Up") ? -35 : 35) : 0;
+                const onBranch = (typeof stationBranchLine === "function")
+                    ? !!stationBranchLine(stName) : false;
+                let laneY = null;
+                if (stName && STATION_PLATFORM_RULES[stName] &&
+                    (b.isStation || b.hoppoStationName) && !onBranch) {
+                    laneY = stationLaneY(stName, t.trackId, t.lane,
+                                         tY["Up_Out"], tY["Up_In"], tY["Down_In"], tY["Down_Out"]);
+                }
+                if (laneY !== null && laneY !== undefined) dy = laneY;
+                else dy += (t.lane > 0) ? t.lane * (t.trackId.startsWith("Up") ? -35 : 35) : 0;
             }
             if (dy === undefined) dy = b.y;
 

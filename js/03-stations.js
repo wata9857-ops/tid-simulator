@@ -29,7 +29,7 @@ const STATION_PLATFORM_RULES = {
     "神戸": { labels:["5","4","3","2","1"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] },
     "灘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "六甲道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "住吉": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摂津本山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "甲南山手": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","2","1","下外"], lanes:[true,true,true,true,false] },
-    "立花": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "尼崎": { labels:["8","7","6","5","4","3","2","1"], lanes:[true,true,true,true,true,true,true,true] }, "塚本": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "大阪": { labels:["11","10","9","8","7","6","5","4","3"], lanes:[true,true,true,true,true,true,true,true,true] },
+    "立花": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "尼崎": { labels:["9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true] }, "塚本": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "大阪": { labels:["8","10","11","7","9","6","4","5","3"], lanes:[true,true,true,true,true,true,true,true,true] },
     "新大阪": { labels:["上通","10","9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true,true,true] }, "東淀川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "吹田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "岸辺": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "千里丘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "茨木": { labels:["上待","4","3","2","1","下待"], lanes:[false,true,true,true,true,false] }, "JR総持寺": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "摂津富田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "高槻": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "島本": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "山崎": { labels:["4","3","2","1","下待"], lanes:[true,true,true,true,false] }, "長岡京": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
@@ -238,7 +238,34 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
     }
     else if (stationName === "大阪") {
-        yPositions = [upOutY-28, upOutY, upInY-28, upInY, downInY, downInY+28, downInY+56, downOutY, downOutY+28];
+        /* 3〜11番のりば。番線と線路の対応 (配線略図 スクリーンショット(697).png)
+             8番  … 上り外側線 (列車線)。新快速・快速
+             10・11番 … 8番の北側。JR宝塚線(上り)・特急・朝夕の優等
+             7番  … 上り内側線 (電車線)。普通
+             9番  … 7番から渡り線で入れる予備の上りホーム
+             6番  … 下り内側線 (電車線)。普通
+             4番  … 6番から渡り線で入れる予備の下りホーム
+             5番  … 下り外側線 (列車線)。新快速・快速
+             3番  … 5番の南側。JR宝塚線(下り)・特急・朝夕の優等
+
+           ★9・10番と3・4番は、列車線からも電車線からも入れる。
+             電車線に1本ずつしか番線を与えないと、大阪の下り電車線
+             (6番) に普通と快速が集まって捌けなくなる
+             (実測: 大阪の下り快速が 4本/時 → 0.8本/時)。
+             実物にも渡り線があるので、電車線側にも予備のホームを持たせる。
+           ★以前は 7番が下り内側に付いていた (実際は上り)。 */
+        yPositions = [upOutY, upOutY - 26, upOutY - 52,
+                      upInY, upInY - 26,
+                      downInY, downInY + 26,
+                      downOutY, downOutY + 26];
+    }
+    else if (stationName === "尼崎") {
+        /* 上から 9番 (ホームの無い通過線) / 8番 … 1番。
+           上り外 9,8 / 上り内 7,6,5 / 下り内 4,3 / 下り外 2,1 */
+        yPositions = [upOutY - 22, upOutY + 8,
+                      upInY - 22, upInY, upInY + 22,
+                      downInY - 10, downInY + 20,
+                      downOutY - 10, downOutY + 20];
     } 
     else if (stationName === "西明石") {
         yPositions.push(upOutY - 15);
@@ -249,9 +276,6 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions.push(downOutY + 15);
     } 
     else if (stationName === "京都") {
-        yPositions = [upOutY-20, upOutY+10, upInY-10, upInY+20, downInY-20, downInY+10, downOutY-10, downOutY+20];
-    }
-    else if (stationName === "尼崎") {
         yPositions = [upOutY-20, upOutY+10, upInY-10, upInY+20, downInY-20, downInY+10, downOutY-10, downOutY+20];
     }
     else if (stationName === "高槻") {
@@ -360,16 +384,119 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
 const STATION_LANES_2 = ["京都", "尼崎", "西明石", "姫路", "高槻", "加古川", "宝殿",
     "草津", "野洲", "河瀬", "安土", "米原", "長浜", "近江塩津", "敦賀"];
 
+/* ------------------------------------------------------------------ 駅が属する線区
+
+   ■ 何を直すためのものか
+     湖西線・JR宝塚線・JR東西線の駅は、本線と同じインデックス空間を
+     共有している (js/03-stations.js の STATION_MAP を参照)。
+     そのため、内側線 (電車線) があるかどうかを
+     「インデックスが西明石〜草津のあいだか」だけで判定していた
+     stationMainLaneCount() が、分岐線の駅にも内側線があると答えていた。
+
+     結果、次の27駅に「実在しない番線」が2本ずつ生えていた。
+       JR東西線   加島・御幣島・海老江・新福島・北新地・
+                  大阪天満宮・大阪城北詰・京橋・鴫野・放出
+       JR宝塚線   新三田・三田・道場・武田尾・西宮名塩・生瀬・宝塚・
+                  中山寺・川西池田・北伊丹・伊丹・猪名寺・塚口
+       湖西線     大津京・唐崎・比叡山坂本・おごと温泉
+     stationLaneSlots() が余ったレーンを「上待」「下待」として
+     自動で足すため、実際には1面2線しかない 大阪天満宮・大阪城北詰 が
+     4番線あるように表示されていた。
+     (配線略図 スクリーンショット(711).png のとおり、JR東西線の
+      大阪城北詰〜海老江はいずれも島式1面2線)
+
+     さらに TrackManager が持つレーン数 (上下1本ずつ) と食い違うので、
+     「線路の無い番線」と「番線の無い線路」が同時に生まれていた。
+
+   ■ 直し方
+     駅がどの線区に属するかを1か所で引けるようにして、
+     分岐線の駅は上り線・下り線の2本だけを持つようにする。
+     レーン数は番線の書き起こし (stationLaneBaseYs) から数えるので、
+     TrackManager・線路図・番線の対応表がすべて同じ値を見る。 */
+const BRANCH_LINE_OF = {};
+(function () {
+    const add = (map, line) => {
+        for (const k in map) {
+            const n = map[k];
+            // 尼崎・山科・近江塩津は本線と共用の駅なので本線として扱う
+            if (n === "尼崎" || n === "山科" || n === "近江塩津") continue;
+            BRANCH_LINE_OF[n] = line;
+        }
+    };
+    add(KOSEI_STATIONS_MAP, "kosei");
+    add(FUKUCHI_STATIONS_MAP, "fukuchi");
+    add(TOZAI_STATIONS_MAP, "tozai");
+})();
+
+/** その駅が属する分岐線 ("kosei"/"fukuchi"/"tozai")。本線の駅なら null。 */
+function stationBranchLine(name) { return BRANCH_LINE_OF[name] || null; }
+
+/**
+ * 分岐線の駅の、上り線・下り線それぞれのレーン数。
+ * 番線の書き起こし (stationLaneBaseYs) を数えて決めるので、
+ * 「番線の数」と「線路の数」が必ず一致する。
+ */
+const _branchLaneCache = {};
+function stationBranchLanes(name) {
+    const hit = _branchLaneCache[name];
+    if (hit) return hit;
+    const rule = STATION_PLATFORM_RULES[name];
+    let up = 1, down = 1;
+    if (rule) {
+        const K = 1000;
+        // 分岐線の駅は stationLaneBaseYs が上り線(0)・下り線(K) に割り当てる
+        const base = stationLaneBaseYs(name, 0, K, 2 * K, 3 * K);
+        let u = 0, d = 0;
+        for (let i = 0; i < base.length && i < rule.labels.length; i++) {
+            if (_trackOfVirtual(base[i]) <= 1) u++; else d++;
+        }
+        if (u + d > 0) { up = Math.max(1, u); down = Math.max(1, d); }
+    }
+    const out = { up: up, down: down };
+    _branchLaneCache[name] = out;
+    return out;
+}
+
 /** その駅・その線路のレーン数 (本線のみ。0 ならその線路はその駅に無い) */
 function stationMainLaneCount(stName, trackId) {
     const idx = STATION_MAP[stName];
     const isInner = (trackId === "Up_In" || trackId === "Down_In");
+
+    /* ★分岐線 (湖西線・JR宝塚線・JR東西線) の駅は上下1線ずつの複線。
+       本線とインデックスを共有しているので、インデックスだけで
+       内側線の有無を決めるとここに内側線が生えてしまう。 */
+    const branch = stationBranchLine(stName);
+    if (branch) {
+        if (isInner) return 0;
+        const n = stationBranchLanes(stName);
+        return (trackId === "Up_Out") ? n.up : n.down;
+    }
+
     // 内側線 (電車線) があるのは複々線の西明石〜草津だけ
     if (isInner && (idx === undefined ||
         idx < STATION_MAP["西明石"] || idx > STATION_MAP["草津"])) return 0;
 
     if (stName === "大阪") {
-        return (trackId === "Down_In") ? 3 : 2;
+        /* 3〜11番のりば。番線と線路の対応 (配線略図 スクリーンショット(697).png)
+             上り外 (列車線) … 8・9・10・11番
+             上り内 (電車線) … 7番
+             下り内 (電車線) … 6番
+             下り外 (列車線) … 5・4・3番
+           ★以前は 上り外2 / 上り内2 / 下り内3 / 下り外2 で、
+             7番が下り線に付いていた (実際は上り)。 */
+        if (trackId === "Up_Out") return 3;     // 8・10・11番
+        if (trackId === "Up_In") return 2;      // 7・9番
+        if (trackId === "Down_In") return 2;    // 6・4番
+        return 2;                               // Down_Out 5・3番
+    }
+    if (stName === "尼崎") {
+        /* 島式4面8線 ＋ 北側の通過線 (9番)。
+             上り外 … 9 (通過線) ・8
+             上り内 … 7 (宝塚線・東西線) ・6・5
+             下り内 … 4・3
+             下り外 … 2・1 */
+        if (trackId === "Up_In") return 3;
+        return 2;
     }
     if (stName === "新大阪") {
         /* 上り2面4線・下り2面4線・おおさか東線ホームで 11番線。
@@ -619,6 +746,308 @@ function stationLaneTracks(stationName) {
     return out;
 }
 
+/* ------------------------------------------------------------------ 駅の進路
+
+   ■ なぜ必要か
+     これまでは「その駅のその線路のレーンなら、どれでも使える」という
+     扱いだった。実際の駅は、番線と線路のつながりが決まっていて、
+     どの番線からどの線へ出られるか・どの線からどの番線へ入れるかは
+     転てつ器の配線で限られている。
+     そこを見ていなかったため
+       ・下り外側線から到着した列車が、つながっていない番線に入る
+       ・その番線から出られない線へ発車する
+       ・引上線につながっていない番線の列車が折り返す
+     という、線路の上ではあり得ない動きが起きていた。
+
+   ■ 書き方
+     arrive … その線路から「入れる」番線 (到着)
+     depart … その番線から「出られる」線路 (発車)
+     drawUp … 引上線。from に書いた番線からしか入れない。
+
+     番線は STATION_PLATFORM_RULES の labels と同じ文字で書く。
+     ここに無い駅は、これまでどおり制限なし (その線路のレーンならどれでも)。
+
+   ■ 元にした資料
+     尼崎 … 配線略図 スクリーンショット(709).png / (711).png
+     大阪 … 配線略図 スクリーンショット(697).png
+     京都 … 配線略図 スクリーンショット(693).png / (680).png
+*/
+const STATION_ROUTES = {
+    /* 尼崎。島式4面8線 ＋ 北側の通過線 (9番)。
+         外側線 … 1番 (下り) / 8番 (上り)
+         内側線 … 4番 (下り) / 5番 (上り)
+         JR宝塚線・JR東西線 … 2番 (下り) / 7番 (上り) */
+    "尼崎": {
+        arrive: {
+            Down_Out:    ["1", "2"],
+            Tozai_Down:  ["2", "3", "4"],
+            Down_In:     ["3", "4"],
+            Up_Out:      ["9", "8"],
+            Fukuchi_Up:  ["9", "8", "7", "6"],
+            Up_In:       ["7", "6", "5"]
+        },
+        depart: {
+            Down_Out:      ["1", "2"],
+            Fukuchi_Down:  ["2", "3"],
+            Down_In:       ["2", "3", "4"],
+            Up_Out:        ["9", "8", "7"],
+            Tozai_Up:      ["7", "6", "5"],
+            Up_In:         ["6", "5"]
+        },
+        /* 西側 (塚本方) の引上線。配線略図のとおり 4番・5番だけにつながる。 */
+        drawUp: [{ label: "西引上線", from: ["4", "5"], side: "W" }]
+    },
+
+    /* 大阪。3〜11番のりば。
+         5番 … 下り外側線 (列車線)  新快速・快速
+         6番 … 下り内側線 (電車線)  普通
+         7番 … 上り内側線 (電車線)  普通
+         8番 … 上り外側線 (列車線)  新快速・快速
+         3・4番 … 5番の南側 (JR宝塚線 下り・特急・朝夕の優等)
+         9・10・11番 … 8番の北側 (JR宝塚線 上り・特急・朝夕の優等) */
+    "大阪": {
+        arrive: {
+            Down_Out: ["5", "3"],
+            Down_In:  ["6", "4"],
+            Up_In:    ["7", "9"],
+            Up_Out:   ["8", "10", "11"]
+        },
+        depart: {
+            Down_Out: ["5", "3"],
+            Down_In:  ["6", "4"],
+            Up_In:    ["7", "9"],
+            Up_Out:   ["8", "10", "11"]
+        },
+        /* 引上線。東海道線のホームの東 (京都方) と西 (神戸方) に1本ずつ。
+           大阪環状線のホームの西にも2本あるが、環状線はこの線路図の
+           範囲外なので持たない。
+           西引上線は、早朝のJR京都線の始発 (宮原から回送で入り、
+           ここで方向を変える) と、1時ごろの最終列車の折り返しに使う。 */
+        drawUp: [
+            { label: "東引上線", from: ["8", "9", "10", "11"], side: "E" },
+            { label: "西引上線", from: ["3", "4", "5", "6", "7"], side: "W" }
+        ],
+        /* 番線の使い分け (利用者の指摘 12-2)
+             ふだん      新快速・快速 = 5番/8番、普通 = 6番/7番
+             平日朝ラッシュ・平日17時以降 は 3・4・9・10番も使う */
+        /* ★大阪では、JR宝塚線方向へ向きを変えられない。
+           宝塚線の列車 (丹波路快速など) が大阪止まりになったときは、
+           宮原まで回送して方向を変え、戻ってから宝塚線へ入る。
+           詳しくは js/14-train-turnback.js の「大阪での方転」を参照。 */
+        noReverseTo: ["Fukuchi_Down", "Fukuchi_Up"]
+    },
+
+    /* 京都。0番と2〜7番 (8〜10番は奈良線・特急で、この線路図の範囲外)。
+         2・3番 … 琵琶湖線 上り (米原・草津方面)
+         4・5番 … JR京都線 下り 内側線 (普通は4番、それ以外は5番)
+         6・7番 … JR京都線 下り 外側線。朝と平日夕の新快速、
+                   および琵琶湖線・湖西線・草津線からの当駅止まり */
+    "京都": {
+        arrive: {
+            Up_Out:   ["下通", "0"],
+            Up_In:    ["2", "3"],
+            Down_In:  ["4", "5"],
+            Down_Out: ["6", "7"]
+        },
+        depart: {
+            Up_Out:   ["下通", "0"],
+            Up_In:    ["2", "3"],
+            Down_In:  ["4", "5"],
+            Down_Out: ["6", "7"]
+        },
+        /* 駅の南側 (下り線の外側) に、西向きの行き止まり線が4本並ぶ。
+           配線略図 スクリーンショット(693).png / (680).png。
+           当駅止まりの折り返しと日中の留置に使う
+           (留置場としては js/04-depots.js の "京都")。 */
+        drawUp: [{ label: "京都駅 引上線", from: ["4", "5", "6", "7"], side: "W" }]
+    }
+};
+
+/* ------------------------------------------------------------------ 番線の使い分け
+
+   実際の運用では、同じ線路の中でも種別と時間帯で使う番線が決まっている。
+     大阪 … 新快速・快速は 5番/8番、普通は 6番/7番。
+             平日朝ラッシュは 3・4・9・10番も使い、
+             平日17時以降は新快速が 3・4・9・10番も使う。
+     京都 … JR京都線の普通は4番、それ以外は5番。
+             朝と平日夕の新快速は6・7番。
+   ここに書いた順に空いている番線を探す。
+   書いていない駅・種別は、これまでどおり空いている番線から選ぶ。 */
+const STATION_PLATFORM_USE = {
+    "大阪": {
+        "新快速": { normal: ["8", "5"], rush: ["8", "5", "10", "11", "3"],
+                    evening: ["8", "5", "10", "11", "3"] },
+        /* 快速は内側線のときは 7番/6番、外側線のときは 8番/5番。
+           朝ラッシュ・夕方は 9・10・3・4番も使う。 */
+        "快速":   { normal: ["8", "5", "7", "6"], rush: ["8", "5", "9", "10", "4", "3"],
+                    evening: ["8", "5", "9", "10", "4", "3"] },
+        "普通":   { normal: ["7", "6", "9", "4"], rush: ["7", "6", "9", "4"],
+                    evening: ["7", "6", "9", "4"] },
+        "特急":   { normal: ["10", "11", "3"] }
+    },
+    "京都": {
+        "普通":   { normal: ["4", "2"] },
+        "快速":   { normal: ["5", "3"] },
+        "新快速": { normal: ["6", "7", "0"] }
+    },
+    "尼崎": {
+        "新快速": { normal: ["8", "1"] },
+        "快速":   { normal: ["8", "1", "7", "2", "5", "4"] },
+        "普通":   { normal: ["5", "4", "6", "3", "7", "2"] }
+    }
+};
+
+/** いまの時間帯の区分 ("rush" 平日朝 / "evening" 平日17時以降 / "normal") */
+function stationUseBand(hour) {
+    if (typeof isWeekday === "function" && !isWeekday()) return "normal";
+    if (hour >= 7.0 && hour < 9.0) return "rush";
+    if (hour >= 17.0 && hour < 19.5) return "evening";
+    return "normal";
+}
+
+/**
+ * その駅・その線路で、到着 (mode="arrive") または発車 (mode="depart") に
+ * 使える番線のレーン番号。制限が書かれていなければ null (= 制限なし)。
+ */
+function stationRouteLanes(stName, trackId, mode) {
+    const def = STATION_ROUTES[stName];
+    if (!def || !def[mode]) return null;
+    const labels = def[mode][trackId];
+    if (!labels) return null;
+    const out = [];
+    labels.forEach(lb => {
+        const at = stationLaneIndexOf(stName, trackId, lb);
+        if (at >= 0) out.push(at);
+    });
+    return out.length ? out : null;
+}
+
+/** (駅, 線路, 番線名) → レーン番号。無ければ -1 */
+function stationLaneIndexOf(stName, trackId, label) {
+    const map = stationLaneMap(stName);
+    const key = _laneKeyOf(trackId);
+    let arr;
+    if (STATION_SHARED_LANES[stName]) {
+        const up = (key === "Up_Out" || key === "Up_In");
+        arr = up ? map.Up_Out.concat(map.Up_In) : map.Down_In.concat(map.Down_Out);
+    } else {
+        arr = map[key] || [];
+    }
+    for (let i = 0; i < arr.length; i++) if (arr[i].label === label) return i;
+    return -1;
+}
+
+/** その番線から、その線路へ発車できるか (制限が無ければ true) */
+function canDepartTo(stName, fromTrackId, lane, toTrackId) {
+    const allowed = stationRouteLanes(stName, toTrackId, "depart");
+    if (!allowed) return true;
+    return allowed.indexOf(lane) >= 0;
+}
+
+/** その線路から、その番線へ到着できるか (制限が無ければ true) */
+function canArriveAt(stName, trackId, lane) {
+    const allowed = stationRouteLanes(stName, trackId, "arrive");
+    if (!allowed) return true;
+    return allowed.indexOf(lane) >= 0;
+}
+
+/**
+ * 到着に使う番線の希望順 (レーン番号の配列)。
+ * 進路の制限と、種別・時間帯ごとの使い分けを合わせたもの。
+ */
+function stationPreferredLanes(stName, trackId, type, hour, mode) {
+    const allowed = stationRouteLanes(stName, trackId, mode || "arrive");
+    const use = (STATION_PLATFORM_USE[stName] || {})[type];
+    if (!use) return allowed;          // 使い分けの定義が無ければ進路の制限だけ
+    const band = stationUseBand(hour);
+    const labels = use[band] || use.normal || [];
+    const pref = [];
+    labels.forEach(lb => {
+        const at = stationLaneIndexOf(stName, trackId, lb);
+        if (at < 0) return;
+        if (allowed && allowed.indexOf(at) < 0) return;
+        if (pref.indexOf(at) < 0) pref.push(at);
+    });
+    // 希望に無い番線も、進路がつながっていれば後ろに足す (満線のときの受け皿)
+    (allowed || []).forEach(at => { if (pref.indexOf(at) < 0) pref.push(at); });
+    return pref.length ? pref : allowed;
+}
+
+/** その駅に引上線があるか。あれば [{label, from, side}] */
+function stationDrawUpTracks(stName) {
+    const def = STATION_ROUTES[stName];
+    return (def && def.drawUp) ? def.drawUp : [];
+}
+
+/* ------------------------------------------------------------------ 方転できない駅
+
+   ■ 大阪・新大阪
+     ホームで向きを変えて折り返すことはしない。
+     実物では、東海道線のホームの東西にある引上線へ引き上げてから
+     方向を変える。引き上げた列車はそのまま宮原 (網干総合車両所宮原支所)
+     へ回送されるか、宮原から入ってきて折り返す。
+       早朝のJR京都線の始発 … 宮原から回送 → 大阪の西引上線 → 方転 → 発車
+       1時ごろの最終列車     … 大阪着 → 西引上線 → 宮原へ回送
+     ★とくに丹波路快速のように JR宝塚線へ向かう列車は、大阪のホームで
+       向きを変えて宝塚線へ入ることができない。宮原まで回送して方向を
+       変え、戻ってから宝塚線へ入る。
+     この線路図は引上線そのものを閉塞として持たないので、
+     「大阪に着いた折り返し列車は宮原へ回送する」という形で表す。
+     ホームを長くふさがないので、実物と同じく大阪の線路容量も保てる
+     (ホーム折り返しにしたところ、大阪〜西明石の列車間隔が
+      3.8駅 → 9.2駅 まで開いた)。
+
+   ■ 尼崎
+     西側の引上線は、配線略図のとおり 4番・5番だけにつながっている。
+     折り返せるのはこの2つの番線に居る列車だけ。 */
+const STATION_NO_PLATFORM_TURNBACK = ["大阪", "新大阪"];
+
+/**
+ * その駅・その番線で、ホーム (着発線) のまま折り返せるか。
+ *
+ *   toTrackId … 折り返したあとに走る線路 (分かれば渡り線の有無で判定する)
+ *
+ * 判定の順
+ *   1. 大阪・新大阪 … 引上線へ引き上げないと方向を変えられない → false
+ *   2. 到着した線路と発車する線路をつなぐ渡り線があるか
+ *      (js/40-tid-theme.js の TID_JUNCTIONS。配線略図から書き起こしたもの)
+ *   3. その番線から引上線へ入れるか
+ *   4. 渡り線の定義が無い駅は、これまでどおり折り返せるものとする
+ */
+function canTurnBackOnPlatform(stName, trackId, lane, toTrackId) {
+    if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
+
+    // --- 渡り線で反対方向の線路につながっているか
+    if (toTrackId && typeof TID_JUNCTIONS !== "undefined") {
+        const def = TID_JUNCTIONS[stName];
+        if (def && def.crossovers) {
+            const linked = def.crossovers.some(c =>
+                (c[0] === trackId && c[1] === toTrackId) ||
+                (c[1] === trackId && c[0] === toTrackId));
+            if (linked) return true;
+        }
+    }
+
+    // --- 引上線につながる番線か
+    const drawUps = stationDrawUpTracks(stName);
+    if (drawUps.length) return canUseDrawUp(stName, trackId, lane);
+
+    /* 渡り線の書き起こしが無い駅は、これまでどおり折り返せるものとする。
+       (tools/check_turnouts.js が「折り返す駅はすべて渡り線か引上線を持つ」
+        ことを見張っているので、書き起こしの進んだ駅では上で決まる) */
+    return true;
+}
+
+/** その番線から引上線へ入れるか */
+function canUseDrawUp(stName, trackId, lane) {
+    const list = stationDrawUpTracks(stName);
+    if (!list.length) return false;
+    const map = stationLaneMap(stName);
+    const e = stationLaneEntry(stName, trackId, lane);
+    if (!e) return false;
+    return list.some(d => d.from.indexOf(e.label) >= 0);
+}
+
 /* ------------------------------------------------------------------ 番線を共有する駅
 
    尼崎は、本線・JR宝塚線・JR東西線の列車が同じ番線に入る。
@@ -675,6 +1104,23 @@ function isPlatformLane(stationName, trackId, lane) {
 function laneVirtualY(stationName, trackId, lane) {
     const e = stationLaneEntry(stationName, trackId, lane);
     return e ? e.virt : null;
+}
+
+/**
+ * (駅, 線路ID, レーン番号) の縦位置。
+ * 4本の基準線の縦位置を渡すと、その番線の位置を返す。無ければ null。
+ *
+ * ★番線名と同じ対応表 (stationLaneEntry / stationLaneYPositions) から
+ *   引くので、画面に描く位置と、駅の在線表・列車情報・発車標に出る
+ *   番線名が必ず一致する。
+ *   尼崎のように本線・JR宝塚線・JR東西線が着発線を共有する駅でも、
+ *   どの線区の列車も「その番線の位置」に描かれる。
+ */
+function stationLaneY(stName, trackId, lane, upOutY, upInY, downInY, downOutY) {
+    const e = stationLaneEntry(stName, trackId, lane);
+    if (!e || !(e.index >= 0)) return null;
+    const ys = stationLaneYPositions(stName, upOutY, upInY, downInY, downOutY);
+    return (ys[e.index] !== undefined) ? ys[e.index] : null;
 }
 
 /** 番線の呼び方。数字なら「4番線」、「上待」などはそのまま */

@@ -157,31 +157,24 @@ class TidRenderer {
 
     // ============================================================ 当たり判定
     buildStationHits() {
+        /* 当たり判定は、札を描く位置とまったく同じ計算を使う
+           (drawStations の plateYsFor)。別に持つとずれる。 */
         this.hitStations = [];
-        const topY = (TID_GEO.topPad - TID_GEO.plateTopGap) * TID_SCALE_Y;
-        const botY = this.height - TID_GEO.bottomPad -
-                     ((TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap)
-                      - TID_GEO.plateBotGap) * TID_SCALE_Y;
         const add = (name, x, y) => {
             const w = Math.max(TID_GEO.plateW, name.length * 15 + 22);
             this.hitStations.push({ name: name, x: x - w / 2, y: y - 11, w: w, h: 22 });
         };
+        const bands = this.groupBands();
         STATIONS.forEach((st, i) => {
             const x = tidStationX(i);
-            add(st.name, x, topY);
-            add(st.name, x, botY);
-        });
-        // 分岐線の駅は、その線区の帯のところに札を出す
-        const branch = [
-            [KOSEI_STATIONS_MAP, "Kosei_Down"],
-            [FUKUCHI_STATIONS_MAP, "Fukuchi_Down"],
-            [TOZAI_STATIONS_MAP, "Tozai_Down"]
-        ];
-        branch.forEach(([map, tid]) => {
-            if (this.trackY[tid] === undefined) return;   // その線区を表示していない
-            for (const k in map) {
-                add(map[k], tidStationX(Number(k)), this.trackY[tid] - 30 * TID_SCALE_Y);
-            }
+            bands.forEach(band => {
+                if (band.group === "北方貨物線") return;
+                const name = this.stationNameOn(band.group, i);
+                if (!name) return;
+                const ys = this.plateYsFor(band, name);
+                add(name, x, ys.top);
+                add(name, x, ys.bot);
+            });
         });
     }
 
@@ -307,6 +300,15 @@ class TidRenderer {
            北方貨物線は途中にホームの無い複線なので、まっすぐ通す。 */
         if (trackId.indexOf("Hoppo") >= 0) return null;
         const tY = this.trackY;
+        /* ★番線を共有する駅 (尼崎) は、どの線区の列車でも
+           本線の着発線の位置に描く。
+           尼崎の JR東西線・JR宝塚線の列車を「東西線の帯」に描いていたため、
+           線路もホームも無い所に在線が出ていた。
+           (js/05-track-manager.js の amaUpLanes / amaDownLanes を参照) */
+        if (STATION_SHARED_LANES[stName]) {
+            return (tY["Up_Out"] === undefined) ? null
+                 : tidStationLayout(stName, tY["Up_Out"], false);
+        }
         if (trackId.indexOf("Kosei") === 0) {
             return (tY["Kosei_Up"] === undefined) ? null
                  : tidStationLayout(stName, tY["Kosei_Up"], true);
@@ -450,13 +452,89 @@ class TidRenderer {
         });
     }
 
+    /* ------------------------------------------------------------ 駅名札の位置
+
+       ■ 何が問題だったか
+         駅名札は「キャンバスのいちばん上」と「いちばん下」に置いていた。
+         本線だけを出しているときは実物と同じ形になるが、
+         「全線」を選んで湖西線・JR宝塚線・JR東西線も並べると、
+           ・本線の駅名が画面の最上部と最下部に離れて出る
+             (上下に目を往復させないと、どの駅か分からない)
+           ・分岐線の札は線路のすぐ上に出るので、本線の駅名と合わせて
+             同じ x に3つの名前が並ぶ
+           ・分岐線の札が、広がった番線やホームの帯に重なる
+         という状態になっていた。
+
+       ■ どう直したか
+         線区 (TID_ROWS の group) ごとに帯を求め、その帯の上と下に
+         その線区の駅名を置く。位置は「その駅が実際に使っている番線の
+         いちばん上・いちばん下」から決めるので、番線を上下に広げた
+         大きな駅でもホームや列車表示に重ならない。
+         分岐線に駅が無いインデックスでは札を出さないので、
+         同じ名前が3つ並ぶことも無くなる。
+    */
+
+    /** 表示している線区ごとの帯 (上端・下端の線路の縦位置) */
+    groupBands() {
+        if (this._bandCache && this._bandKey === this.areaId) return this._bandCache;
+        const rows = this.trackY.__rows || [];
+        const bands = [];
+        rows.forEach(row => {
+            const y = this.trackY[row.id];
+            if (y === undefined) return;
+            let b = bands.find(x => x.group === row.group);
+            if (!b) {
+                b = { group: row.group, top: y, bot: y, refId: row.id };
+                bands.push(b);
+            }
+            if (y < b.top) b.top = y;
+            /* 帯の下端 = その線区の「上り線」の位置。
+               番線の縦位置 (tidStationLaneYs) はこれを基準に計算する。 */
+            if (y > b.bot) { b.bot = y; b.refId = row.id; }
+        });
+        this._bandCache = bands;
+        this._bandKey = this.areaId;
+        return bands;
+    }
+
+    /** その線区・そのインデックスにある駅名 (無ければ null) */
+    stationNameOn(group, i) {
+        if (group === "本線" || group === "北方貨物線") {
+            return STATIONS[i] ? STATIONS[i].name : null;
+        }
+        if (group === "湖西線") return KOSEI_STATIONS_MAP[i] || null;
+        if (group === "JR宝塚線") return FUKUCHI_STATIONS_MAP[i] || null;
+        if (group === "JR東西線") return TOZAI_STATIONS_MAP[i] || null;
+        return null;
+    }
+
+    /**
+     * その駅・その線区で、駅名札を置く高さ。
+     * 番線を上下に広げた駅でも重ならないように、
+     * 実際に使っている番線の上端・下端から決める。
+     */
+    plateYsFor(band, name) {
+        const branch = (band.group !== "本線" && band.group !== "北方貨物線");
+        let minY = band.top, maxY = band.bot;
+        if (STATION_PLATFORM_RULES[name]) {
+            const ys = tidStationLaneYs(name, band.bot, branch);
+            ys.forEach(y => {
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            });
+        }
+        /* 札と線路のあいだの余白は実物の値 (113px / 84px)。
+           発着予告の札がこのあいだに入る。 */
+        return {
+            top: minY - TID_GEO.plateTopGap * TID_SCALE_Y,
+            bot: maxY + TID_GEO.plateBotGap * TID_SCALE_Y
+        };
+    }
+
     /** 駅 (駅名札・番線・ホーム・分岐) */
     drawStations(ctx, xMin, xMax) {
         const tY = this.trackY;
-        const topY = (TID_GEO.topPad - TID_GEO.plateTopGap) * TID_SCALE_Y;
-        const botY = this.height - TID_GEO.bottomPad -
-                     ((TID_ROWS[TID_ROWS.length - 1].gap || TID_GEO.rowGap)
-                      - TID_GEO.plateBotGap) * TID_SCALE_Y;
+        const bands = this.groupBands();
 
         STATIONS.forEach((st, i) => {
             const x = tidStationX(i);
@@ -466,9 +544,6 @@ class TidRenderer {
             ctx.strokeStyle = TID_COLORS.grid;
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x, 24); ctx.lineTo(x, this.height - 24); ctx.stroke();
-
-            tidDrawPlate(ctx, st.name, x, topY);
-            tidDrawPlate(ctx, st.name, x, botY);
 
             // 渡り線・他線区との分岐・支線 (配線略図をもとにした TID_JUNCTIONS)。
             // 番線より先に描いて、線路の下の層に来るようにする。
@@ -482,15 +557,25 @@ class TidRenderer {
             // 発着予告 (その駅の線路ごとに、次に来る列車を出す)
             this.drawPredictions(ctx, st.name, x);
 
-            // 分岐線の駅
-            [[KOSEI_STATIONS_MAP, "Kosei_Up", "Kosei_Down"],
-             [FUKUCHI_STATIONS_MAP, "Fukuchi_Up", "Fukuchi_Down"],
-             [TOZAI_STATIONS_MAP, "Tozai_Up", "Tozai_Down"]].forEach(def => {
+            // 分岐線の駅の番線
+            [[KOSEI_STATIONS_MAP, "Kosei_Up"],
+             [FUKUCHI_STATIONS_MAP, "Fukuchi_Up"],
+             [TOZAI_STATIONS_MAP, "Tozai_Up"]].forEach(def => {
                 const n = def[0][i];
                 if (!n || tY[def[1]] === undefined) return;
-                tidDrawPlate(ctx, n, x, tY[def[2]] - 30);
                 this.drawJunctions(ctx, n, x);
                 this.drawStationLanes(ctx, n, x, tY[def[1]], true);
+            });
+
+            /* 駅名札は最後に描く (線路・ホーム・列車表示の上に出す)。
+               線区ごとに、その帯の上と下に1枚ずつ。 */
+            bands.forEach(band => {
+                const name = this.stationNameOn(band.group, i);
+                if (!name) return;
+                if (band.group === "北方貨物線") return;   // 途中にホームが無いので出さない
+                const ys = this.plateYsFor(band, name);
+                tidDrawPlate(ctx, name, x, ys.top);
+                tidDrawPlate(ctx, name, x, ys.bot);
             });
         });
     }
@@ -515,9 +600,13 @@ class TidRenderer {
         (def.crossovers || []).forEach(c => {
             const yA = tY[c[0]], yB = tY[c[1]];
             if (yA === undefined || yB === undefined) return;
-            const shape = tidShape(c[2]);
+            /* ★形と側は「画面の向きそのまま」。
+               以前は tidShape()/tidSide() で左右を入れ替えていたため、
+               4つめに側を書いた渡り線が画面の反対側に、
+               片渡りが逆向きに描かれていた (説明とも食い違っていた)。 */
+            const shape = c[2];
             // 4つめの指定が無いときの既定 (両渡りは両側、片渡りは画面の左)
-            const want = c[3] ? tidSide(c[3]) : (c[2] === "x" ? "B" : "L");
+            const want = c[3] ? c[3] : (c[2] === "x" ? "B" : "L");
             const sides = (want === "B") ? ["L", "R"] : [want];
             sides.forEach(sd => {
                 tidDrawCrossover(ctx, tidThroatX(cx, sd),
@@ -528,8 +617,10 @@ class TidRenderer {
         (def.junctions || []).forEach(j => {
             const yMain = tY[j[0]], yBranch = tY[j[1]];
             if (yMain === undefined || yBranch === undefined) return;
-            // 合流は駅の手前、分岐は駅の先。どちらも のど から引く。
-            const sd = (j[2] === "in") ? "L" : "R";
+            /* 合流は駅の手前、分岐は駅の先。どちらも のど から引く。
+               ★4つめで側を指定できる。実物は「上りの合流も下りの分岐も
+                 駅の同じ端」という所が多い (尼崎の宝塚線・東西線など)。 */
+            const sd = j[3] ? j[3] : ((j[2] === "in") ? "L" : "R");
             tidDrawJunction(ctx, tidThroatX(cx, sd), yMain, yBranch, j[2]);
         });
 
@@ -538,7 +629,7 @@ class TidRenderer {
         (def.stubs || []).forEach(s => {
             const y = tY[s.from];
             if (y === undefined) return;
-            const side = tidSide(s.side);
+            const side = s.side;
             const key = side + (s.up ? "U" : "D");
             const bag = s.up ? usedUp : usedDown;
             const order = bag[key] || 0;
@@ -812,6 +903,14 @@ class TidRenderer {
                 const e = stationLaneEntry(stName, t.trackId, t.lane);
                 if (e && e.index >= 0 && L.ys[e.index] !== undefined) return L.ys[e.index];
             }
+        }
+        /* ★番線を共有する駅で番線が引けなかったときは、
+           その番線が属する本線の位置を使う。列車が乗っている線路 (東西線など)
+           の帯に落とすと、線路の無い所に出てしまう。 */
+        if (stName && STATION_SHARED_LANES[stName]) {
+            const key = _laneKeyOf(t.trackId);
+            const row = this.trackY[key];
+            if (row !== undefined) return row;
         }
         return baseY + (t.lane > 0 ? t.lane * (t.dir === 1 ? 18 : -18) : 0);
     }

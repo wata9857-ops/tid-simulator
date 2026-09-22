@@ -543,11 +543,12 @@ function tidInvX(X) { return TID_WORLD_W - X / TID_SCALE; }
 /** 線路図全体の横幅 (スクロールする幅) */
 function tidTotalWidth() { return TID_WORLD_W * TID_SCALE + 200; }
 
-/** 左右が入れ替わるので、「駅のどちら側か」の指定も入れ替える */
-function tidSide(side) { return side === "L" ? "R" : side === "R" ? "L" : side; }
-
-/** 渡り線の形の指定 (l=片開き左 / r=片開き右 / x=両渡り) も入れ替える */
-function tidShape(sh) { return sh === "l" ? "r" : sh === "r" ? "l" : sh; }
+/* ★左右の入れ替えはしない。
+   TID_JUNCTIONS の "L"/"R" と "l"/"r" は、説明どおり
+   「Super-TID の画面で見たときの向き」で書く。
+   以前はここで入れ替えていたため、側を明示した渡り線・支線が
+   画面の反対側に、片渡りが逆向きに描かれていた
+   (tools/.tmp/tidshot/米原.png で確認)。 */
 
 /** 駅インデックスから X 座標 (Super-TID の向き) */
 function tidStationX(i) {
@@ -881,10 +882,11 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
    渡り線 (内外の転線)、他線区との合流・分岐、線内で終わる支線を描く。
 
      crossovers … 駅の渡り線。[上側の線路ID, 下側の線路ID, 形, 置く場所] の配列。
-                  形は "x"(両渡り) / "l"(片渡り) / "r"(片渡り 逆向き)
+                  形は "x"(両渡り) / "l"(画面で左上→右下に下がる片渡り) /
+                  "r"(画面で右上→左下に下がる片渡り)
 
-                  ★置く場所 (4つめ) は "L"(画面の左＝米原・草津方) /
-                    "R"(画面の右＝姫路方) / "B"(両側)。省略したときは
+                  ★置く場所 (4つめ) は "L"(画面の左＝米原・敦賀・新三田・放出方) /
+                    "R"(画面の右＝姫路・大阪・京橋方) / "B"(両側)。省略したときは
                       両渡り("x")   … "B" (実物の主要駅は駅の前後に1組ずつある)
                       片渡り("l"/"r") … "L"
                     とする。
@@ -893,123 +895,276 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
                     「N番のりば」の札を斜めの線が突き抜けていた。
                     (IMG_0332 / IMG_0333 で指摘された所)
      junctions  … シミュレーターに線路として入っている他線区との合流・分岐。
-                  [本線側の線路ID, 分岐側の線路ID, "in"(合流) / "out"(分岐)]
+                  [本線側の線路ID, 分岐側の線路ID, "in"(合流) / "out"(分岐), 置く場所]
+
+                  ★置く場所 (4つめ) を書かなければ "in" は画面の左・"out" は
+                    画面の右になる。実物は「上りの合流も下りの分岐も駅の同じ端」
+                    という所が多いので、その場合は 4つめで側を指定する。
+                    例) 尼崎の JR宝塚線は 立花 (画面右) 側、JR東西線は
+                        塚本 (画面左) 側。配線略図 スクリーンショット(711).png
      stubs      … 画面の外へ出ていく線。{ side:"L"|"R", from:線路ID, up:上へ出すか, label:線名 }
 */
 const TID_JUNCTIONS = {
     // ---------------- 山陽本線 (姫路口)
+    /* 姫路 — 配線略図 スクリーンショット(706).png / (707).png。
+       播但線は駅の東 (画面左) の上側から、姫新線は駅の西 (画面右) の下側へ出る。
+       網干総合車両所は姫路より西なので、この線路図では画面の右の外。
+       (以前は3本とも「画面左・下向き」で、姫新線と網干が逆側に出ていた) */
     "姫路":   { crossovers: [["Up_Out", "Down_Out", "x"]],
-                stubs: [{ side: "L", from: "Down_Out", up: false, label: "播但線 京口方" },
-                        { side: "L", from: "Down_Out", up: false, label: "姫新線 播磨高岡方" },
-                        { side: "L", from: "Down_Out", up: false, label: "網干総合車両所方" }] },
-    "御着":   { crossovers: [["Up_Out", "Down_Out", "l"]] },
+                stubs: [{ side: "L", from: "Down_Out", up: true,  label: "播但線 京口方" },
+                        { side: "R", from: "Up_Out",   up: false, label: "姫新線 播磨高岡方" },
+                        { side: "R", from: "Up_Out",   up: false, label: "網干総合車両所方" }] },
+    /* ひめじ別所 — 図では駅の曽根 (画面左) 側の上に、両渡り2組を持つ
+       大きな貨物駅がある (スクリーンショット(706).png)。定義が無かった。 */
+    "ひめじ別所": { stubs: [{ side: "L", from: "Down_Out", up: true, label: "姫路貨物駅" }] },
+    /* ★御着 — 2面3線。中線は左端で上り本線だけにつながり、
+       右端 (東姫路方) で上り本線と下り本線の両方につながる。
+       上下がつながるのは右のどだけで、下り本線から右下へ下る向き
+       (スクリーンショット(706).png)。以前は画面左・逆向きだった。 */
+    "御着":   { crossovers: [["Up_Out", "Down_Out", "r", "R"]] },
     "宝殿":   { crossovers: [["Up_Out", "Down_Out", "x"]] },
     "加古川": { crossovers: [["Up_Out", "Down_Out", "x"]],
-                stubs: [{ side: "R", from: "Down_Out", up: false, label: "加古川線 日岡方" }] },
+                // 加古川線は宝殿 (画面右) 側の下へ出る (スクリーンショット(705).png)
+                stubs: [{ side: "R", from: "Up_Out", up: false, label: "加古川線 日岡方" }] },
+    /* 東加古川 — 2面3線。中線は加古川 (画面右) 側で上下本線の両方につながる。
+       定義が無かった (スクリーンショット(705).png)。 */
+    "東加古川": { crossovers: [["Up_Out", "Down_Out", "l", "R"]] },
     "土山":   { crossovers: [["Up_Out", "Down_Out", "l"]] },
     "大久保": { crossovers: [["Up_Out", "Down_Out", "x"]] },
     // 複々線の西端。ここから東は内側線・外側線に分かれる。
     "西明石": { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"],
                              ["Up_In", "Down_In", "l"]],
-                stubs: [{ side: "R", from: "Down_Out", up: false, label: "網干総合車両所明石支所" }] },
+                /* 明石支所は 明石〜西明石 のあいだ、本線の下にある
+                   (スクリーンショット(705).png)。明石は西明石の画面左どなりなので側は L。 */
+                stubs: [{ side: "L", from: "Up_Out", up: false, label: "網干総合車両所明石支所" }] },
     "明石":   { crossovers: [["Up_Out", "Up_In", "l"], ["Down_In", "Down_Out", "r"]] },
-    "須磨":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]] },
-    "鷹取":   { stubs: [{ side: "R", from: "Down_Out", up: false, label: "神戸貨物ターミナル" }] },
-    "兵庫":   { stubs: [{ side: "R", from: "Down_Out", up: false, label: "和田岬線" }] },
-    "神戸":   { crossovers: [["Up_Out", "Up_In", "l"], ["Down_In", "Down_Out", "r"]] },
+    /* ★須磨 — 図 (スクリーンショット(704).png) にある渡り線は
+       「下り電車線と上り電車線をつなぐ両渡り1組」で、場所は神戸 (画面左) 側。
+       内側線と外側線をつなぐ渡り線は無い。
+       須磨で折り返す普通電車はこの両渡りで向きを変える。
+       (以前は 上外↔上内・下内↔下外 の2組にしていた) */
+    "須磨":   { crossovers: [["Down_In", "Up_In", "x", "L"]] },
+    /* 灘 — 下り電車線と上り電車線をつなぐ渡り線が、
+       摩耶 (画面左) 側に片渡り1つ、三ノ宮 (画面右) 側に両渡り1組。 */
+    "灘":     { crossovers: [["Down_In", "Up_In", "l", "L"], ["Down_In", "Up_In", "x", "R"]] },
+    "鷹取":   { stubs: [{ side: "R", from: "Up_Out", up: false, label: "神戸貨物ターミナル" }] },
+    // 兵庫 — 和田岬線は図では上へ出る (和田岬は兵庫の南。図は南が上)
+    "兵庫":   { stubs: [{ side: "R", from: "Down_Out", up: true, label: "和田岬線" }] },
+    /* ★神戸 — 図 (スクリーンショット(704).png) の渡り線は
+       「下り内↔上り内 (右下がり)」と「上り内↔上り外 (右上がり)」の2つで、
+       どちらも元町 (画面左) 側。下り内↔下り外 の渡り線は無い。
+       神戸で折り返す普通電車は 下り内↔上り内 で向きを変える。 */
+    "神戸":   { crossovers: [["Down_In", "Up_In", "l", "L"], ["Up_In", "Up_Out", "r", "L"]] },
 
     // ---------------- 東海道本線 (JR神戸線)
     "芦屋":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]] },
-    "西宮":   { crossovers: [["Up_Out", "Up_In", "l"], ["Down_In", "Down_Out", "r"]] },
+    /* ★西宮 — 図 (スクリーンショット(698).png) では、下り外側線の上と
+       上り外側線の下にそれぞれ待避線があり、転てつ器はその待避線への
+       出入口だけ。内側線と外側線をつなぐ渡り線は無い。
+       この線路図は待避線を行として持たないので、渡り線の定義は置かない。
+       ★西宮は SWITCHABLE_STATIONS に入っているが、実物の配線では方転できない。
+         tools/check_turnouts.js の KNOWN_NO_REVERSE に理由つきで記録した。 */
+    // さくら夙川 — 島式1面2線。芦屋 (画面右) 側に電車線どうしの片渡り1つ。
+    "さくら夙川": { crossovers: [["Down_In", "Up_In", "l", "R"]] },
     // 尼崎 — JR東西線・JR宝塚線との分岐。実物の配線略図どおり、
     //        上りは宝塚線から本線・東西線へ、下りは本線・東西線から宝塚線へ分かれる。
-    "尼崎":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
-                junctions: [["Up_In", "Fukuchi_Up", "in"], ["Up_In", "Tozai_Up", "out"],
-                            ["Down_In", "Tozai_Down", "in"], ["Down_In", "Fukuchi_Down", "out"]] },
-    "塚本":   { junctions: [["Up_Out", "Up_Hoppo", "out"], ["Down_Out", "Down_Hoppo", "in"]] },
+    /* 尼崎 — 配線略図 スクリーンショット(698).png / (711).png。
+       島式4面8線。のど (駅の両端) に隣りあう着発線どうしをつなぐ転てつ器が
+       扇のように並び、下り内側線と上り内側線もつながっている
+       (これが東西線・宝塚線の列車が本線へ出入りする経路)。
+       ★JR東西線は塚本 (画面左) 側、JR宝塚線は立花 (画面右) 側に分かれる。
+         以前は上りの2本だけ側が逆で、上り宝塚線が画面左・
+         上り東西線が画面右に描かれていた。 */
+    "尼崎":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"],
+                             ["Down_In", "Up_In", "x"]],
+                junctions: [["Up_In", "Fukuchi_Up", "in", "R"], ["Up_In", "Tozai_Up", "out", "L"],
+                            ["Down_In", "Tozai_Down", "in", "L"], ["Down_In", "Fukuchi_Down", "out", "R"]] },
+    /* 塚本 — 北方貨物線 (宮原操経由) は尼崎 (画面右) 側で分かれる。
+       図では D・E の記号で 画像699 の宮原(操) につながっている。 */
+    "塚本":   { junctions: [["Up_Out", "Up_Hoppo", "out", "R"], ["Down_Out", "Down_Hoppo", "in", "R"]] },
+    /* 大阪 — 図 (スクリーンショット(697).png) では 環状線のホーム (1・2番) が
+       いちばん上で、天満方が画面左・福島方が画面右へ出る。
+       天満は京都側、福島は神戸側なので、この線路図でも
+       天満＝画面左 (新大阪方)・福島＝画面右 (塚本方) になる。
+       (以前は左右が逆で、しかも上り外側線から上へ出していた) */
     "大阪":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
-                stubs: [{ side: "L", from: "Up_Out", up: true, label: "大阪環状線 福島方" },
-                        { side: "R", from: "Up_Out", up: true, label: "大阪環状線 天満方" }] },
+                stubs: [{ side: "L", from: "Down_Out", up: true, label: "大阪環状線 天満方" },
+                        { side: "R", from: "Down_Out", up: true, label: "大阪環状線 福島方" }] },
     "新大阪": { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
-                stubs: [{ side: "L", from: "Down_Out", up: false, label: "おおさか東線 南吹田方" },
-                        { side: "R", from: "Up_Out", up: true, label: "東海道新幹線 新大阪駅" }] },
+                // おおさか東線は東淀川 (画面左) 側の上へ出る
+                stubs: [{ side: "L", from: "Down_Out", up: true,  label: "おおさか東線 南吹田方" },
+                        { side: "R", from: "Up_Out",   up: false, label: "東海道新幹線 新大阪駅" }] },
+    /* 吹田・岸辺 — 吹田貨物ターミナルと吹田総合車両所は 岸辺〜吹田 のあいだ、
+       本線の下にある (スクリーンショット(696).png)。
+       吹田から見ると画面左 (岸辺方)、岸辺から見ると画面右 (吹田方)。
+       (以前は2つとも逆側に出ていた) */
     "吹田":   { junctions: [["Up_Out", "Up_Hoppo", "in"], ["Down_Out", "Down_Hoppo", "out"]],
-                stubs: [{ side: "R", from: "Down_Out", up: false, label: "吹田貨物ターミナル" }] },
-    "岸辺":   { stubs: [{ side: "L", from: "Down_Out", up: false, label: "吹田総合車両所・吹田機関区" }] },
-    "茨木":   { crossovers: [["Up_Out", "Up_In", "l"], ["Down_In", "Down_Out", "r"]],
-                stubs: [{ side: "R", from: "Down_Out", up: false, label: "大阪貨物ターミナル方" }] },
+                stubs: [{ side: "L", from: "Up_Out", up: false, label: "吹田貨物ターミナル" }] },
+    "岸辺":   { stubs: [{ side: "R", from: "Up_Out", up: false, label: "吹田総合車両所・吹田機関区" }] },
+    // 茨木 — 内外の渡り線は2組とも千里丘 (画面右) 側。貨物線は上へ出る。
+    "茨木":   { crossovers: [["Up_Out", "Up_In", "x", "R"], ["Down_In", "Down_Out", "r", "R"]],
+                stubs: [{ side: "R", from: "Down_Out", up: true, label: "大阪貨物ターミナル方" }] },
+    // 高槻 — 電留線 (高槻派出所) は島本 (画面左) 側、本線の下
     "高槻":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
-                stubs: [{ side: "R", from: "Down_Out", up: false, label: "明石支所高槻派出所" }] },
-    "山崎":   { crossovers: [["Down_In", "Down_Out", "r"]] },
-    "長岡京": { crossovers: [["Up_Out", "Up_In", "l"], ["Down_In", "Down_Out", "r"]] },
-    "向日町操": { stubs: [{ side: "R", from: "Down_Out", up: false, label: "吹田総合車両所京都支所" }] },
+                stubs: [{ side: "L", from: "Up_Out", up: false, label: "明石支所高槻派出所" }] },
+    /* ★山崎 — 図 (スクリーンショット(694).png) にあるのは
+       下り外側線の**上**に付く待避線への転てつ器だけで、
+       内側線と外側線をつなぐ渡り線は無い。渡り線の定義をやめた。 */
+    /* ★長岡京 — 渡り線は2組とも 山崎 (画面右) 側。
+       下り外↔下り内 は右下がり、上り内↔上り外 は右上がり。
+       (以前は既定のまま画面左に置き、しかも向きが逆だった) */
+    "長岡京": { crossovers: [["Down_In", "Down_Out", "l", "R"], ["Up_In", "Up_Out", "r", "R"]] },
+    // 向日町操 — 京都支所の構内は本線の上 (スクリーンショット(694).png)
+    "向日町操": { stubs: [{ side: "R", from: "Down_Out", up: true, label: "吹田総合車両所京都支所" }] },
     "向日町": { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]] },
-    "西大路": { stubs: [{ side: "L", from: "Down_Out", up: false, label: "京都貨物・梅小路運転区" }] },
+    // 西大路 — 京都貨物 (梅小路) は京都 (画面左) 側、本線の下
+    "西大路": { stubs: [{ side: "L", from: "Up_Out", up: false, label: "京都貨物・梅小路運転区" }] },
+    /* 京都 — 渡り線は 上り外〜上り内 と 下り内〜下り外 の2組。
+       ★上り電車線と下り電車線を直接つなぐ渡り線も入れてみたが、
+         京都止まりの上り列車がホームで折り返すようになり、
+         2番・3番が折り返し列車で埋まって上り電車線が通れなくなった
+         (JR京都線 京都〜大阪 の列車間隔が 3.0駅 → 5.0駅)。
+         この線路図は京都に8線しか持っていないため (実物は0・2〜10番)、
+         折り返しは駅の南側の引上線 (4〜7番につながる) で行う形にする。
+         利用者の指摘どおり、6番・7番に着いた当駅止まりの多くは
+         京都駅の留置線へ入る (js/04-depots.js の "京都")。 */
     "京都":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
-                stubs: [{ side: "L", from: "Down_Out", up: false, label: "山陰本線 梅小路京都西方" },
-                        { side: "R", from: "Down_Out", up: false, label: "奈良線 東福寺方" },
-                        { side: "R", from: "Up_Out", up: true, label: "東海道新幹線 京都駅" }] },
+                /* 奈良線は山科 (画面左) 側の上、山陰本線は西大路 (画面右) 側の上へ出る
+                   (スクリーンショット(693).png)。以前は左右が逆だった。 */
+                stubs: [{ side: "L", from: "Down_Out", up: true,  label: "奈良線 東福寺方" },
+                        { side: "R", from: "Down_Out", up: true,  label: "山陰本線 梅小路京都西方" },
+                        { side: "R", from: "Up_Out",   up: false, label: "東海道新幹線 京都駅" }] },
     // 山科 — 湖西線との分岐
-    "山科":   { junctions: [["Up_Out", "Kosei_Up", "out"], ["Down_Out", "Kosei_Down", "in"],
-                            ["Up_In", "Kosei_Up", "out"], ["Down_In", "Kosei_Down", "in"]] },
+    /* ★山科 — 湖西線は駅の草津 (画面左) 側で分かれ、上り線は東海道本線を
+       乗り越して外側線につながる (スクリーンショット(692).png / (703).png)。
+       内側線 (電車線) と湖西線をつなぐ転てつ器は無い。
+       以前は内側線とも結び、しかも上りの分岐を画面右に描いていた。 */
+    "山科":   { junctions: [["Up_Out", "Kosei_Up", "in", "L"],
+                            ["Down_Out", "Kosei_Down", "in", "L"]] },
     /* 膳所 — 実物の Super-TID には、下り外〜下り内と上り内〜上り外に
        それぞれ片渡り線が描かれている (草津方=画面の左側)。
        大津には渡り線が無いので入れていない。 */
-    "膳所":   { crossovers: [["Down_Out", "Down_In", "l"], ["Up_In", "Up_Out", "l"]] },
-    /* 石山 — 複々線の中の駅なので、外側線と内側線をつなぐ渡り線になる。
-       (以前は上り外と下り外を直接つないでいたが、
-        あいだの内側線2本を飛び越す線路は実際には無い) */
-    "石山":   { crossovers: [["Down_Out", "Down_In", "l"], ["Up_In", "Up_Out", "l"]] },
+    "膳所":   { crossovers: [["Down_Out", "Down_In", "r"], ["Up_In", "Up_Out", "l"]] },
+    /* ★石山 — 図 (スクリーンショット(692).png) を読み直すと、石山の転てつ器は
+       「下り外側線の上に付く待避線」と「上り外側線の下に付く待避線」への
+       出入口だけで、内側線と外側線をつなぐ渡り線は無い
+       (島式2面4線のホームは 下外|下内 と 上内|上外 に付く)。
+       待避線はこの線路図の行に無いので、渡り線の定義を外した。
+       膳所は同じ図で 下り内→下り外・上り内→上り外 の片渡りが
+       草津 (画面左) 側にあることを確認できたので残している。 */
     // 草津 — 複々線の東端 かつ 草津線の分岐
-    "草津":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
-                stubs: [{ side: "R", from: "Up_Out", up: true, label: "草津線 手原方" }] },
+    /* ★草津 — 複々線の東端。スクリーンショット(692).png を拡大して読むと
+         ・京都 (画面右) 側 … 下り外↔下り内、上り内↔上り外
+         ・米原 (画面左) 側 … 上り内↔上り外、さらに **下り内↔上り内 の両渡り**
+       で、下り外↔下り内 は米原側には無い。
+       下り内↔上り内 の両渡りが草津で折り返すときの方転設備。
+       草津線は栗東と同じ画面左側、図では上から入ってくる。 */
+    "草津":   { crossovers: [["Up_Out", "Up_In", "x"],
+                             ["Down_In", "Down_Out", "x", "R"],
+                             ["Down_In", "Up_In", "x", "L"]],
+                stubs: [{ side: "L", from: "Down_Out", up: true, label: "草津線 手原方" }] },
+    // 野洲 — 電留線 (野洲派出所) は篠原 (画面左) 側、本線の上
     "野洲":   { crossovers: [["Up_Out", "Down_Out", "x"]],
-                stubs: [{ side: "R", from: "Down_Out", up: false, label: "宮原支所野洲派出所" }] },
-    "近江八幡": { crossovers: [["Up_Out", "Down_Out", "l"]],
-                stubs: [{ side: "R", from: "Up_Out", up: true, label: "近江鉄道八日市線" }] },
-    "能登川": { crossovers: [["Up_Out", "Down_Out", "r"]] },
-    "彦根":   { stubs: [{ side: "L", from: "Down_Out", up: false, label: "近江鉄道本線 彦根駅" }] },
+                stubs: [{ side: "L", from: "Down_Out", up: true, label: "宮原支所野洲派出所" }] },
+    /* 篠原 — 安全側線つきの Y 字で上下本線をつなぐ渡り線が
+       野洲 (画面右) 側に1組ある (スクリーンショット(691).png)。定義が無かった。 */
+    "篠原":   { crossovers: [["Up_Out", "Down_Out", "x", "R"]] },
+    // ★近江八幡 — 上下をつなぐ渡り線は安土 (画面左) 側に1つ。右上→左下 なので "r"
+    "近江八幡": { crossovers: [["Up_Out", "Down_Out", "r"]],
+                stubs: [{ side: "R", from: "Up_Out", up: false, label: "近江鉄道八日市線" }] },
+    /* ★安土 — 2面2線＋中線。中線は左端で下り本線・右端で上り本線につながる
+       ので、のどごとに片渡り1つ (両渡りではない)。 */
+    "安土":   { crossovers: [["Up_Out", "Down_Out", "l", "B"]] },
+    /* ★能登川 — 下り本線→中線→上り本線 とつながるのは彦根 (画面左) 側だけ。
+       中線は右端では下り本線へ戻る。向きは右下がり ("l")。 */
+    "能登川": { crossovers: [["Up_Out", "Down_Out", "l"]] },
+    /* ★河瀬・安土は2面3線 (上下本線＋中線) で、中線へ入るための
+       転てつ器が駅の両端にある (配線略図 スクリーンショット(690).png /
+       (691).png)。定義が無かったため、待避・折り返しに使う駅なのに
+       方転できる設備を持たないことになっていた
+       (tools/check_turnouts.js で検出)。 */
+    "河瀬":   { crossovers: [["Up_Out", "Down_Out", "x"]] },
+    /* ★彦根 — 2面2線＋中線。中線は両端で上下本線の両方につながるので
+       のどごとに両渡り1組。渡り線の定義がまったく無かった。 */
+    "彦根":   { crossovers: [["Up_Out", "Down_Out", "x"]],
+                stubs: [{ side: "L", from: "Down_Out", up: true, label: "近江鉄道本線 彦根駅" }] },
     // 米原 — 北陸本線・東海道本線(名古屋方)・東海道新幹線
+    /* 米原 — 醒ケ井 (名古屋方) は坂田と同じく彦根とは反対側なので、
+       この線路図では画面の**左**の外へ出る (以前は右になっていた)。
+       電留線 (米原派出所) は坂田 (画面左) 側の上 (スクリーンショット(690).png)。 */
     "米原":   { crossovers: [["Up_Out", "Down_Out", "x"]],
-                stubs: [{ side: "R", from: "Up_Out", up: true, label: "東海道本線 醒ケ井方" },
-                        { side: "R", from: "Down_Out", up: false, label: "東海道新幹線 米原駅" },
-                        { side: "L", from: "Down_Out", up: false, label: "宮原支所米原派出所" }] },
+                stubs: [{ side: "L", from: "Up_Out",   up: false, label: "東海道本線 醒ケ井方" },
+                        { side: "L", from: "Down_Out", up: true,  label: "宮原支所米原派出所" },
+                        { side: "R", from: "Down_Out", up: true,  label: "東海道新幹線 米原駅" }] },
     "長浜":   { crossovers: [["Up_Out", "Down_Out", "x"]] },
+    /* 虎姫・高月・木ノ本・新疋田 — スクリーンショット(700).png / (701).png。
+       虎姫は河毛 (画面左) 側に片渡り1つ、ほかは中線を持つので
+       のどの両側で上下本線がつながる。定義が無かった。 */
+    "虎姫":   { crossovers: [["Up_Out", "Down_Out", "l"]] },
+    "高月":   { crossovers: [["Up_Out", "Down_Out", "x"]] },
+    "木ノ本": { crossovers: [["Up_Out", "Down_Out", "x"]] },
+    "新疋田": { crossovers: [["Up_Out", "Down_Out", "x"]] },
     // 近江塩津 — 湖西線と北陸本線の合流
+    /* 近江塩津 — 湖西線 (永原方) は木ノ本と同じ画面右側に出る
+       (スクリーンショット(700).png / (702).png)。以前は上りだけ画面左だった。 */
     "近江塩津": { crossovers: [["Up_Out", "Down_Out", "x"]],
-                junctions: [["Up_Out", "Kosei_Up", "in"], ["Down_Out", "Kosei_Down", "out"]] },
+                junctions: [["Up_Out", "Kosei_Up", "in", "R"], ["Down_Out", "Kosei_Down", "out", "R"]] },
+    /* 敦賀 — ハピラインふくい (南今庄方) は新疋田とは反対側 = 画面**左**の外。
+       小浜線と金沢車両区敦賀支所は画面右 (スクリーンショット(700).png)。 */
     "敦賀":   { crossovers: [["Up_Out", "Down_Out", "x"]],
-                stubs: [{ side: "R", from: "Up_Out", up: true, label: "ハピラインふくい 南今庄方" },
-                        { side: "R", from: "Down_Out", up: false, label: "小浜線 西敦賀方" },
-                        { side: "L", from: "Down_Out", up: false, label: "金沢車両区敦賀支所" }] },
+                stubs: [{ side: "L", from: "Up_Out",   up: false, label: "ハピラインふくい 南今庄方" },
+                        { side: "R", from: "Up_Out",   up: false, label: "小浜線 西敦賀方" },
+                        { side: "R", from: "Down_Out", up: true,  label: "金沢車両区敦賀支所" }] },
 
     // ---------------- 湖西線
-    "大津京":   { crossovers: [["Kosei_Up", "Kosei_Down", "x"]] },
-    "おごと温泉": { crossovers: [["Kosei_Up", "Kosei_Down", "x"]] },
+    /* 湖西線 — スクリーンショット(702).png / (703).png。
+       両渡りは「山科寄りの端」ではなく「近江塩津寄りの端」= 画面の右に1組だけ、
+       という駅が多い。堅田だけ両側にある。
+       ★おごと温泉は相対式2面2線で、線がホームの所で広がっているだけ。
+         渡り線も待避線も無いので定義をやめた。
+         (SWITCHABLE_STATIONS / OVERTAKE_STATIONS には入っているが、
+          実物では折り返しも待避もできない。
+          tools/check_turnouts.js の KNOWN_NO_REVERSE に記録) */
+    "大津京":   { crossovers: [["Kosei_Up", "Kosei_Down", "x", "R"]] },
     "堅田":     { crossovers: [["Kosei_Up", "Kosei_Down", "x"]] },
-    "近江舞子": { crossovers: [["Kosei_Up", "Kosei_Down", "x"]] },
-    "安曇川":   { crossovers: [["Kosei_Up", "Kosei_Down", "x"]] },
+    "和邇":     { crossovers: [["Kosei_Up", "Kosei_Down", "l", "R"]] },
+    "近江舞子": { crossovers: [["Kosei_Up", "Kosei_Down", "x", "R"]] },
+    "安曇川":   { crossovers: [["Kosei_Up", "Kosei_Down", "x", "R"]] },
+    // 近江今津 — 電留線は近江中庄 (画面左) 側ではなく駅の右どなり、線路の上
     "近江今津": { crossovers: [["Kosei_Up", "Kosei_Down", "x"]],
-                  stubs: [{ side: "R", from: "Kosei_Down", up: false, label: "湖西線 近江中庄方" }] },
-    "永原":     { crossovers: [["Kosei_Up", "Kosei_Down", "x"]] },
+                  stubs: [{ side: "R", from: "Kosei_Down", up: true, label: "近江今津 電留線" }] },
+    "永原":     { crossovers: [["Kosei_Up", "Kosei_Down", "x", "R"]] },
 
     // ---------------- JR宝塚線 (福知山線)
-    "塚口":     { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "l"]] },
-    "川西池田": { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "x"]] },
-    "宝塚":     { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "x"]] },
+    /* JR宝塚線 — スクリーンショット(709).png / (710).png。
+       ★塚口は尼崎 (画面左) 側に両渡り1組、猪名寺 (画面右) 側に片渡り1つ。
+       ★宝塚は中線を持ち、のどごとに片渡りが1つずつ (向きは左右で逆)。
+       ★新三田の両渡りは三田 (画面左) 側。電留線は駅の右どなりの上。
+       ★川西池田は相対式2面2線で、線がホームの所で広がっているだけ。
+         渡り線は無いので定義をやめた
+         (tools/check_turnouts.js の KNOWN_NO_REVERSE に記録)。 */
+    "塚口":     { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "x", "L"],
+                               ["Fukuchi_Up", "Fukuchi_Down", "l", "R"]] },
+    "宝塚":     { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "r", "L"],
+                               ["Fukuchi_Up", "Fukuchi_Down", "l", "R"]] },
     "道場":     { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "l"]] },
-    "新三田":   { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "x"]],
-                  stubs: [{ side: "R", from: "Fukuchi_Down", up: false, label: "福知山線 広野・篠山口方" },
-                          { side: "R", from: "Fukuchi_Up", up: true, label: "新三田 電留線" }] },
+    "新三田":   { crossovers: [["Fukuchi_Up", "Fukuchi_Down", "x", "L"]],
+                  stubs: [{ side: "R", from: "Fukuchi_Up",   up: false, label: "福知山線 広野・篠山口方" },
+                          { side: "R", from: "Fukuchi_Down", up: true,  label: "新三田 電留線" }] },
 
     // ---------------- JR東西線・片町線(学研都市線)
+    /* JR東西線・片町線 — スクリーンショット(711).png / (712).png。
+       京橋の引上線は大阪城北詰 (画面右) 側。
+       ★鴫野のおおさか東線 (JR野江方) と、放出のおおさか東線・片町線は
+         どれも放出・徳庵の側 = 画面の**左**に出る (以前は右だった)。 */
     "京橋":   { crossovers: [["Tozai_Up", "Tozai_Down", "x"]],
-                stubs: [{ side: "L", from: "Tozai_Up", up: true, label: "大阪環状線 京橋駅" }] },
-    "鴫野":   { stubs: [{ side: "R", from: "Tozai_Down", up: false, label: "おおさか東線 JR野江方" }] },
+                stubs: [{ side: "L", from: "Tozai_Down", up: true,  label: "大阪環状線 京橋駅" },
+                        { side: "R", from: "Tozai_Up",   up: false, label: "京橋 引上線" }] },
+    "鴫野":   { stubs: [{ side: "L", from: "Tozai_Up", up: false, label: "おおさか東線 JR野江方" }] },
     "放出":   { crossovers: [["Tozai_Up", "Tozai_Down", "x"]],
-                stubs: [{ side: "R", from: "Tozai_Up", up: true, label: "おおさか東線 高井田中央方" },
-                        { side: "R", from: "Tozai_Down", up: false, label: "片町線 徳庵・四条畷方" },
-                        { side: "L", from: "Tozai_Down", up: false, label: "放出電留線" }] }
+                stubs: [{ side: "L", from: "Tozai_Down", up: true,  label: "おおさか東線 高井田中央方" },
+                        { side: "L", from: "Tozai_Up",   up: false, label: "片町線 徳庵・四条畷方" },
+                        { side: "L", from: "Tozai_Down", up: true,  label: "放出電留線" }] }
 };
 
 /**

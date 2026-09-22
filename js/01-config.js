@@ -9,8 +9,60 @@ const CONFIG = {
         "特急": {bg:"#AB83B2", text:"#fff"}, "貨物": {bg:"#A12E00", text:"#fff"}, "回送": {bg:"#000000", text:"#fff"},
         "臨時": {bg:"#000000", text:"#fff"} 
     },
-    TICK_SEC: 15
+    TICK_SEC: 15,
+
+    /* シミュレーション時間の進み方の倍率。
+       1.0 = これまでどおり (実時間1秒ごとに 1Tick = 15秒 進む)。
+       小さくすると「1Tick進めるのに待つ実時間」が長くなるだけで、
+       1Tickの中身 (TICK_SEC) は変えない。
+       ★ここを変えずに TICK_SEC を小さくすると、1閉塞の所要時間・
+         停車時分・抑止の秒数など、秒で書かれた全ての判定が狂う。
+         倍率は「描画ループが update() を呼ぶ間隔」だけに掛ける。 */
+    timeScale: 1.0
 };
+
+/* 画面から選べる時間の倍率。1.0 が既定 (これまでの速さ)。 */
+const TIME_SCALES = [
+    { v: 1.0,  label: "1.0倍 (標準)" },
+    { v: 0.9,  label: "0.9倍" },
+    { v: 0.8,  label: "0.8倍" },
+    { v: 0.7,  label: "0.7倍" },
+    { v: 0.6,  label: "0.6倍" },
+    { v: 0.5,  label: "0.5倍 (半分)" },
+    { v: 0.4,  label: "0.4倍" },
+    { v: 0.3,  label: "0.3倍" },
+    { v: 0.25, label: "0.25倍" },
+    { v: 0.2,  label: "0.2倍" },
+    { v: 0.1,  label: "0.1倍 (最も遅い)" }
+];
+
+/** 倍率を設定する。範囲外の値は無視する。 */
+function setTimeScale(v) {
+    const n = Number(v);
+    if (!isFinite(n) || n <= 0) return CONFIG.timeScale;
+    CONFIG.timeScale = Math.min(1.0, Math.max(0.05, n));
+    return CONFIG.timeScale;
+}
+
+/* 曜日の種別。快速の走行線路 (外側/内側) は平日と土休日で違うため、
+   規則を実装するには「いまが平日か土休日か」を持つ必要がある。
+     weekday … 平日
+     holiday … 土曜・日曜・祝日
+   既定は平日。 */
+const DAY_TYPES = [
+    { v: "weekday", label: "平日" },
+    { v: "holiday", label: "土曜・日曜・祝日" }
+];
+CONFIG.dayType = "weekday";
+
+/** いまが平日か */
+function isWeekday() { return CONFIG.dayType !== "holiday"; }
+
+/** 曜日の種別を設定する */
+function setDayType(v) {
+    CONFIG.dayType = (v === "holiday") ? "holiday" : "weekday";
+    return CONFIG.dayType;
+}
 
 /* 湖西線・JR宝塚線・JR東西線の3線区あわせての在線上限。
    本線の上限とは別枠にして、本線が混んでいても分岐線の列車が

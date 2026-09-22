@@ -179,10 +179,20 @@ class GameSystem {
         }
         
         if (!config.vehicles) {
-            // 第5引数は「運用名」。送り込み回送のように列車番号と運用が違う場合でも
-            // 正しい車両 (はるか=281系 など) を選べるようにする。
-            let assigned = this.spawner.assignVehicles(config.startName, config.type, config.trackId, config.dest, dutyName);
-            if (!assigned || assigned.length === 0) return false;
+            /* 第5引数は「運用名」。送り込み回送のように列車番号と運用が違う場合でも
+               正しい車両 (はるか=281系 など) を選べるようにする。
+
+               ★noBorrow: 離れた留置場から編成を借り出さない。
+                 借り出しは在庫の付け替えだけなので、編成が線路を走らずに
+                 始発駅へ現れてしまう (瞬間移動)。
+                 足りないときは、下の railInStock() が
+                 「編成を持っている車両所からの送り込み回送」を手配する。 */
+            let assigned = this.spawner.assignVehicles(config.startName, config.type,
+                config.trackId, config.dest, dutyName, { noBorrow: true });
+            if (!assigned || assigned.length === 0) {
+                if (this.ops && this.ops.railInStock(config)) return true;
+                return false;
+            }
             config.vehicles = assigned;
         }
 
@@ -200,8 +210,13 @@ class GameSystem {
         try {
             const deltaTime = timestamp - this.lastTime;
             let needDraw = false;
-            // 1秒以上経過していたらロジック更新
-            if (deltaTime >= 1000) {
+            /* 1Tick進めるのに待つ実時間。
+               既定 (CONFIG.timeScale = 1.0) では 1000ms = これまでどおり。
+               倍率を下げると待ち時間が伸びるので、シミュレーション時間だけが
+               ゆっくり進む。1Tickの中身 (CONFIG.TICK_SEC) は変えないので、
+               列車の走行・時刻表・信号・運転整理の判定は一切変わらない。 */
+            const stepMs = 1000 / (CONFIG.timeScale || 1);
+            if (deltaTime >= stepMs) {
                 this.lastTime = timestamp; // ★エラー時の時間暴走を防ぐため、update前に更新
                 /* 本体の画面だけがシミュレーションを進める。
                    従の画面は本体から届く状態を映すだけなので、
@@ -247,6 +262,9 @@ class GameSystem {
         this.trains.forEach(t => {
             if (t.state === "finished" || t.state === "in_depot") return;
             this.ops.fixUnreachableDest(t);
+            /* いまの編成で走れない運用になっていたら当駅止まりに短縮する
+               (js/27-operations.js の fixIllegalStock) */
+            if (!globalThis.__NOFIX) this.ops.fixIllegalStock(t);
         });
 
         

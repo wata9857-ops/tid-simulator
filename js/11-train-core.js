@@ -181,8 +181,13 @@ class Train {
 
         let freeLane = -1;
         
-        // ★修正: 留置場がある駅の始発は、まず留置場内に生成する (貨物は除く)
-        if (this.type !== "貨物" && DEPOTS[actualStart] && DEPOTS[actualStart].trains.length < DEPOTS[actualStart].capacity) {
+        /* ★修正: 留置場がある駅の始発は、まず留置場内に生成する (貨物は除く)。
+           ただし turnbackFirst の留置線 (京都・尼崎) は「運用の終わり」専用なので、
+           ここで始発を作ると出区待ちの列に並んで5〜10分遅れて発車することになり、
+           折り返しの要になる駅の列車が薄くなる。そこは駅の着発線に直接作る。 */
+        const depHere0 = DEPOTS[actualStart];
+        if (this.type !== "貨物" && depHere0 && !depHere0.turnbackFirst &&
+            depHere0.trains.length < depHere0.capacity) {
             let hOfDay = (this.game.currentTime / 3600) % 24;
             // 朝など生成可能な時間帯 (深夜帯はスキップ)
             if (hOfDay >= 4.0 && hOfDay < 23.0) {
@@ -207,7 +212,11 @@ class Train {
         if (startBlock) {
              let lanes = startBlock.lanes;
              if (actualStart === "向日町操") { for(let l=lanes.length-1; l>=0; l--) if(lanes[l]===null) { freeLane=l; break; } }
-             else { for(let l=0; l<lanes.length; l++) if(lanes[l]===null) { freeLane=l; break; } }
+             else {
+                 // 進路のつながっている番線から選ぶ (js/13-train-hold.js)
+                 freeLane = pickRouteLane(startBlock, actualStart, this.trackId, "depart",
+                                          this.type, (this.game.currentTime / 3600) % 24, false);
+             }
         }
 
         if (startBlock && freeLane !== -1) {
@@ -217,7 +226,9 @@ class Train {
             //        結果として宝塚線・東西線などの列車が生成されなくなっていた。
             //        すでに編成が付いている場合はそれをそのまま使う。
             if (!this.vehicles || this.vehicles.length === 0) {
-                this.vehicles = this.game.spawner.assignVehicles(actualStart, this.type, this.trackId, this.dest, this.dutyName);
+                // ★その駅にある編成だけを使う (瞬間移動をしない)
+                this.vehicles = this.game.spawner.assignVehicles(actualStart, this.type,
+                    this.trackId, this.dest, this.dutyName, { noBorrow: true });
             }
             if (!this.vehicles || this.vehicles.length === 0) {
                 this.state = "finished";
@@ -329,7 +340,16 @@ class Train {
             if (cb && cb.lanes && cb.x !== -1000 && cb.lanes.indexOf(this) < 0) {
                 let slot = (this.lane >= 0 && this.lane < cb.lanes.length &&
                             cb.lanes[this.lane] === null) ? this.lane : -1;
-                if (slot < 0) slot = cb.lanes.indexOf(null);
+                if (slot < 0) {
+                    /* 進路のつながっている番線に入れる (js/13-train-hold.js)。
+                       いちばん手前の空きに入れると、あり得ない番線に
+                       列車が現れることがあった。 */
+                    const stn = blockStationName(cb);
+                    slot = stn ? pickRouteLane(cb, stn, this.trackId, "arrive", this.type,
+                                               (this.game.currentTime / 3600) % 24, false)
+                               : cb.lanes.indexOf(null);
+                    if (slot < 0) slot = cb.lanes.indexOf(null);
+                }
                 if (slot >= 0) { this.lane = slot; cb.lanes[slot] = this; }
             }
         }
@@ -340,7 +360,14 @@ class Train {
            乗ってしまった列車は外側線へ戻す。
            戻さないと、Super-TID の線路図に線路が描かれていない場所へ
            列車が出てしまう (線路図と在線が食い違う)。 */
-        if (this.trackId.indexOf("In") >= 0 && this.trackId.indexOf("Hoppo") < 0) {
+        if (this.trackId.indexOf("In") >= 0 && this.trackId.indexOf("Hoppo") < 0 &&
+            !this.isFinalStop && this.state !== "turning_back") {
+            /* ★終着駅に着いた列車・折り返し中の列車は対象外。
+               折り返す列車は到着のときから反対方向の着発線に入れている
+               (js/12-train-move.js の turnbackArrivalTrack) ので、
+               いまの向きで見ると「先が線路の無い区間」になる。
+               ここで外側線へ移そうとすると、番線が空くまで
+               holding のままになり、折り返せなくなる。 */
             const ib = this.game.trackMgr.blocks[this.trackId];
             const icb = ib ? ib[this.currBlockIndex] : null;
             const si = icb ? icb.stationIdx : undefined;
@@ -458,6 +485,10 @@ class Train {
             this.remove(); return;
         }
 
+        /* 折り返しの印は、走り出したら消す (保険)。
+           印が残ったまま走り続けると、前方を別の線路で見てしまう。 */
+        if (this.turnbackTrack && this.turnbackTrack === this.trackId) this.turnbackTrack = null;
+
         if (this.timer <= 0) {
             switch(this.state) {
                 case "waiting_start":
@@ -547,7 +578,10 @@ class Train {
                        連なったまま動けなくなっていた。
                        ここで試し直すことで、番線が空いた時点で本線へ入れる。 */
                     {
-                        const aheadBlk = blks[this.currBlockIndex + this.dir];
+                        const fwdBlks = (this.turnbackTrack &&
+                                         this.game.trackMgr.blocks[this.turnbackTrack])
+                            ? this.game.trackMgr.blocks[this.turnbackTrack] : blks;
+                        const aheadBlk = fwdBlks[this.currBlockIndex + this.dir];
                         if (aheadBlk && aheadBlk.x === -1000) this.checkLogicUpdates();
                         if (this.state === "running") return;   // 転線できたら次のTickで走らせる
                     }
@@ -692,60 +726,44 @@ class Train {
         const blk = this.game.trackMgr.blocks[this.trackId][this.currBlockIndex];
         let timeH = (this.game.currentTime / 3600) % 24;
 
-        // ★改善事象①: 普通に種別変更(降格)された列車が外側線を走行不可とする（内側線へ転線）
-        if (this.type === "普通" && this.trackId.includes("Out")) {
-            // 西明石(11)〜草津(66)の複々線区間内であれば、内側線へ戻す
-            if (blk.stationIdx > STATION_MAP["西明石"] && blk.stationIdx < STATION_MAP["草津"]) {
-                this.attemptTrackSwitch(this.trackId.replace("Out", "In"));
-            }
-        }
+        /* ------------------------------------------------ 走行線路 (外側線/内側線)
 
-        // ※西明石駅での強制的なホーム間横移動(attemptTrackSwitch)を削除。
-        // 代わりに move() と checkHold() の発車・進入ロジックで直接転線させるように変更。
+           どちら側を走るかは js/24-service-rules.js の serviceTrackSide() が
+           1か所で決める。以前はここと move()・checkHold() に別々の条件が
+           書かれていて、
+             ・新快速が京都から先で内側線に移っていた
+               (いまの新快速は該当区間を通して外側線)
+             ・快速が朝以外・上り方向でも外側線を走っていた
+               (いまの快速は平日朝の 高槻→大阪 だけ外側線)
+           という食い違いが出ていた。
+           規則の詳細と根拠は js/24-service-rules.js の
+           「走行線路の規則」を参照。 */
+        if (!/Kosei|Fukuchi|Tozai|Hoppo/.test(this.trackId) &&
+            innerTrackExists(blk.stationIdx)) {
+            const want = serviceTrackIdAt(this, blk.stationIdx, timeH);
+            /* ★移った先の線路が進行方向に続いているか確かめる。
 
-        // ★改善①: 快速列車の朝ラッシュ時走行線路（内側/外側）特例
-        if (this.type === "快速") {
-            let stIdx = blk.stationIdx;
-            if (this.dir === -1) {
-                // 下り (京都 → 西明石方面)
-                let outStartIdx = -1, inStartIdx = -1;
-                if (timeH >= 6.2 && timeH < 6.8) { outStartIdx = STATION_MAP["大阪"]; inStartIdx = STATION_MAP["芦屋"]; }
-                else if (timeH >= 6.8 && timeH < 7.8) { outStartIdx = STATION_MAP["高槻"]; inStartIdx = STATION_MAP["芦屋"]; }
-                else if (timeH >= 7.8 && timeH < 8.3) { outStartIdx = STATION_MAP["高槻"]; inStartIdx = STATION_MAP["兵庫"]; }
-                else if (timeH >= 8.3 && timeH < 9.2) { outStartIdx = STATION_MAP["高槻"]; inStartIdx = STATION_MAP["芦屋"]; }
-
-                if (stIdx === outStartIdx && this.trackId === "Down_In") this.attemptTrackSwitch("Down_Out");
-                if (stIdx === inStartIdx && this.trackId === "Down_Out") this.attemptTrackSwitch("Down_In");
-
-            } else if (this.dir === 1) {
-                // 上り (西明石 → 京都方面)
-                let outStartIdx = -1, inStartIdx = -1;
-                // 西明石駅発車時刻をシミュレーターの全体時刻から大まかに逆算して判定
-                if (timeH >= 5.8 && timeH < 7.2) { outStartIdx = STATION_MAP["芦屋"]; inStartIdx = STATION_MAP["高槻"]; }
-                else if (timeH >= 7.2 && timeH < 7.4) { outStartIdx = STATION_MAP["兵庫"]; inStartIdx = STATION_MAP["高槻"]; }
-                else if (timeH >= 7.4 && timeH < 8.6) { outStartIdx = STATION_MAP["西明石"]; inStartIdx = STATION_MAP["高槻"]; }
-
-                if (stIdx === outStartIdx && this.trackId === "Up_In") this.attemptTrackSwitch("Up_Out");
-                if (stIdx === inStartIdx && this.trackId === "Up_Out") this.attemptTrackSwitch("Up_In");
-            }
-        }
-
-        // 草津駅での複線・複々線の合流・分岐
-        // ※西明石同様、強制的なホーム間横移動(attemptTrackSwitch)を削除し、デッドロックを防止。
-        // 発車時にmove()およびcheckHold()の直接転線(次ブロックへの斜め移動)に任せる。
-
-        // ★改善②: 新快速列車の朝ラッシュ特例（7時台・8時台は京都～草津間を外側線走行）
-        if (this.type === "新快速") {
-            let isMorningRush = (timeH >= 7.0 && timeH < 9.0);
-
-            if (this.dir === -1) { // 下り (米原→大阪方面)
-                if (this.trackId === "Down_In" && blk.stationIdx === STATION_MAP["京都"]) {
-                    this.attemptTrackSwitch("Down_Out");
-                }
-            } else if (this.dir === 1) { // 上り (大阪→米原方面)
-                if (this.trackId === "Up_Out" && blk.stationIdx === STATION_MAP["京都"]) {
-                    // 朝ラッシュ時以外は通常通り内側線へ転線
-                    if (!isMorningRush) this.attemptTrackSwitch("Up_In");
+               内側線 (電車線) は複々線の西明石〜草津にしか無い。
+               その端の駅で「普通・快速は内側線」という規則をそのまま当てると、
+               複線区間へ出るために外側線へ移った列車を、同じ駅で内側線へ
+               戻してしまう。すると内側線の先はプレースホルダなので進めず、
+               外側線へ戻され…を繰り返して、複線区間へ出られなくなる。
+               実測では、この往復のために 西明石 以西へ抜ける下り普通が減り、
+               折り返してくる上り普通が 西明石〜大阪 で 10.4本 → 4.0本 まで
+               落ちていた (tools/check_service.js の間隔が 2.5駅 → 4.6駅)。 */
+            const continues = (tid) => {
+                const tb = this.game.trackMgr.blocks[tid];
+                const nb = tb ? tb[this.currBlockIndex + this.dir] : null;
+                return !!(nb && nb.x !== -1000);
+            };
+            if (want !== this.trackId && continues(want)) {
+                /* 転線できるのは駅 (着発線) だけ。駅間で線路を移ることはできない。
+                   ★新快速・特急のように必ず外側線を走る種別は、
+                     内側線に居る状態を放置すると線路図と食い違うので、
+                     次の駅まで待たずにその場で試す (元の動きと同じ)。 */
+                const mustMove = (serviceTrackSide(this, blk.stationIdx, timeH) === "out");
+                if (blk.isStation || blk.hoppoStationName || mustMove) {
+                    this.attemptTrackSwitch(want, 20, true);
                 }
             }
         }
@@ -801,28 +819,139 @@ class Train {
         if (this.type === "回送" && this.trackId.includes("In")) this.rerouteToOuter = true;
         if (this.rerouteToOuter && this.trackId.includes("In")) {
             const stName = blockStationName(blk);
-            if (OVERTAKE_STATIONS.includes(stName)) this.attemptTrackSwitch(this.trackId.replace("In", "Out"));
+            /* ★転線できる駅を待避駅だけに限っていたため、京都は
+               OVERTAKE_STATIONS に入っておらず、京都 → 向日町操 の回送が
+               内側線 (電車線) を走っていた。渡り線のある主要駅
+               (SWITCHABLE_STATIONS) でも移れるようにする。 */
+            if (OVERTAKE_STATIONS.includes(stName) || SWITCHABLE_STATIONS.includes(stName)) {
+                this.attemptTrackSwitch(this.trackId.replace("In", "Out"), 20, true);
+            }
         }
     }
 
-    attemptTrackSwitch(targetId, dist = 20) {
-        if (!targetId || targetId === this.trackId) return;
+    /* ------------------------------------------------------------ 折り返しと番線
+
+       ■ 何が起きていたか
+         列車が駅に着いて折り返すと、そのたびに番線が変わっていた。
+         到着は下り線の着発線、発車は上り線の着発線という作りなので、
+         折り返しのときに必ず「反対側の線路」へ移していたためである。
+
+       ■ 実際の運用
+         折り返し列車は、到着のときから「折り返しに使う番線」に入る。
+         高槻や京都のように渡り線のある駅では、下り列車でも上り側の
+         着発線へ入れて、そこで種別・行先・列車番号を変えて発車する。
+         つまり
+             到着番線 → 折り返し → 同じ番線から発車
+         になる。線路の配線上どうしても転線が必要なときだけ、
+         構内を移動する (それは実際の入換動作にあたる)。
+
+       ■ どう直したか
+         「行先がこの駅で、着いたら折り返す」列車は、
+         到着時の進入先を反対方向の線路にする (turnbackArrivalTrack)。
+         折り返しの処理 (js/14-train-turnback.js) は、すでにその線路に
+         居ることを見て、番線を変えずに向きだけ変える。
+    */
+
+    /** その駅で折り返す予定か (到着時の進入先を決めるのに使う) */
+    willTurnBackHere(stName) {
+        if (["貨物", "回送", "臨時", "特急"].indexOf(this.type) >= 0) return false;
+        if (this.serviceChange) return false;          // 当駅で別の列車に変わる
+        if (this.nextAction && this.nextAction !== "turnback") return false;
+        if (!stName) return false;
+        /* ★留置場があって空きがある駅では、着いた列車はいったん入区する
+           (js/14-train-turnback.js)。折り返し用の着発線へ入れる意味が無く、
+           反対方向のホームを長くふさぐだけなので対象外にする。 */
+        const dep = DEPOTS[stName];
+        if (dep && dep.trains.length < dep.capacity) return false;
+        /* ★大阪・新大阪・尼崎・三ノ宮は、通り抜ける列車がとても多い。
+           実物ではこれらの折り返しに専用の引上線 (大阪の11番線・
+           新大阪の引上線など) を使うので、ホームを長くふさがない。
+           この線路図は引上線を持っていないため、ここで同一ホーム
+           折り返しをやるとホームが足りなくなり、実測で
+           大阪〜西明石の列車間隔が 3.5駅 → 7.9駅 まで開いた。
+           これらの駅では、これまでどおり折り返しのときに構内を移動する。 */
+        if (["大阪", "新大阪", "尼崎", "三ノ宮"].indexOf(stName) >= 0) return false;
+        /* 折り返せるのは渡り線・引上線のある駅だけ。
+           配線略図をもとにした一覧 (js/03-stations.js) を使う。 */
+        return SWITCHABLE_STATIONS.indexOf(stName) >= 0 ||
+               OVERTAKE_STATIONS.indexOf(stName) >= 0;
+    }
+
+    /** 折り返したあとに走る線路ID (反対方向の同じ側) */
+    oppositeTrackId(stName) {
+        const nd = -this.dir;
+        let tid;
+        if (this.trackId.indexOf("Kosei") === 0)        tid = (nd === 1) ? "Kosei_Up" : "Kosei_Down";
+        else if (this.trackId.indexOf("Fukuchi") === 0) tid = (nd === 1) ? "Fukuchi_Up" : "Fukuchi_Down";
+        else if (this.trackId.indexOf("Tozai") === 0)   tid = (nd === 1) ? "Tozai_Up" : "Tozai_Down";
+        else if (this.trackId.indexOf("Hoppo") >= 0)    tid = (nd === 1) ? "Up_Out" : "Down_Out";
+        else tid = (nd === 1 ? "Up_" : "Down_") + (this.trackId.indexOf("In") >= 0 ? "In" : "Out");
+        const idx = STATION_MAP[stName];
+        if (tid.indexOf("In") >= 0 && !innerTrackExists(idx)) tid = tid.replace("In", "Out");
+        return tid;
+    }
+
+    /**
+     * 折り返したあと、発車のときに入る線路。
+     *
+     * ★折り返しは「その場で向きを変える」形にしている。
+     *   到着した番線にそのまま留まり、種別・行先・列車番号だけが変わる。
+     *   反対方向の線路へ移るのは発車のときで、駅の渡り線を通る。
+     *   (js/14-train-turnback.js の executeTurnBack / move())
+     *   こうすると、到着番線と発車番線が同じになる。
+     *
+     * この値が入っている列車は、次にブロックを進むときに
+     * この線路へ移る (js/12-train-move.js)。
+     */
+    turnbackDepartTrack() {
+        return this.turnbackTrack || null;
+    }
+
+    /**
+     * その駅でいるべき線路ID。
+     * 規則は js/24-service-rules.js の serviceTrackSide() が1か所で決める。
+     * 内側線が無い駅では外側線を返す。
+     */
+    wantTrackAt(stIdx) {
+        const h = (this.game.currentTime / 3600) % 24;
+        return serviceTrackIdAt(this, stIdx, h);
+    }
+
+    /**
+     * 線路を移る (転線)。
+     *   soft = true のときは、移れなくてもその場で待たせない。
+     *     ★走行線路の規則 (外側線/内側線) による転線は「できれば移る」もので、
+     *       移れないからといって駅で止めてはいけない。止めると、内側線が
+     *       埋まっているあいだ快速・普通が発車できず線区が詰まる。
+     *     分岐・合流 (山科の湖西線など) のように「移らないと先へ進めない」
+     *       転線は soft を付けずに呼び、進路が開くまで待つ。
+     */
+    attemptTrackSwitch(targetId, dist = 20, soft = false) {
+        if (!targetId || targetId === this.trackId) return false;
         const blks = this.game.trackMgr.blocks[this.trackId];
         const targetBlks = this.game.trackMgr.blocks[targetId];
-        if (!targetBlks) return;
+        if (!targetBlks) return false;
         const curB = blks[this.currBlockIndex];
         const targetB = targetBlks.find(b => Math.abs(b.x - curB.x) < dist);
-        if (targetB) {
-            // ★修正: 0番レーン固定をやめ、全レーンから空きを探す
-            let freeLane = this.findFreeLane(targetB);
-            if (freeLane !== -1) {
-                curB.lanes[this.lane] = null;
-                this.trackId = targetId; this.currBlockIndex = targetB.index; this.lane = freeLane;
-                targetB.lanes[freeLane] = this; this.rerouteToOuter = false;
-            } else {
-                this.state = "holding";
-                this.timer = 5;
-            }
+        if (!targetB || targetB.x === -1000) return false;
+        // ★修正: 0番レーン固定をやめ、全レーンから空きを探す
+        /* 移った先の線路から出られる番線を選ぶ。
+           ★ここで移る先を渡していなかったため、尼崎のように線路ごとに
+             使える番線が決まっている駅で、移った先の線路につながって
+             いない番線に入っていた (tools/check_routes.js で検出)。 */
+        let freeLane = this.findFreeLane(targetB, targetId);
+        if (freeLane !== -1) {
+            const at = curB.lanes.indexOf(this);
+            if (at >= 0) curB.lanes[at] = null;
+            else curB.lanes[this.lane] = null;
+            this.trackId = targetId; this.currBlockIndex = targetB.index; this.lane = freeLane;
+            targetB.lanes[freeLane] = this; this.rerouteToOuter = false;
+            return true;
         }
+        if (!soft) {
+            this.state = "holding";
+            this.timer = 5;
+        }
+        return false;
     }
 }

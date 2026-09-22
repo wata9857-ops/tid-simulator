@@ -31,7 +31,11 @@ Train.prototype.executeTurnBack = function () {
                 (this.type === "特急" ? this.trainNo : this.dutyName);
             this.game.spawner.activeTrainNos.add(this.trainNo); // ★追加
             const toDepot = (this.dest === "向日町操");
-            this.startName = stName;   // ここから始まる列車になる
+            /* ★駅名が空のときは上書きしない。
+               空の始発駅が入ると、車両の適合判定 (js/24-service-rules.js) が
+               線区を決められず、明石の207系が「本線の普通」として
+               弾かれることがあった。 */
+            this.startName = stName || this.startName;   // ここから始まる列車になる
             this.serviceChange = null;
 
             // ★運用が変わったので、いまの編成でその運用に入れるか確かめる。
@@ -102,6 +106,53 @@ Train.prototype.executeTurnBack = function () {
         
         let hOfDay = (this.game.currentTime / 3600) % 24;
 
+        /* ------------------------------------------------ 大阪での方転
+
+           ★大阪・新大阪のホームでは向きを変えられない (引上線が必要)。
+             とくに丹波路快速のように JR宝塚線へ向かう列車は、
+             大阪のホームから宝塚線へ出る進路が無い。
+             実際の運用と同じく、宮原まで回送して方向を変え、
+             戻ってから次の運用に入る。
+               大阪着 → 宮原方へ回送 → 宮原で方転 → 大阪方へ戻る → 発車
+             編成は線路の上を走るので、行路もつながったままになる。 */
+        if (this.nextAction !== "depot" && !this.serviceChange &&
+            ["大阪", "新大阪"].indexOf(stName) >= 0 &&
+            ["普通", "快速", "新快速"].indexOf(this.type) >= 0) {
+            const oldNo = this.trainNo;
+            this.game.spawner.activeTrainNos.delete(this.trainNo);
+            this.type = "回送";
+            this.trainNo = this.game.ops.deadheadNo();
+            this.dutyName = this.trainNo;
+            this.game.spawner.activeTrainNos.add(this.trainNo);
+            this.dest = "宮原操";
+            this.startName = stName || this.startName;
+            this.nextAction = "depot";
+            this.isFinalStop = false;
+            this.hasStoppedAtCurrent = false;
+            /* 宮原操は新大阪の位置で本線につながる。大阪からは上り方向。
+               向きを変える必要があるときは、その場で反対方向の線路へ移す。 */
+            const wantDir = (fleetIndexOf("宮原操") > fleetIndexOf(stName)) ? 1 : -1;
+            if (this.dir !== wantDir && !this.game.ops.moveToOppositeTrack(this, stName, wantDir)) {
+                // 反対方向の番線が空くまで待つ (進路が開いてから動かす)
+                this.timer = 30;
+                this.type = "回送";
+                return;
+            }
+            // 回送は列車線 (外側線) を走らせる
+            this.rerouteToOuter = true;
+            if (!/Kosei|Fukuchi|Tozai|Hoppo/.test(this.trackId) && this.trackId.indexOf("In") >= 0) {
+                this.attemptTrackSwitch(this.trackId.replace("In", "Out"), 20, true);
+            }
+            this.state = "waiting_start";
+            this.timer = 15;
+            this.stuckTime = 0;
+            this.hasDeparted = false;
+            this.game.ui.updateBanner(
+                `【運転整理】${stName}駅は引上線を使わないと方向を変えられないため、` +
+                `${oldNo} は ${this.trainNo}(回送) として宮原へ引き上げます。`, "banner-orange");
+            return;
+        }
+
         // ★追加: 米原駅 上り快速の近江塩津・敦賀への延長運転（4時～9時台、16時～20時台）
         if (stName === "米原" && this.dir === 1 && this.dest === "米原" && this.type === "快速") {
             if ((hOfDay >= 4.0 && hOfDay < 10.0) || (hOfDay >= 16.0 && hOfDay < 21.0)) {
@@ -111,6 +162,9 @@ Train.prototype.executeTurnBack = function () {
                     this.type = "普通";
                     this.dest = (Math.random() < 0.5) ? "近江塩津" : "敦賀";
                     this.trainNo = this.game.spawner.generateTrainNumber("普通", 1, "米原", this.trackId);
+                    // ★ここから始まる列車になるので始発駅も更新する
+                    this.startName = stName || this.startName;
+                    this.dutyName = this.trainNo;
                     this.nextAction = "turnback"; 
                     this.state = "running";
                     this.hasDeparted = true;
@@ -136,6 +190,9 @@ Train.prototype.executeTurnBack = function () {
                 this.type = this.game.fleet.canServe(this.vehicles, "米原", "快速", this.trackId, this.dest)
                     ? "快速" : "普通";
                 this.trainNo = this.game.spawner.generateTrainNumber(this.type, -1, "米原", this.trackId);
+                // ★ここから始まる列車になるので始発駅も更新する
+                this.startName = stName || this.startName;
+                this.dutyName = this.trainNo;
                 this.nextAction = "turnback"; 
                 this.state = "running";
                 this.hasDeparted = true;
@@ -178,8 +235,13 @@ Train.prototype.executeTurnBack = function () {
 
         // ★修正: 留置場がある駅での折り返しは、一旦留置場へ入庫させる
         //   (貨物は除く。特急も専用編成なので、通勤形用の電留線には入れない)
-            if (this.type !== "貨物" && this.type !== "特急" &&
-                DEPOTS[stName] && DEPOTS[stName].trains.length < DEPOTS[stName].capacity) {
+            /* ★turnbackFirst の駅 (京都・尼崎) は、運用を終えると決まった
+               列車だけを入区させる。ふだんはその場で折り返す。 */
+            const depHere = DEPOTS[stName];
+            const stableHere = !!depHere && depHere.trains.length < depHere.capacity &&
+                               (!depHere.turnbackFirst || this.retiredByBudget ||
+                                hOfDay >= 22.0 || hOfDay < 5.0);
+            if (this.type !== "貨物" && this.type !== "特急" && stableHere) {
                 let depot = DEPOTS[stName];
                 const newDir = this.dir * -1;
                 let nextDest = this.game.spawner.getDestination(this.type, newDir, stName, this.trackId);
@@ -208,7 +270,7 @@ Train.prototype.executeTurnBack = function () {
                 // 本線から消去して留置場へ
                 blk.lanes[this.lane] = null;
                 this.state = "in_depot";
-            this.startName = stName;
+            this.startName = stName || this.startName;
 
             // ★修正: 既に出区待ちの列車がいれば、その次の始発列車として充当（待機時間を調整）
             let maxTimer = 0;
@@ -297,6 +359,9 @@ Train.prototype.executeTurnBack = function () {
                     this.type = this.game.fleet.canServe(this.vehicles, "京都", "快速", this.trackId, this.dest)
                         ? "快速" : "普通";
                     this.trainNo = this.game.spawner.generateTrainNumber(this.type, 1, "京都", this.trackId);
+                    // ★ここから始まる列車になるので始発駅も更新する
+                    this.startName = stName || this.startName;
+                    this.dutyName = this.trainNo;
                     this.nextAction = "turnback"; 
                     this.state = "running";
                     this.hasDeparted = true;
@@ -397,9 +462,97 @@ Train.prototype.executeTurnBack = function () {
 
         const targetBlks = this.game.trackMgr.blocks[newTrackId];
         const newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5);
+
+        /* ★同一ホーム折り返し。
+
+           ■ 何が問題だったか
+             折り返しのたびに番線が変わっていた。到着は下り線の着発線、
+             発車は上り線の着発線という作りで、折り返しの瞬間に
+             必ず反対側の線路へ移していたためである。
+             実測では、折り返し332回のうち254回 (76%) で番線が変わり、
+             「西明石 2番 → 4番」「姫路 2番 → 3番」のように、
+             指令画面でも番線が飛んで見えていた。
+
+           ■ 実際の運用
+             折り返し列車は到着した番線にそのまま留まり、
+             種別・行先・列車番号だけが変わる。反対方向の線路へ移るのは
+             発車のときで、駅の渡り線 (両渡り) を通る。
+
+           ■ どう直したか
+             渡り線のある駅 (SWITCHABLE_STATIONS / OVERTAKE_STATIONS) では、
+             ここで線路を移さずに向きだけ変え、「発車のときに入る線路」を
+             turnbackTrack に覚えておく。実際の転線は最初の1ブロックを
+             進むときに行う (js/12-train-move.js)。
+             渡り線の無い駅では、これまでどおり構内を移動して折り返す
+             (それが実際の入換動作にあたる)。 */
+        const canTurnInPlace = !globalThis.__TB_OFF &&
+                               (SWITCHABLE_STATIONS.indexOf(stName) >= 0 ||
+                                OVERTAKE_STATIONS.indexOf(stName) >= 0) &&
+                               newTrackId !== this.trackId &&
+                               !!this.game.trackMgr.blocks[newTrackId] &&
+                               /* ★その駅・その番線で、ホームのまま折り返せるか。
+                                  大阪・新大阪は引上線へ引き上げてからでないと
+                                  方向を変えられない。尼崎の引上線は4番・5番だけに
+                                  つながっている (js/03-stations.js を参照)。 */
+                               canTurnBackOnPlatform(stName, this.trackId, this.lane, newTrackId) &&
+                               /* ★その番線から、折り返した先の線路へ出られること。
+                                  出られない番線で向きだけ変えると、進路の無い所から
+                                  発車することになる。尼崎の4番のように、引上線には
+                                  入れるが上り内側線へは出られない番線がある。
+                                  その場合は構内を移動して折り返す (実際の入換)。 */
+                               canDepartTo(stName, this.trackId, this.lane, newTrackId);
+        const sameSpot = !!(newB && newTrackId === this.trackId &&
+                            newB.index === this.currBlockIndex);
+
+        if (canTurnInPlace) {
+            // 到着した番線のまま、向きと運用だけを変える
+            this.dir = newDir;
+            this.turnbackTrack = newTrackId;      // 発車のときに入る線路
+            if (!["回送", "貨物", "臨時", "特急"].includes(this.type)) {
+                this.dest = this.game.spawner.getDestination(this.type, this.dir, stName, newTrackId);
+                if (this.dest === this.startName) {
+                    this.dest = this.game.spawner.fallbackTerminal(this.dir, stName, newTrackId);
+                }
+                // 近江塩津・敦賀からの下り普通は米原行きとする (琵琶湖線経由)
+                if (this.dir === -1 && this.type === "普通" &&
+                    ["敦賀", "近江塩津"].includes(stName) && newTrackId.indexOf("Kosei") < 0) {
+                    this.dest = "米原";
+                }
+                this.game.spawner.activeTrainNos.delete(this.trainNo);
+                this.trainNo = this.game.spawner.generateTrainNumber(this.type, this.dir, stName, newTrackId);
+                this.dutyName = this.trainNo;
+                this.updateKoseiRoute();
+                this.startName = stName || this.startName;
+            }
+            if (stName === "向日町操" && this.dest === "向日町操") this.dest = (this.dir === 1) ? "京都" : "大阪";
+
+            const newVehicles = this.game.fleet.reassign(stName, this.type, newTrackId,
+                this.dest, this.dutyName || this.trainNo, this.vehicles);
+            if (!newVehicles || newVehicles.length === 0) {
+                this.game.ui.updateBanner(`【運休】${stName}駅 車両枯渇のため、折り返し予定の ${this.trainNo} は運休(消滅)となります。`, "banner-orange");
+                this.remove();
+                return;
+            }
+            this.vehicles = newVehicles;
+
+            this.state = "waiting_start"; this.timer = 15; this.stuckTime = 0;
+            this.hasStoppedAtCurrent = false;
+            this.hasDeparted = false;
+            this.carryOverDelay(180);
+            this.isFinalStop = false;
+
+            if (this.nextAction === "stop_opposite_home") {
+                this.isManuallySuspended = true;
+                this.manualSuspendTimer = 0;
+                this.hasNotifiedSuspendLong = false;
+                this.nextAction = "turnback";
+                this.game.ui.updateBanner(`【指令】${this.trainNo} は ${stName}駅にて折り返し、同じ番線で抑止手配されました。`, "banner-orange");
+            }
+            return;
+        }
         if (newB) {
             let freeLanes = newB.lanes.filter(l => l === null).length;
-            if (freeLanes <= 1) { 
+            if (!sameSpot && freeLanes <= 1) { 
                 let approachingHigher = false;
                 let checkDistBehind = UNITS_PER_STATION * 2 + 2; 
                 for (let k = 1; k <= checkDistBehind; k++) {
@@ -419,15 +572,25 @@ Train.prototype.executeTurnBack = function () {
             }
 
             let tl = -1;
-            if (this.startName === "向日町操" || blk.hoppoStationName === "向日町操" || stName === "向日町操") {
+            if (sameSpot) {
+                // いまの番線のまま折り返す (同一ホーム折り返し)
+                tl = this.lane;
+            } else if (this.startName === "向日町操" || blk.hoppoStationName === "向日町操" || stName === "向日町操") {
                 for(let l=newB.lanes.length-1; l>=0; l--) { if(newB.lanes[l]===null) { tl=l; break; } }
             } else {
-                for(let l=newB.lanes.length-1; l>0; l--) { if(newB.lanes[l]===null) { tl=l; break; } }
-                if (tl === -1 && newB.lanes[0] === null) { tl = 0; }
+                /* ★折り返し先の番線も、進路のつながっている所から選ぶ。
+                   以前は「外側のレーンから順に」と決め打ちしていたため、
+                   尼崎のように線路ごとに使える番線が決まっている駅で
+                   あり得ない番線に入っていた。 */
+                tl = pickRouteLane(newB, stName, newTrackId, "depart",
+                                   this.type, hOfDay, true);
             }
             
             if (tl !== -1) {
-                blk.lanes[this.lane] = null;
+                if (!sameSpot) {
+                    const at = blk.lanes.indexOf(this);
+                    if (at >= 0) blk.lanes[at] = null; else blk.lanes[this.lane] = null;
+                }
                 this.trackId = newTrackId; this.dir = newDir; this.currBlockIndex = newB.index; this.lane = tl;
                 newB.lanes[tl] = this;
                 if (!["回送","貨物","臨時","特急"].includes(this.type)) {
@@ -450,7 +613,7 @@ Train.prototype.executeTurnBack = function () {
                     //   以前は最初に出区した駅のままだったため、
                     //   「草津発の列車が宝塚線を走っている」ように見え、
                     //   車両の適合判定も間違った線区で行われていた。
-                    this.startName = stName;
+                    this.startName = stName || this.startName;
                 }
                 if (stName === "向日町操" && this.dest === "向日町操") this.dest = (this.dir===1) ? "京都" : "大阪";
                 
@@ -706,6 +869,28 @@ Train.prototype.calcTravelTime = function () {
             }
         }
 
+        /* ★同じ種別が近くに続いているときの減速。
+
+           団子 (3本が2駅以内に並ぶ) を防ぐには、後続を止めるよりも
+           少しずつ遅らせて間隔を開けるほうが線区が詰まらない。
+           実際の運転でも、続行がつまったときは信号の現示が落ちて
+           自然に速度が下がり、間隔が回復する。
+           直前の同種別との距離が「その種別の設計間隔」より近いほど
+           時間を延ばす (最大1.8倍)。 */
+        let convoySlowdown = 1.0;
+        {
+            const design = { "新快速": 3.5, "快速": 3.0, "普通": 2.0 }[this.type];
+            if (design) {
+                const near = nearestSameTypeAhead(this.game, this.trackId, this.currBlockIndex,
+                                                  this.dir, this.type, design, this);
+                if (near) {
+                    const want = UNITS_PER_STATION * design;
+                    const ratio = Math.max(0, 1 - near.dist / want);
+                    convoySlowdown = 1.0 + ratio * 0.8;
+                }
+            }
+        }
+
         // ★信号現示による減速 (js/25-signals.js)。
         //   注意・減速現示なら所要時間が延びる。
         //   もとの協調追従ロジックが出す減速率と比べて遅い方を採用するので、
@@ -720,7 +905,8 @@ Train.prototype.calcTravelTime = function () {
         const restrictFactor = this.game.trackMgr.speedFactor(this.trackId, this.currBlockIndex);
 
         // 各減速係数のうち、いちばん大きい方（より遅くなる方）を適用する
-        suspendSlowdown = Math.max(suspendSlowdown, troubleSlowdown, signalSlowdown, restrictFactor);
+        suspendSlowdown = Math.max(suspendSlowdown, troubleSlowdown, signalSlowdown,
+                                   restrictFactor, convoySlowdown);
         // 【追加終了】
 
         const maxScan = UNITS_PER_STATION * 10;

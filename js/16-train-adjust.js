@@ -1,5 +1,168 @@
 /* このファイルは index.html から分割されたものです。
    Train: 運転整理(種別変更・間隔調整・深夜の行先変更) */
+/* ------------------------------------------------------------------ 団子を作らない
+
+   ■ 何が起きていたか
+     西明石のまわりで、新快速が「2駅おきに3本」続くことがあった。
+     実際のダイヤでは新快速は毎時8本 (約7分半おき)、1駅あたり約1.7分なので
+     4駅ちかく離れている。3本が2駅以内に並ぶことは無い。
+
+   ■ 原因は3つあった
+     1. 生成側 (js/08-spawner-mainline.js の trySpawn) が、始発駅の
+        続行間隔をまったく見ていない場合があった。
+        始発駅の候補には「網干」「播州赤穂」「上郡」のように
+        線路図の外にある駅が入っている。これらは STATION_MAP に無いので
+        着発線の空き・前方の閉塞の判定が丸ごと飛ばされ、
+        無条件に生成されていた。実際にはどれも姫路の電留線から出るので、
+        姫路で続けて何本も湧いていた。
+     2. 走行中の続行間隔の下限が短すぎた。
+        checkHold() は混雑を検知すると要求間隔を MIN_SPACING
+        (新快速は2ブロック = 約0.7駅) まで詰める。詰まりを解くための
+        仕組みだが、これが効くと新快速どうしが1駅未満で続いてしまう。
+     3. 「3本目」を止める仕組みが無かった。
+        2本の間隔を詰めるだけなら1本ずつの遅れだが、
+        後ろが次々に詰まると団子になる。
+
+   ■ どう直したか
+     ・生成側で、物理的な始発駅 (網干→姫路 のように読み替えた駅) から
+       前方を見て、同じ種別が近くにいれば生成を見送る。
+     ・走行中は「自分が団子の3本目になる」ときだけ、駅で抑止して
+       間隔が開くのを待つ。実際の指令も、続行がつながったときは
+       手前の駅で間隔を開ける (運転整理)。
+     ・待ちすぎるとかえって詰まるので、上限の秒数で必ず解ける。
+*/
+const CONVOY_RULES = {
+    /* scan     … 前方を見る駅数
+       near     … 直前の同種別がこの駅数より近ければ「続行がつながっている」
+       maxAhead … この本数より多く前方にいたら、自分は発車しない
+       maxWait  … 待つ上限 [秒] (これを超えたら詰まり防止のため発車する)
+
+       ★待つ上限は短くとる。長く待たせると、待っている列車の後ろに
+         同じ種別がまた溜まり、駅にとまったままの列車の列ができる。
+         (480秒で試したところ、1分以上動けない列車が 11.9% → 17.8% に
+          増え、かえって団子が増えた) */
+    "新快速": { scan: 3.0, near: 1.5, maxAhead: 1, maxWait: 180 },
+    "快速":   { scan: 2.5, near: 1.2, maxAhead: 1, maxWait: 150 },
+    "普通":   { scan: 1.5, near: 0.8, maxAhead: 2, maxWait: 120 }
+};
+
+/* 生成するときに空けておく駅数 (同じ種別・同じ向き)。
+   実際の時刻表の続行間隔 (新快速 約7.5分 = 約4駅) より少し内側にとる。 */
+const CONVOY_SPAWN_GAP = { "新快速": 3.0, "快速": 2.5, "普通": 1.5 };
+
+/**
+ * ある位置から前方にいる、いちばん近い同じ種別・同じ向きの列車。
+ * 戻り値 { dist: ブロック数, train } / いなければ null。
+ */
+function nearestSameTypeAhead(game, trackId, index, dir, type, stations, exclude) {
+    const tracks = [trackId];
+    if (/^(Up|Down)_(In|Out)$/.test(trackId)) {
+        tracks.push(trackId.indexOf("In") >= 0 ? trackId.replace("In", "Out")
+                                               : trackId.replace("Out", "In"));
+    }
+    const span = Math.ceil(UNITS_PER_STATION * stations);
+    let best = null;
+    for (const tid of tracks) {
+        const blks = game.trackMgr.blocks[tid];
+        if (!blks) continue;
+        for (let k = 1; k <= span; k++) {
+            const i = index + dir * k;
+            if (i < 0 || i >= blks.length) break;
+            const b = blks[i];
+            if (!b || b.x === -1000) continue;
+            for (const l of b.lanes) {
+                if (l && l !== exclude && l.dir === dir && l.type === type) {
+                    if (!best || k < best.dist) best = { dist: k, train: l };
+                }
+            }
+            if (best) break;
+        }
+    }
+    return best;
+}
+
+/**
+ * ある位置から前方 stations 駅ぶんにいる、同じ種別・同じ向きの列車の数。
+ * 内側線・外側線の両方を見る (種別によってどちらを走るかが違うため)。
+ *
+ *   game      … GameSystem
+ *   trackId   … 基準の線路
+ *   index     … 基準のブロック番号
+ *   dir       … 進行方向
+ *   type      … 種別
+ *   stations  … 見る駅数
+ *   exclude   … 数えない列車 (自分)
+ */
+function countSameTypeAhead(game, trackId, index, dir, type, stations, exclude) {
+    const tracks = [trackId];
+    if (/^(Up|Down)_(In|Out)$/.test(trackId)) {
+        tracks.push(trackId.indexOf("In") >= 0 ? trackId.replace("In", "Out")
+                                               : trackId.replace("Out", "In"));
+    }
+    const span = Math.ceil(UNITS_PER_STATION * stations);
+    let n = 0;
+    for (const tid of tracks) {
+        const blks = game.trackMgr.blocks[tid];
+        if (!blks) continue;
+        for (let k = 1; k <= span; k++) {
+            const i = index + dir * k;
+            if (i < 0 || i >= blks.length) break;
+            const b = blks[i];
+            if (!b || b.x === -1000) continue;
+            for (const l of b.lanes) {
+                if (l && l !== exclude && l.dir === dir && l.type === type) n++;
+            }
+        }
+    }
+    return n;
+}
+
+/**
+ * いま発車すると「団子の3本目」になってしまうか。
+ * true なら駅で抑止して間隔が開くのを待つ。
+ *
+ * 駅にいるときだけ効かせる。駅間で止めると、かえってそこで
+ * 後続が詰まってしまうため (実際の運転整理も駅で間隔を開ける)。
+ */
+Train.prototype.shouldHoldForConvoy = function () {
+    const rule = CONVOY_RULES[this.type];
+    if (!rule) return false;
+    if (this.forceStart || this.isManuallySuspended) return false;
+    // 待ちすぎたら詰まり防止のため発車する
+    if (this.stuckTime >= rule.maxWait) return false;
+    const blks = this.game.trackMgr.blocks[this.trackId];
+    const here = blks ? blks[this.currBlockIndex] : null;
+    if (!here || !(here.isStation || here.hoppoStationName)) return false;
+    // 終着駅で折り返す列車は、間隔の調整対象ではない
+    if (this.isFinalStop) return false;
+
+    const ahead = countSameTypeAhead(this.game, this.trackId, this.currBlockIndex,
+                                     this.dir, this.type, rule.scan, this);
+    if (ahead <= rule.maxAhead) return false;
+
+    /* ★直前の同種別が十分に離れていれば、3本目でも団子ではない。
+       「3駅の中に2本いる」だけで止めると、健全な間隔の列車まで
+       止めてしまい、駅にとまったままの列が伸びる。 */
+    const near = nearestSameTypeAhead(this.game, this.trackId, this.currBlockIndex,
+                                      this.dir, this.type, rule.scan, this);
+    if (!near || near.dist > Math.ceil(UNITS_PER_STATION * rule.near)) return false;
+
+    /* ★直前の列車がすでに止まっている (抑止・信号待ち) ときは、
+       ここで追加の抑止を掛けない。前方が空くまで動けないことは
+       通常の閉塞・続行間隔の判定が見ており、二重に止めると
+       解けるまでの時間が積み上がって線区全体が詰まる。 */
+    if (near.train.stuckTime >= 60 || near.train.isManuallySuspended) return false;
+
+    // たまにだけ知らせる (毎回出すとログが埋まる)
+    if (this.stuckTime === 0 && Math.random() < 0.05) {
+        const st = blockStationName(here);
+        this.game.ui.updateBanner(
+            `【運転整理】${st}駅 前方${rule.scan}駅に${this.type}が${ahead}本続いているため、` +
+            `${this.trainNo} は続行間隔を開けるため抑止します。`, "banner-orange");
+    }
+    return true;
+};
+
 Train.prototype.checkRapidDowngrade = function (stationName) {
         let stIdx = STATION_MAP[stationName];
         if (stIdx !== undefined && stIdx >= STATION_MAP["京都"]) {
@@ -34,6 +197,7 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                     this.type = "普通";
                     this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
                     this.dutyName = this.trainNo;
+                    this.startName = stationName;   // ★ここから始まる列車になる
                     this.game.ui.updateBanner(`【種別変更】高槻駅にて快速列車の近接(3連続)を検知。${this.trainNo}(普通)に変更しました(行先変更なし)。`, "banner-orange");
                     return;
                 }
@@ -45,6 +209,7 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                 this.type = "普通";
                 this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
                 this.dutyName = this.trainNo;
+                this.startName = stationName;   // ★ここから始まる列車になる
                 let extraMsg = "";
                 // 上りの場合のみ行先を草津に短縮する制限
                 if (this.dir === 1 && STATION_MAP[this.dest] > STATION_MAP["草津"]) {

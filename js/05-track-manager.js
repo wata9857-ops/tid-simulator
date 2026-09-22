@@ -69,6 +69,20 @@ class TrackManager {
             45: {name: "鴫野", lanes: 1}, 46: {name: "放出", lanes: 2}
         };
 
+        /* 分岐線の駅のレーン数。
+           ★番線の定義 (js/03-stations.js の stationBranchLanes) から取る。
+             ここに別の表を持つと、番線の数と線路の数が食い違い、
+             「線路の無い番線」と「番線の無い線路」が同時に生まれる。
+             その食い違いのために、実際は島式1面2線の 大阪天満宮・大阪城北詰 に
+             「上待」「下待」という実在しない番線が生えていた。
+             fallback は書き起こしが無い駅のための保険。 */
+        const branchLanes = (stName, trackId, fallback) => {
+            if (typeof stationBranchLanes !== "function") return fallback;
+            if (!STATION_PLATFORM_RULES[stName]) return fallback;
+            const n = stationBranchLanes(stName);
+            return (trackId.indexOf("Up") === 0 || trackId.indexOf("_Up") > 0) ? n.up : n.down;
+        };
+
         TRACKS.forEach(trk => {
             let trackBlocks = [];
             for (let i = 0; i < STATIONS.length; i++) {
@@ -121,18 +135,28 @@ class TrackManager {
                     if (i === 56) { stName = "山科"; laneCount = 1; specialStation = true; }
                     else if (i === 83) { stName = "近江塩津"; laneCount = 1; specialStation = true; }
                     else if (KOSEI_STATIONS[i]) {
-                        stName = KOSEI_STATIONS[i].name; laneCount = KOSEI_STATIONS[i].lanes; specialStation = true;
+                        stName = KOSEI_STATIONS[i].name;
+                        laneCount = branchLanes(stName, trk.id, KOSEI_STATIONS[i].lanes);
+                        specialStation = true;
                     } else {
                         stName = "湖西線通過"; laneCount = 1; specialStation = true;
                     }
                 // ★追加: 福知山線・東西線の駅名とレーン割り当て
                 } else if (isFukuchi) {
                     if (i === 36) { stName = "尼崎"; laneCount = 1; specialStation = true; }
-                    else if (FUKUCHI_STATIONS[i]) { stName = FUKUCHI_STATIONS[i].name; laneCount = FUKUCHI_STATIONS[i].lanes; specialStation = true; }
+                    else if (FUKUCHI_STATIONS[i]) {
+                        stName = FUKUCHI_STATIONS[i].name;
+                        laneCount = branchLanes(stName, trk.id, FUKUCHI_STATIONS[i].lanes);
+                        specialStation = true;
+                    }
                     else { stName = "福知山線通過"; laneCount = 1; specialStation = true; }
                 } else if (isTozai) {
                     if (i === 36) { stName = "尼崎"; laneCount = 1; specialStation = true; }
-                    else if (TOZAI_STATIONS[i]) { stName = TOZAI_STATIONS[i].name; laneCount = TOZAI_STATIONS[i].lanes; specialStation = true; }
+                    else if (TOZAI_STATIONS[i]) {
+                        stName = TOZAI_STATIONS[i].name;
+                        laneCount = branchLanes(stName, trk.id, TOZAI_STATIONS[i].lanes);
+                        specialStation = true;
+                    }
                     else { stName = "東西線通過"; laneCount = 1; specialStation = true; }
                 } else {
                     /* 本線のレーン数。
@@ -162,9 +186,18 @@ class TrackManager {
             this.blocks[trk.id] = trackBlocks;
         });
 
-        // ★尼崎駅のレーン(番線)共有化処理を追加
-        let amaUpLanes = new Array(4).fill(null);
-        let amaDownLanes = new Array(4).fill(null);
+        /* ★尼崎駅のレーン(番線)共有化処理。
+           本数は番線の定義から取る (js/03-stations.js)。
+           実物は島式4面8線＋北側の通過線(9番)で、
+             上り側 9,8,7,6,5 の5線 / 下り側 4,3,2,1 の4線
+           ここを 4/4 の決め打ちにしていたため、9番の通過線が無く、
+           7番 (宝塚線・東西線の上り) も持てていなかった。 */
+        const amaLanes = (typeof stationTrackLanes === "function")
+            ? stationTrackLanes("尼崎") : null;
+        const amaUpN = amaLanes ? ((amaLanes.Up_Out || 0) + (amaLanes.Up_In || 0)) : 4;
+        const amaDownN = amaLanes ? ((amaLanes.Down_In || 0) + (amaLanes.Down_Out || 0)) : 4;
+        let amaUpLanes = new Array(Math.max(1, amaUpN)).fill(null);
+        let amaDownLanes = new Array(Math.max(1, amaDownN)).fill(null);
 
         ["Up_Out", "Up_In", "Fukuchi_Up", "Tozai_Up"].forEach(tid => {
             if (this.blocks[tid]) {

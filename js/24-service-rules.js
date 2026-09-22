@@ -102,6 +102,98 @@ const FREIGHT_FLEET = {
              notes: "直流電気機関車。臨時・工臨運用。" }
 };
 
+/* ------------------------------------------------------------------ 走行線路の規則
+
+   複々線 (西明石〜草津) には、外側線 (列車線) と内側線 (電車線) がある。
+   どちらを走るかは種別と時間帯で決まっていて、これまで
+     js/11-train-core.js の checkLogicUpdates()
+     js/12-train-move.js の move()
+     js/13-train-hold.js の checkHold()
+   の3か所に別々の条件が書かれ、食い違っていた。ここ1か所にまとめる。
+
+   ■ いまのJR西日本の規則
+
+     新快速
+       * 該当区間を通して 外側線。
+       * (参考) 新大阪駅の配線改良より前は、新大阪〜大阪だけ内側線を
+         走っていた。これは過去の話なので、いまのシミュレーションでは
+         使わない。
+
+     快速
+       * 平日朝   高槻 → 大阪   外側線
+       * 平日の昼以降          内側線
+       * 土曜・日曜・祝日      終日 内側線
+       * (参考) 2006年3月17日まで、大阪発17時台の野洲行き快速が
+         外側線を走っていた。これも過去の話なので使わない。
+
+     普通
+       * 内側線 (電車線)。
+
+     特急・貨物・回送・臨時
+       * 外側線 (列車線)。
+
+   ■ 京都・山科より東 / 西明石より西
+     複線なので内側線という線路が存在しない。そこでは「外側線」しか
+     選べないので、この関数は "out" を返す (内側線へ入れない)。
+*/
+
+/** その駅に内側線 (電車線) があるか。複々線は西明石〜草津だけ。 */
+function innerTrackExists(stIdx) {
+    if (stIdx === undefined || stIdx === null) return false;
+    return stIdx >= STATION_MAP["西明石"] && stIdx <= STATION_MAP["草津"];
+}
+
+/* 平日朝に快速が外側線を走る区間と時間帯。
+   高槻 → 大阪 (下り) のみ。 */
+const RAPID_OUTER_MORNING = { from: "高槻", to: "大阪", fromH: 6.0, toH: 9.0 };
+
+/**
+ * その列車が、その駅でどちら側の線路を走るべきか。
+ *   戻り値 "out" … 外側線 (列車線)
+ *          "in"  … 内側線 (電車線)
+ * 内側線が無い駅では必ず "out"。
+ *
+ *   train  … 列車 (type / dir を見る)
+ *   stIdx  … いまの駅のインデックス
+ *   hour   … 0〜24 の時刻
+ */
+function serviceTrackSide(train, stIdx, hour) {
+    if (!innerTrackExists(stIdx)) return "out";
+
+    const type = train.type;
+    // 列車線を走る種別
+    if (["新快速", "特急", "貨物", "回送", "臨時"].indexOf(type) >= 0) return "out";
+    if (type === "普通") return "in";
+
+    if (type === "快速") {
+        /* 快速は
+             平日朝の 高槻 → 大阪 … 外側線
+             それ以外・土休日      … 内側線
+           ★神戸線側も外側線にしてみたが、外側線に
+             新快速8本/時＋特急＋快速6本/時 が乗って飽和し、
+             1分以上動けない列車が 10% → 21% に増えた。
+             指示どおり「平日朝の高槻→大阪だけ外側線」に戻した。 */
+        if (!isWeekday()) return "in";
+        const r = RAPID_OUTER_MORNING;
+        if (hour < r.fromH || hour >= r.toH) return "in";
+        // 高槻 → 大阪 は下り (大阪の方がインデックスが小さい)
+        if (train.dir !== -1) return "in";
+        const hi = STATION_MAP[r.from], lo = STATION_MAP[r.to];
+        return (stIdx <= hi && stIdx >= lo) ? "out" : "in";
+    }
+    return "in";
+}
+
+/** その列車が、その駅でいるべき線路ID (内側線が無ければ外側線) */
+function serviceTrackIdAt(train, stIdx, hour, baseTrackId) {
+    const tid = baseTrackId || train.trackId;
+    // 分岐線・北方貨物線はこの規則の対象外
+    if (/Kosei|Fukuchi|Tozai|Hoppo/.test(tid)) return tid;
+    const side = serviceTrackSide(train, stIdx, hour);
+    const head = (tid.indexOf("Up") === 0) ? "Up_" : "Down_";
+    return head + (side === "out" ? "Out" : "In");
+}
+
 // ------------------------------------------------------------------ 線区の判定
 /* どの線区を走る列車かを、始発駅・行先・走行線路からまとめて判定する。
    従来 FleetManager.profileFor() の冒頭に書かれていた判定をここへ出した。 */

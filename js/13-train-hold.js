@@ -5,18 +5,25 @@ Train.prototype.checkHold = function (isStarting) {
         const nextIdx = this.currBlockIndex + this.dir;
         let targetTrackId = this.trackId; // ★変数のスコープを関数全体に広げてエラーを防止
 
+        /* ★折り返した直後は、到着した番線 (反対方向の線路) に留まっている。
+           前方は「発車で入る線路」で見る。自分の線路で見ると、
+           複々線・分岐線の端では線路の無い区間を指してしまい、
+           発車できないままホームを占め続けてしまう。 */
+        const aheadTrackId = this.turnbackTrack || this.trackId;
+        const aheadBlks = this.game.trackMgr.blocks[aheadTrackId] || blks;
+
         /* ★信号現示による停止判定 (js/25-signals.js)。
            転てつ器故障・信号故障など、進路が構成できない障害が
            前方にある場合はここで止まる。
            在線・見合わせによる停止は下の従来の判定と同じ結果になるので、
            ここでは障害の分だけを見る (既存の動きを変えないため)。 */
-        if (this.game.signals && this.game.signals.hasFault(this.trackId, nextIdx)) {
+        if (this.game.signals && this.game.signals.hasFault(aheadTrackId, nextIdx)) {
             this.signalAspect = "R";
             return true;
         }
         
-        if (nextIdx >= 0 && nextIdx < blks.length) {
-            let nextBlk = blks[nextIdx];
+        if (nextIdx >= 0 && nextIdx < aheadBlks.length) {
+            let nextBlk = aheadBlks[nextIdx];
             // 線路の無い区間へは進めない (線区の端)
             if (nextBlk.x === -1000) return true;
             const currentBlk = blks[this.currBlockIndex]; // ★追加
@@ -37,28 +44,17 @@ Train.prototype.checkHold = function (isStarting) {
                     }
                 }
                 
-                // ★事象対応: 西明石・草津での内側線ホーム直接進入を予測ロジック(checkHold)にも完全同期
-                let timeH = (this.game.currentTime / 3600) % 24;
-                if (nextBlk.stationIdx === STATION_MAP["西明石"] && this.dir === 1 && this.trackId.includes("Out") && ["普通", "快速"].includes(this.type)) {
-                    let isMorningRushUpRapid = (this.type === "快速" && timeH >= 7.4 && timeH < 8.6);
-                    if (!isMorningRushUpRapid) {
-                        let inTrackId = this.trackId.replace("Out", "In");
-                        let tBlks = this.game.trackMgr.blocks[inTrackId];
+                /* 複々線の端 (西明石・草津) での内外の振り分け。
+                   move() とまったく同じ判定を通す
+                   (走行線路の規則は js/24-service-rules.js に1か所) */
+                if ((nextBlk.stationIdx === STATION_MAP["西明石"] || nextBlk.stationIdx === STATION_MAP["草津"]) &&
+                    innerTrackExists(nextBlk.stationIdx) && this.trackId.includes("Out")) {
+                    const entering = (nextBlk.stationIdx === STATION_MAP["西明石"]) ? (this.dir === 1) : (this.dir === -1);
+                    if (entering && this.wantTrackAt(nextBlk.stationIdx).includes("In")) {
+                        const inTrackId = this.trackId.replace("Out", "In");
+                        const tBlks = this.game.trackMgr.blocks[inTrackId];
                         if (tBlks) {
-                            let targetNextBlk = tBlks.find(b => b.stationIdx === nextBlk.stationIdx);
-                            if (targetNextBlk && targetNextBlk.lanes.some(l => l === null)) {
-                                targetTrackId = inTrackId;
-                            }
-                        }
-                    }
-                } else if (nextBlk.stationIdx === STATION_MAP["草津"] && this.dir === -1 && this.trackId.includes("Out")) {
-                    let timeH = (this.game.currentTime / 3600) % 24;
-                    let isMorningRush = (timeH >= 7.0 && timeH < 9.0);
-                    if (["普通", "快速"].includes(this.type) || (this.type === "新快速" && !isMorningRush)) {
-                        let inTrackId = this.trackId.replace("Out", "In");
-                        let tBlks = this.game.trackMgr.blocks[inTrackId];
-                        if (tBlks) {
-                            let targetNextBlk = tBlks.find(b => b.stationIdx === nextBlk.stationIdx);
+                            const targetNextBlk = tBlks.find(b => b.stationIdx === nextBlk.stationIdx);
                             if (targetNextBlk && targetNextBlk.lanes.some(l => l === null)) {
                                 targetTrackId = inTrackId;
                             }
@@ -78,23 +74,23 @@ Train.prototype.checkHold = function (isStarting) {
                 }
             }
 
-            // ★修正: 西明石・草津からの発車時の転線予測もcheckHoldに同期
-            if (currentBlk && currentBlk.stationIdx === STATION_MAP["西明石"] && this.dir === 1 && this.trackId.includes("Out") && ["普通", "快速"].includes(this.type)) {
-                let timeH = (this.game.currentTime / 3600) % 24;
-                let isMorningRushUpRapid = (this.type === "快速" && timeH >= 7.4 && timeH < 8.6);
-                if (!isMorningRushUpRapid) {
+            // 西明石・草津からの発車時の転線予測も move() と揃える
+            if (currentBlk && (currentBlk.stationIdx === STATION_MAP["西明石"] ||
+                               currentBlk.stationIdx === STATION_MAP["草津"])) {
+                const here = currentBlk.stationIdx;
+                const entering = (here === STATION_MAP["西明石"]) ? (this.dir === 1) : (this.dir === -1);
+                if (entering && this.trackId.includes("Out") && this.wantTrackAt(here).includes("In")) {
                     targetTrackId = this.trackId.replace("Out", "In");
+                } else if (!entering && this.trackId.includes("In") &&
+                           blockStationName(currentBlk) !== this.dest) {
+                    targetTrackId = this.trackId.replace("In", "Out");
                 }
-            } else if (currentBlk && currentBlk.stationIdx === STATION_MAP["西明石"] && this.dir === -1 && this.trackId.includes("In") && this.dest !== "西明石") {
-                targetTrackId = this.trackId.replace("In", "Out");
-            } else if (currentBlk && currentBlk.stationIdx === STATION_MAP["草津"] && this.dir === -1 && this.trackId.includes("Out")) {
-                let timeH = (this.game.currentTime / 3600) % 24;
-                let isMorningRush = (timeH >= 7.0 && timeH < 9.0);
-                if (["普通", "快速"].includes(this.type) || (this.type === "新快速" && !isMorningRush)) {
-                    targetTrackId = this.trackId.replace("Out", "In");
-                }
-            } else if (currentBlk && currentBlk.stationIdx === STATION_MAP["草津"] && this.dir === 1 && this.trackId.includes("In") && this.dest !== "草津") {
-                targetTrackId = this.trackId.replace("In", "Out");
+            }
+
+            /* 折り返し後の発車は、渡り線で反対方向の線路へ入る。
+               満線の判定もそちらで行う (move() と同じ判定を通す) */
+            if (this.turnbackTrack && this.turnbackTrack !== this.trackId) {
+                targetTrackId = this.turnbackTrack;
             }
 
             if (targetTrackId !== this.trackId) {
@@ -103,17 +99,31 @@ Train.prototype.checkHold = function (isStarting) {
                 if (tBlks) {
                     // ★尼崎のハードコーディングを廃止し、実際の進入先駅ブロックまたは同一座標で満線判定を動的に行う
                     let targetNextBlk = tBlks.find(b => (nextBlk.stationIdx !== undefined && b.stationIdx === nextBlk.stationIdx) || Math.abs(b.x - nextBlk.x) < 20);
-                    if (targetNextBlk && targetNextBlk.lanes.every(l => l !== null)) return true;
+                    // 使える番線が空いていなければ進入できない (move() と同じ判定)
+                    if (targetNextBlk && this.findFreeLane(targetNextBlk, targetTrackId) === -1) return true;
                 }
             } else {
                 if (nextBlk.lanes.every(l => l !== null)) return true;
             }
         }
         
-        if (this.game.trackMgr.isSuspended(this.trackId, nextIdx)) return true;
+        if (this.game.trackMgr.isSuspended(aheadTrackId, nextIdx)) return true;
 
         if (isStarting) {
                  if (this.startName === "向日町操") return false;
+
+                 /* ★同じ種別が短い間隔で3本続く「団子」を作らない。
+
+                    抑えるのは「まだ始発駅を出ていない列車」だけにする。
+                    途中駅でも止めてみたところ、止めた列車の後ろにまた
+                    同じ種別が溜まり、駅にとまったままの列ができて
+                    1分以上動けない列車が 10% → 28% に増えた。
+                    走り出した列車の間隔は、下の続行間隔の判定と
+                    calcTravelTime() の減速 (js/14-train-turnback.js) で
+                    ゆるやかに開ける。
+                    js/16-train-adjust.js の「団子を作らない」を参照。 */
+                 if (!this.hasDeparted && this.shouldHoldForConvoy()) return true;
+
                  // 7分(420秒)以上スタックしている場合は間隔調整を無視して強制発車(デッドロック回避)
                  if (this.stuckTime > 420) return false;
 
@@ -415,7 +425,13 @@ Train.prototype.checkHold = function (isStarting) {
  // 1. 普通・快速・新快速のダンゴ運転防止 ＆ 2. 優先度に基づく接近チェック（高度な動的間隔調整）
              if (["普通", "快速", "新快速"].includes(this.type)) {
                  // 過剰な遠方検知を防ぐため車間距離を適正化
-                 const BASE_SPACING = { "普通": 1.5, "快速": 2.0, "新快速": 3.0 };
+                 /* ★新快速の要求間隔を 3.0駅 → 2.0駅 にした。
+                    新快速は該当区間を通して外側線 (列車線) を走るので、
+                    京都〜草津の外側線には 新快速8本/時 ＋ 特急4本/時 が乗る。
+                    3.0駅 (1駅約1.7分 → 約5.1分) を空けると理論上 11.8本/時 で
+                    飽和し、外側線が詰まって36%の列車が1分以上動けなくなった。
+                    実際の新快速の続行間隔は3〜4分なので、2.0駅 (約3.4分) が実物に近い。 */
+                 const BASE_SPACING = { "普通": 1.5, "快速": 2.0, "新快速": 2.0 };
                  const MIN_SPACING =  { "普通": 1,   "快速": 1,   "新快速": 2 };
                  let requiredSpacing = BASE_SPACING[this.type] * UNITS_PER_STATION;
                  // ★改善: 東西線に向かう・東西線内を走行する列車は規定間隔を短縮して詰まりを防止
@@ -488,7 +504,10 @@ Train.prototype.checkHold = function (isStarting) {
              } else {
                  // 普通・快速・新快速「以外」（特急、貨物、回送など）の基本接近チェック
                  // 貨物・回送の要求車間距離を短くし、外側線の無駄な長距離抑止を防ぐ
-                 let reqDist = (this.type === "貨物" || this.type === "回送") ? UNITS_PER_STATION * 1.5 : (this.trackId.includes("Out") ? UNITS_PER_STATION * 3 : UNITS_PER_STATION * 2);
+                 /* ★外側線の要求間隔を 3駅 → 2駅 にした。
+                    新快速が外側線を通しで走るようになり、特急が3駅ぶんの
+                    間隔を要求すると外側線が捌けなくなる。 */
+                 let reqDist = (this.type === "貨物" || this.type === "回送") ? UNITS_PER_STATION * 1.5 : UNITS_PER_STATION * 2;
                  let checkDist = Math.ceil(reqDist);
                  for(let k = 1; k <= checkDist; k++) {
                       let idx = this.currBlockIndex + (this.dir * k);
@@ -691,7 +710,53 @@ Train.prototype.checkHold = function (isStarting) {
         return false;
 };
 
-Train.prototype.findFreeLane = function (block) {
+/**
+ * 進路のつながっている番線から空きを1つ選ぶ (到着・発車の別を指定)。
+ *
+ * ★番線を直に 0..n や n..0 と走査している所が何か所もあり、
+ *   そこでは進路の制限 (js/03-stations.js の STATION_ROUTES) が
+ *   効いていなかった。実測では、尼崎の上り内側線に居るはずのない
+ *   9番・8番の列車が現れていた。ここを通すようにする。
+ *
+ *   block  … 駅のブロック
+ *   trackId… その列車が乗っている (乗ろうとしている) 線路
+ *   mode   … "arrive" 到着 / "depart" 発車
+ *   type   … 種別 (番線の使い分けに使う)
+ *   hour   … 時刻 (同上)
+ *   outer  … true なら外側 (番号の大きいレーン) から探す
+ */
+function pickRouteLane(block, stName, trackId, mode, type, hour, outer) {
+    const pref = stationPreferredLanes(stName, trackId, type, hour, mode);
+    if (pref && pref.length) {
+        const list = outer ? pref.slice().reverse() : pref;
+        for (const l of list) {
+            if (l < block.lanes.length && block.lanes[l] === null) return l;
+        }
+        return -1;                     // つながっている番線が全部埋まっている
+    }
+    // 制限の書かれていない駅は、これまでどおりの探し方
+    if (outer) {
+        for (let l = block.lanes.length - 1; l >= 0; l--) if (block.lanes[l] === null) return l;
+    } else {
+        for (let l = 0; l < block.lanes.length; l++) if (block.lanes[l] === null) return l;
+    }
+    return -1;
+}
+
+/**
+ * 空いている着発線を選ぶ。
+ *
+ *   block   … 入る駅のブロック
+ *   toTrack … そこから出ていく線路 (合流駅で線路が変わる場合)。
+ *             ★尼崎のように線路ごとに使える番線が決まっている駅では、
+ *               「入ってくる線路から入れる番線」と
+ *               「出ていく線路へ出られる番線」の両方を満たす必要がある。
+ *               例: JR宝塚線から来て上り内側線へ抜ける列車は
+ *                   到着 9/8/7/6 ∩ 発車 6/5 = 6番 しか使えない。
+ *               ここを見ていなかったため、上り内側線に 9番・8番の列車が
+ *               現れていた (tools/check_routes.js で検出)。
+ */
+Train.prototype.findFreeLane = function (block, toTrack) {
         if (!block.isStation && !block.hoppoStationName) return (block.lanes[0]===null) ? 0 : -1;
         let stName = block.hoppoStationName || STATIONS[block.stationIdx].name;
         
@@ -700,25 +765,35 @@ Train.prototype.findFreeLane = function (block) {
             if (block.lanes[tLane] === null) { this.trackChangeReservation.status = "done"; return tLane; } else return -1;
         }
 
-        // ★尼崎駅の柔軟なホーム共有・レーン選択ロジック
-        if (stName === "尼崎") {
-            let prefLanes = [];
-            // 新快速、または外側線を走行する通過列車(特急・貨物等)のみ1・8番線の使用を許可
-            let isOutermostAllowed = (this.type === "新快速" || ["特急", "貨物", "回送", "臨時"].includes(this.type));
+        /* ------------------------------------------------ 進路の制限にしたがう
 
-            if (this.dir === 1) { // 上り (0:8番, 1:7番, 2:6番, 3:5番)
-                if (this.trackId.includes("Out")) prefLanes = isOutermostAllowed ? [0, 1, 2, 3] : [1, 2, 3];
-                else if (this.trackId.includes("Fukuchi") || this.trackId.includes("Tozai")) prefLanes = [1, 2, 3];
-                else prefLanes = [3, 2, 1]; // Up_In
-            } else { // 下り (0:4番, 1:3番, 2:2番, 3:1番)
-                if (this.trackId.includes("Out")) prefLanes = isOutermostAllowed ? [3, 2, 1, 0] : [2, 1, 0];
-                else if (this.trackId.includes("Fukuchi") || this.trackId.includes("Tozai")) prefLanes = [2, 1, 0];
-                else prefLanes = [0, 1, 2]; // Down_In
+           ★駅ごとに「どの線路からどの番線へ入れるか」が決まっている
+             (js/03-stations.js の STATION_ROUTES)。
+             以前は尼崎だけレーン番号を決め打ちした表を持ち、ほかの駅では
+             「その線路のレーンならどれでも」という扱いだった。
+             そのためつながっていない番線に入る列車が出ていた。
+             進路がつながっている番線に限り、そのうえで種別・時間帯ごとの
+             使い分け (STATION_PLATFORM_USE) の順に空きを探す。 */
+        {
+            const hour = (this.game.currentTime / 3600) % 24;
+            let pref = stationPreferredLanes(stName, this.trackId, this.type, hour, "arrive");
+            if (toTrack && toTrack !== this.trackId) {
+                const out = stationRouteLanes(stName, toTrack, "depart");
+                if (out) {
+                    const both = (pref || out).filter(l => out.indexOf(l) >= 0);
+                    /* 両方を満たす番線が無い駅では、出ていく側を優先する
+                       (そこから出られない番線に入れても発車できない) */
+                    pref = both.length ? both : out;
+                }
             }
-            for (let l of prefLanes) {
-                if (block.lanes[l] === null) return l;
+            if (pref && pref.length) {
+                for (const l of pref) {
+                    if (l < block.lanes.length && block.lanes[l] === null) return l;
+                }
+                /* 進路がつながっている番線が全部埋まっている。
+                   つながっていない番線へ勝手に入れてはいけないので、待つ。 */
+                return -1;
             }
-            return -1;
         }
 
         const isFreight = ["貨物", "回送", "臨時"].includes(this.type);

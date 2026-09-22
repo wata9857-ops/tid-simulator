@@ -41,21 +41,65 @@ const VEH = {
 // weight : 初期配置時の割り当て比率。
 //          配線図(DEPOT_LAYOUTS)のある留置場は、図の収容両数を大きく
 //          超えないようにしてある。
+/* groups は「そこに滞泊できる車両所グループ」。
+   ★実際にその駅まで来る車両を入れておく必要がある。
+     入っていないと、そこで運用を終えた編成の返却先が
+     「離れた留置場」になり、編成が線路を走らずに移動してしまう
+     (行路の記録で終着駅と次の始発駅が食い違う)。
+     たとえば明石の207系・321系は、都市圏の普通として
+     野洲・米原・京都・姫路まで来る (js/24-service-rules.js の
+     urban-local の規則) ので、それらの留置場も受け入れる。 */
 const FLEET_BASES = [
-    { name: "姫路",     groups: ["ABOSHI"],                         weight: 15 },
+    /* ★網干総合車両所は新快速 (8両＋4両) の本拠。この線路図では
+       姫路の電留線にまとめて置いている (js/04-depots.js の "姫路")。
+       比率を上げた。以前は 15 で、8両編成が宮原操・高槻・向日町操へ
+       散らばり、昼には姫路の8両在庫が0本になって
+       新快速が 4本/時 → 1.2本/時 まで落ちていた。
+       (足りないときは送り込み回送で運ぶが、間に合わない) */
+    { name: "姫路",     groups: ["ABOSHI", "AKASHI"],               weight: 34,
+      weightBy: { AKASHI: 12 } },
     { name: "西明石",   groups: ["ABOSHI", "AKASHI"],               weight: 14 },
+    /* ★尼崎・大阪は明石の207系・321系の滞泊地。
+       網干の223系・225系をここに置くと、新快速に必要な8両編成が
+       新快速の始発駅 (姫路) に残らなくなる
+       (実測: 姫路の8両在庫が0本になり、新快速が 4本/時 → 1.2本/時)。
+       ここで運用を終えた網干の編成は、返却先が「いまいる場所の留置線」
+       なので groups に入れなくてもここに置ける
+       (homeForVehicle は同じ位置の留置線を優先する)。 */
     { name: "尼崎",     groups: ["AKASHI"],                         weight: 16 },
     { name: "宝塚",     groups: ["AKASHI", "MIYAHARA"],             weight: 8 },
     { name: "新三田",   groups: ["AKASHI", "MIYAHARA"],             weight: 9 },
+    /* 宮原支所は JR宝塚線用の223系/225系6000番台 (MIYAHARA) の本拠。
+       ★MIYAHARA の比率を上書きで上げてみたが、留置場のあいだの
+         在庫の釣り合いが崩れ、大阪〜京都の列車間隔が
+         3.4駅 → 11.7駅 まで開いた。比率は据え置きにする。 */
     { name: "宮原操",   groups: ["ABOSHI", "AKASHI", "MIYAHARA"],   weight: 14 },
     { name: "大阪",     groups: ["AKASHI"],                         weight: 12 },
-    { name: "京橋",     groups: ["AKASHI"],                         weight: 9 },
-    { name: "放出",     groups: ["AKASHI"],                         weight: 10 },
-    { name: "高槻",     groups: ["ABOSHI", "AKASHI"],               weight: 9 },
-    { name: "向日町操", groups: ["ABOSHI", "KYOTO"],                weight: 14 },
-    { name: "草津",     groups: ["ABOSHI"],                         weight: 5 },
-    { name: "野洲",     groups: ["ABOSHI"],                         weight: 18 },
-    { name: "米原",     groups: ["ABOSHI"],                         weight: 12 },
+    /* ★JR東西線・学研都市線の車両は放出の電留線を本拠にする。
+       これらの列車は尼崎・西明石・宝塚まで直通するので、そこで運用を
+       終えた編成はその駅の留置線に返る。放出の在庫は片道で減っていき、
+       実測では昼過ぎに0本になって東西線の快速が 1本/時 まで落ちた。
+       (離れた留置場から借り出さない = 瞬間移動をしない、としたため)
+       起点の在庫を増やして、線区の所要をまわせるようにする。 */
+    { name: "京橋",     groups: ["AKASHI"],                         weight: 6 },
+    { name: "放出",     groups: ["AKASHI"],                         weight: 34 },
+    { name: "高槻",     groups: ["ABOSHI", "AKASHI"],               weight: 6 },
+    { name: "向日町操", groups: ["ABOSHI", "KYOTO", "AKASHI"],      weight: 10 },
+    /* 京都駅の留置線 (配線略図 スクリーンショット(693).png)。
+       ★ここを持っていなかったため、京都で運用を終えた編成の返却先が
+         向日町操になり、次に京都から出る列車がその編成を「借り出す」
+         形になっていた。編成が向日町操から京都へ瞬間移動したことになる。 */
+    /* 京都には湖西線の車両 (京都支所) も滞泊する。湖西線の列車は
+       京都で折り返すので、ここに在庫が無いと折り返せず回送になってしまう。
+       ★「京都支所の車両は本線運用に入れない」という規則は
+         js/24-service-rules.js の pred が守る。加えて、行先が変わって
+         規則を外れた場合は js/27-operations.js の fixIllegalStock() が
+         当駅止まりに短縮する (実測: 京都→敦賀の普通にキトの編成が
+         入っていたのを止めた)。 */
+    { name: "京都",     groups: ["ABOSHI", "AKASHI", "KYOTO"],      weight: 5 },
+    { name: "草津",     groups: ["ABOSHI", "AKASHI"],               weight: 5 },
+    { name: "野洲",     groups: ["ABOSHI", "AKASHI"],               weight: 12 },
+    { name: "米原",     groups: ["ABOSHI", "AKASHI"],               weight: 12 },
     { name: "敦賀",     groups: ["ABOSHI"],                         weight: 6 },
     { name: "近江今津", groups: ["KYOTO"],                          weight: 8 }
 ];
@@ -102,7 +146,12 @@ function fleetHomeOf(startName) {
     if (startName === "吹田貨") return "宮原操";
     if (startName === "三ノ宮" || startName === "神戸" || startName === "須磨" ||
         startName === "明石" || startName === "大久保" || startName === "加古川") return "西明石";
-    if (startName === "京都" || startName === "西大路" || startName === "向日町" ||
+    /* ★京都は自前の留置線を持つ (js/04-depots.js)。
+       ここで向日町操へ読み替えていたため、京都発の列車は必ず
+       向日町操の編成を使うことになり、行路が
+         「京都 → 西明石」のあとに「京都 → 米原」
+       のようにつながって見えていた (編成の瞬間移動)。 */
+    if (startName === "西大路" || startName === "向日町" ||
         startName === "長岡京") return "向日町操";
     if (startName === "守山" || startName === "近江八幡" || startName === "能登川") return "野洲";
     if (startName === "彦根" || startName === "坂田") return "米原";
@@ -168,13 +217,26 @@ class FleetManager {
             const targets = FLEET_BASES.filter(b => b.groups.indexOf(g) >= 0 &&
                                                     this.baseIndex[b.name] !== undefined);
             if (targets.length === 0) continue;
-            const total = targets.reduce((s, b) => s + b.weight, 0);
+            /* 比率は車両所グループごとに上書きできる (weightBy)。
+               ★1つの重みを全グループで使っていたため、
+                 「網干の8両を姫路に集める」ために宮原操の重みを下げると、
+                 宮原支所の223系/225系6000番台 (JR宝塚線用) まで減って
+                 宝塚線の本数が落ちていた。 */
+            /* 比率は車両所グループごとに上書きできる (weightBy)。
+               ★1つの重みを全グループで使っていたため、
+                 「網干の8両編成を姫路に集める」と、同じ姫路に
+                 明石の207系・321系まで集まってしまい、
+                 JR東西線の起点 (放出) の在庫が足りなくなっていた。 */
+            const wOf = (b) => (b.weightBy && b.weightBy[g] !== undefined)
+                ? b.weightBy[g] : b.weight;
+            const total = targets.reduce((s, b) => s + wOf(b), 0);
             let cursor = 0;
             targets.forEach((b, k) => {
                 const share = (k === targets.length - 1)
                     ? list.length - cursor
-                    : Math.round(list.length * b.weight / total);
+                    : Math.round(list.length * wOf(b) / total);
                 for (let n = 0; n < share && cursor < list.length; n++, cursor++) {
+                    list[cursor].at = b.name;
                     this.pools[b.name].push(list[cursor]);
                 }
             });
@@ -212,6 +274,63 @@ class FleetManager {
     }
 
     // -------------------------------------------------------------- 取り出し
+    /* ------------------------------------------------------------ 瞬間移動をしない
+
+       ■ 何が起きていたか
+         列車を作るとき、始発駅の留置場に条件を満たす編成が無ければ
+         「近い留置場から借り出す」ようになっていた (FLEET_MAX_BORROW)。
+         借り出しは在庫の付け替えだけなので、編成は線路を走らずに
+         その駅に現れる。行路の記録 (js/30-duty-log.js) で見ると
+
+             374M 京都 → 野洲     (野洲に到着)
+             470M 京都 → 野洲     (なぜか京都から始まる)
+
+         のように、編成が野洲から京都へ瞬間移動したことになる。
+         実測では、行路のつながり 2921件のうち 802件 (27.5%) が
+         この瞬間移動だった。
+
+       ■ 直し方
+         列車を作るときの割り当ては「その駅にある編成」だけに限る
+         (noBorrow)。足りないときは、編成を持っている車両所から
+         送り込み回送を出す (js/27-operations.js の railInStock)。
+         回送は実際に線路を走るので、行路がつながる。
+    */
+
+    /** home と同じ場所にある留置場だけを並べる (別名・同一位置を含む) */
+    samePlaceBases(home) {
+        const hIdx = this.baseIndex[home];
+        const out = [];
+        FLEET_BASES.forEach(b => {
+            if (!this.pools[b.name]) return;
+            if (b.name === home) { out.push(b.name); return; }
+            if (hIdx !== undefined && this.baseIndex[b.name] === hIdx) out.push(b.name);
+        });
+        if (out.indexOf(home) < 0 && this.pools[home]) out.unshift(home);
+        return out;
+    }
+
+    /**
+     * その運用の条件を満たす編成を持っている留置場を、近い順に1つ返す。
+     * 送り込み回送の出発地を決めるのに使う。無ければ null。
+     */
+    findSupplier(home, prof) {
+        const order = this.searchOrder(home, prof);
+        for (const loc of order) {
+            const pool = this.pools[loc];
+            if (!pool || !pool.length) continue;
+            if (fleetIndexOf(loc) === fleetIndexOf(home)) continue;   // 同じ場所なら送り込み不要
+            const fits = (cars) => pool.some(v =>
+                prof.groups.indexOf(v.group) >= 0 && prof.pred(v) &&
+                (cars === undefined || v.cars === cars));
+            if (prof.pair) {
+                if (prof.pair.every(c => fits(c))) return loc;
+            } else if (fits(undefined)) {
+                return loc;
+            }
+        }
+        return null;
+    }
+
     /** 借り出し候補の留置場を、条件に合うものだけ近い順に並べる */
     searchOrder(home, prof) {
         const hIdx = this.baseIndex[home];
@@ -258,9 +377,12 @@ class FleetManager {
      * 条件に合う編成を1本探す。指定の留置場 -> 近い留置場 の順に見る。
      * 見つかったら [vehicle, 借りた留置場名] を返す。
      */
-    findOne(home, prof, cars, taken, searchAll) {
-        const order = this.searchOrder(home, prof);
-        const limit = searchAll ? order.length : Math.min(order.length, FLEET_MAX_BORROW + 1);
+    findOne(home, prof, cars, taken, searchAll, noBorrow) {
+        /* ★noBorrow のときは、その駅にある編成だけを見る。
+           離れた留置場から取ると、編成が線路を走らずにそこへ現れてしまう。 */
+        const order = noBorrow ? this.samePlaceBases(home) : this.searchOrder(home, prof);
+        const limit = (noBorrow || searchAll) ? order.length
+                                              : Math.min(order.length, FLEET_MAX_BORROW + 1);
         // 車両所の優先順を守るため、グループごとに全留置場を走査する
         for (let gi = 0; gi < prof.groups.length; gi++) {
             const pred = this.groupPred(prof, prof.groups[gi]);
@@ -298,8 +420,11 @@ class FleetManager {
      * 列車に編成を割り当てる。取り出した編成の配列を返す。
      * 1本も用意できないときだけ null を返す (= その列車は生成されない)。
      */
-    assign(startName, type, trackId, dest, trainNo) {
+    assign(startName, type, trackId, dest, trainNo, opts) {
         trainNo = trainNo || "";
+        /* noBorrow: その駅にある編成だけを使う (瞬間移動をしない)。
+           足りないときは呼び出し側が送り込み回送を手配する。 */
+        const noBorrow = !!(opts && opts.noBorrow);
 
         const prof = this.profileFor(startName, type, trackId, dest, trainNo);
 
@@ -321,7 +446,7 @@ class FleetManager {
         // --- 新快速など、両数の組み合わせが決まっている運用
         if (prof.pair) {
             for (let i = 0; i < prof.pair.length; i++) {
-                const hit = this.findOne(home, prof, prof.pair[i], vehicles);
+                const hit = this.findOne(home, prof, prof.pair[i], vehicles, false, noBorrow);
                 if (hit) { vehicles.push(hit[0]); continue; }
                 const extra = this.makeReserve(prof.groups[0], prof.pair[i]);
                 if (extra) { vehicles.push(extra); continue; }
@@ -333,7 +458,7 @@ class FleetManager {
         }
 
         // --- 通常運用: まず1本取り、両数が足りなければ増結する
-        const first = this.findOne(home, prof, undefined, vehicles);
+        const first = this.findOne(home, prof, undefined, vehicles, false, noBorrow);
         if (first) {
             vehicles.push(first[0]);
         } else {
@@ -350,8 +475,8 @@ class FleetManager {
             //   223系/225系/221系: 4両 + 4両 = 8両
             // 最低両数は必須条件なので、増結相手は全留置場から探す
             const want = VEH.is207(vehicles[0]) ? (vehicles[0].cars === 4 ? 3 : 4) : vehicles[0].cars;
-            const pair = this.findOne(home, prof, want, vehicles, true) ||
-                         this.findOne(home, prof, undefined, vehicles, true);
+            const pair = this.findOne(home, prof, want, vehicles, true, noBorrow) ||
+                         this.findOne(home, prof, undefined, vehicles, true, noBorrow);
             if (!pair) break;
             if (cars + pair[0].cars > 12) { this.release(home, [pair[0]]); break; }
             vehicles.push(pair[0]);
@@ -439,13 +564,27 @@ class FleetManager {
         const prof = this.profileFor(stName, type, trackId, dest, trainNo);
         if (this.satisfies(current, prof)) return current;
         this.release(stName, current);
-        return this.assign(stName, type, trackId, dest, trainNo);
+        /* ★差し替えも、その駅にある編成だけから選ぶ。
+           離れた留置場から取ると編成が瞬間移動する。 */
+        return this.assign(stName, type, trackId, dest, trainNo, { noBorrow: true });
     }
 
     // -------------------------------------------------------------- 返却
     /** その編成を受け入れられる留置場のうち、指定地点から最も近いものを返す */
     homeForVehicle(veh, nearName) {
         const nIdx = fleetIndexOf(nearName);
+
+        /* ★まず「いまいる場所そのものの留置線」を探す。
+           そこに置けるなら、編成は動かないので瞬間移動にならない。
+           車両所グループの縛りは掛けない。実際にも、その駅の
+           電留線・引上線には所属に関わらず置ける
+           (どの車両所の運用に入れるかは別の判定 profileFor が見る)。 */
+        if (nIdx !== null) {
+            for (const b of FLEET_BASES) {
+                if (this.baseIndex[b.name] === nIdx && this.pools[b.name]) return b.name;
+            }
+        }
+
         let best = null;
         let bestDist = Infinity;
         FLEET_BASES.forEach(b => {
@@ -472,7 +611,7 @@ class FleetManager {
             if (ServiceRules.giveBack(v)) return;
             if (v.isFreight || v.isExpress) return;
             const loc = this.homeForVehicle(v, nearName);
-            if (loc && this.pools[loc]) this.pools[loc].push(v);
+            if (loc && this.pools[loc]) { v.at = loc; this.pools[loc].push(v); }
         });
         vehicles.length = 0;
     }

@@ -10,15 +10,40 @@
      cars  … その線に留置できる両数
      kind  … stabling(電留線) / shed(検修庫) / wash(洗浄線) / siding(待避・副本線)
 */
+/* turnbackFirst … 折り返しの要になる駅の留置線。
+     着いた列車をここへ入れるのは「運用の終わり」だけにする。
+     いちいち入区させると出区待ちの列に並んで5〜10分止まり、
+     線区の列車が薄くなって後続が詰まる
+     (実測: 1分以上動けない列車が 7% → 19%)。 */
 const DEPOTS = {
     "姫路": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "姫路〜東姫路間" },
     "西明石": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: -40 }, display: "西明石〜明石間" },
     "宮原操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "宮原操" },
     "高槻": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: -40 }, display: "高槻〜島本間" },
     "向日町操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "向日町操" },
+    /* ★京都駅の留置線・引上線。
+       配線略図 (スクリーンショット(693).png / (680).png) のとおり、
+       京都駅の南側 (下り線の外側) に、西へ向かって行き止まりの
+       留置線・引上線が4本並び、その先に京都貨物・梅小路運転区がある。
+
+       これを持っていなかったため、京都止まりの列車は折り返せないと
+       必ず「向日町操行きの回送」になっていた。実際の運用では、
+       京都止まりの列車の多くは駅の引上線で折り返すか、
+       駅の留置線に入って次の運用に入る。 */
+    "京都": { capacity: 6, trains: [], drawOffset: { x: 0.5, y: 40 },
+              display: "京都駅 留置線・引上線", turnbackFirst: true },
     "草津": { capacity: 2, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "草津〜栗東間" },
     "野洲": { capacity: 6, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "野洲〜篠原間" },
     "米原": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "米原〜坂田間" },
+    /* ★尼崎駅の電留線・引上線。
+       配線略図 (スクリーンショット(709).png / (711).png) のとおり、
+       尼崎は本線・JR宝塚線・JR東西線が集まる駅で、
+       西側 (塚本・立花方) に引上線と電留線がある。
+       持っていなかったため、尼崎で運用を終えた列車は宮原操へ
+       回送するしかなく、尼崎に滞泊する編成 (FLEET_BASES の16%) は
+       出区する枠が無いので一日じゅう使われなかった。 */
+    "尼崎": { capacity: 4, trains: [], drawOffset: { x: -0.5, y: 40 },
+              display: "尼崎〜塚本間", turnbackFirst: true },
     // ★追加: JR東西線・片町線(学研都市線)の車両を受け持つ放出の電留線
     "放出": { capacity: 6, trains: [], drawOffset: { x: -0.5, y: 0 }, display: "放出〜徳庵間", line: "Tozai" },
     // ★追加: JR宝塚線の始発を受け持つ新三田の電留線
@@ -136,16 +161,38 @@ const DEPOT_LAYOUTS = {
                 { label: "姫1", cars: 4, kind: "stabling" },
                 { label: "姫2", cars: 4, kind: "stabling" }
             ]},
+            /* ★網干総合車両所は新快速 (8両＋4両) の本拠で、
+               この線路図では姫路の電留線にまとめて表示している。
+               実際の網干は電留線20本以上の大規模な車両所なので、
+               配線略図 (スクリーンショット(707)/(708).png の網干) に合わせて
+               本数を増やした。ここが足りないと、在籍する編成の6割以上が
+               「その他 / 構内留置」として図の外に出てしまう。 */
             { name: "網干総合車両所 (姫路以西)", tracks: [
                 { label: "網1", cars: 12, kind: "stabling" },
                 { label: "網2", cars: 12, kind: "stabling" },
                 { label: "網3", cars: 12, kind: "stabling" },
                 { label: "網4", cars: 12, kind: "stabling" },
-                { label: "網5", cars: 8, kind: "stabling" },
-                { label: "網6", cars: 8, kind: "stabling" },
-                { label: "網検1", cars: 8, kind: "shed" },
-                { label: "網検2", cars: 8, kind: "shed" },
-                { label: "網洗浄", cars: 12, kind: "wash" }
+                { label: "網5", cars: 12, kind: "stabling" },
+                { label: "網6", cars: 12, kind: "stabling" },
+                { label: "網7", cars: 12, kind: "stabling" },
+                { label: "網8", cars: 12, kind: "stabling" },
+                { label: "網9", cars: 12, kind: "stabling" },
+                { label: "網10", cars: 12, kind: "stabling" },
+                { label: "網11", cars: 8, kind: "stabling" },
+                { label: "網12", cars: 8, kind: "stabling" },
+                { label: "網13", cars: 8, kind: "stabling" },
+                { label: "網14", cars: 8, kind: "stabling" },
+                { label: "網15", cars: 8, kind: "stabling" },
+                { label: "網16", cars: 8, kind: "stabling" },
+                { label: "網17", cars: 7, kind: "stabling" },
+                { label: "網18", cars: 7, kind: "stabling" },
+                { label: "網19", cars: 7, kind: "stabling" },
+                { label: "網20", cars: 7, kind: "stabling" },
+                { label: "網検1", cars: 12, kind: "shed" },
+                { label: "網検2", cars: 12, kind: "shed" },
+                { label: "網検3", cars: 8, kind: "shed" },
+                { label: "網洗浄1", cars: 12, kind: "wash" },
+                { label: "網洗浄2", cars: 12, kind: "wash" }
             ]}
         ]
     },
@@ -287,6 +334,57 @@ const DEPOT_LAYOUTS = {
         ]
     },
 
+    "尼崎": {
+        title: "尼崎駅 電留線・引上線",
+        owner: "網干総合車両所明石支所 / 宮原支所",
+        leftLabel: "立花・西宮方 / JR宝塚線 塚口方",
+        rightLabel: "塚本・大阪方 / JR東西線 加島方",
+        note: "配線略図 (スクリーンショット(709).png・(711).png) のとおり、" +
+              "本線・JR宝塚線・JR東西線が集まる駅で、" +
+              "西側に引上線と電留線が並ぶ。" +
+              "東西線・宝塚線・神戸線の折り返しと日中の留置に使う。",
+        groups: [
+            { name: "引上線", tracks: [
+                { label: "引1", cars: 8, kind: "siding" },
+                { label: "引2", cars: 8, kind: "siding" }
+            ]},
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 8, kind: "stabling" },
+                { label: "電2", cars: 8, kind: "stabling" },
+                { label: "電3", cars: 7, kind: "stabling" },
+                { label: "電4", cars: 7, kind: "stabling" }
+            ]}
+        ]
+    },
+
+    "京都": {
+        title: "京都駅 留置線・引上線 (梅小路)",
+        owner: "吹田総合車両所京都支所 (京都駅派出)",
+        leftLabel: "西大路・向日町方 / 山陰本線 梅小路京都西方",
+        rightLabel: "山科・大津方 / 奈良線 東福寺方",
+        note: "配線略図 (スクリーンショット(693).png・(680).png) のとおり、" +
+              "京都駅の南側に西向きの行き止まり線が4本並び、" +
+              "駅止まりの列車の折り返しと日中の留置に使う。" +
+              "その西に京都貨物 (旧梅小路駅) の側線群と梅小路運転区がある。" +
+              "本拠の吹田総合車両所京都支所 (向日町操) は3駅西にあり、" +
+              "運用の終わりにそこへ回送する。",
+        groups: [
+            { name: "京都駅 引上線 (下り方)", tracks: [
+                { label: "引1", cars: 12, kind: "siding" },
+                { label: "引2", cars: 12, kind: "siding" }
+            ]},
+            { name: "京都駅 留置線", tracks: [
+                { label: "留1", cars: 12, kind: "stabling" },
+                { label: "留2", cars: 8, kind: "stabling" }
+            ]},
+            { name: "京都貨物・梅小路 側線", tracks: [
+                { label: "梅1", cars: 12, kind: "stabling" },
+                { label: "梅2", cars: 8, kind: "stabling" },
+                { label: "梅洗浄", cars: 8, kind: "wash" }
+            ]}
+        ]
+    },
+
     "草津": {
         title: "草津駅 電留線",
         owner: "網干総合車両所宮原支所",
@@ -299,7 +397,19 @@ const DEPOT_LAYOUTS = {
                 { label: "電2", cars: 8, kind: "stabling" }
             ]},
             { name: "草津線 待避線", tracks: [
-                { label: "待1", cars: 8, kind: "siding" }
+                { label: "待1", cars: 8, kind: "siding" },
+                { label: "待2", cars: 8, kind: "siding" }
+            ]},
+            /* ★配線略図 (スクリーンショット(679).png / (692).png) のとおり、
+               草津は草津線が分かれる2面4線の駅で、下り線の南側に
+               側線が並ぶ。明石の207系・321系も琵琶湖線の普通で
+               草津まで来るため (js/06-fleet.js の FLEET_BASES)、
+               図の留置線に入りきらない編成が6割を超えていた。 */
+            { name: "駅構内 側線", tracks: [
+                { label: "構1", cars: 12, kind: "siding" },
+                { label: "構2", cars: 8, kind: "siding" },
+                { label: "構3", cars: 8, kind: "siding" },
+                { label: "構4", cars: 7, kind: "siding" }
             ]}
         ]
     },
@@ -325,7 +435,26 @@ const DEPOT_LAYOUTS = {
                 { label: "下4", cars: 8, kind: "stabling" }
             ]},
             { name: "入出区線", tracks: [
-                { label: "入出区", cars: 12, kind: "siding" }
+                { label: "入出区1", cars: 12, kind: "siding" },
+                { label: "入出区2", cars: 12, kind: "siding" }
+            ]},
+            /* ★配線略図 (スクリーンショット(691).png) のとおり、野洲は
+               琵琶湖線でいちばん大きな電留線群を持ち、櫛状に多くの線が並ぶ。
+               明石の207系・321系も琵琶湖線の普通で野洲まで来るため
+               (js/06-fleet.js の FLEET_BASES)、図の留置線に入りきらない
+               編成が半分近くになっていた。図にある線を書き起こして足す。 */
+            { name: "電留線 (中群)", tracks: [
+                { label: "中1", cars: 12, kind: "stabling" },
+                { label: "中2", cars: 12, kind: "stabling" },
+                { label: "中3", cars: 12, kind: "stabling" },
+                { label: "中4", cars: 8, kind: "stabling" },
+                { label: "中5", cars: 8, kind: "stabling" },
+                { label: "中6", cars: 7, kind: "stabling" }
+            ]},
+            { name: "検修庫・洗浄線", tracks: [
+                { label: "検1", cars: 8, kind: "shed" },
+                { label: "検2", cars: 8, kind: "shed" },
+                { label: "洗浄", cars: 12, kind: "wash" }
             ]}
         ]
     },
@@ -410,8 +539,23 @@ const DEPOT_LAYOUTS = {
                 { label: "電6", cars: 4, kind: "stabling" }
             ]},
             { name: "北陸線側 留置線", tracks: [
-                { label: "北1", cars: 8, kind: "stabling" },
-                { label: "北2", cars: 4, kind: "stabling" }
+                { label: "北1", cars: 12, kind: "stabling" },
+                { label: "北2", cars: 8, kind: "stabling" },
+                { label: "北3", cars: 8, kind: "stabling" },
+                { label: "北4", cars: 4, kind: "stabling" }
+            ]},
+            /* ★配線略図 (スクリーンショット(690).png) のとおり、米原は
+               東海道線・北陸線・新幹線に囲まれた広い構内で、
+               駅の北側にも側線が並ぶ。
+               明石の207系・321系も琵琶湖線の普通で米原まで来るため
+               (js/06-fleet.js の FLEET_BASES)、図の留置線に入りきらない
+               編成が6割を超えていた。図にある側線を書き起こして足す。 */
+            { name: "駅構内 側線", tracks: [
+                { label: "構1", cars: 12, kind: "siding" },
+                { label: "構2", cars: 12, kind: "siding" },
+                { label: "構3", cars: 8, kind: "siding" },
+                { label: "構4", cars: 8, kind: "siding" },
+                { label: "洗浄", cars: 8, kind: "wash" }
             ]}
         ]
     }

@@ -44,6 +44,29 @@ const SOURCES = USE_ORIG
     ? [path.join(ROOT, 'tools', 'baseline', 'original.js')]
     : SRC_NAMES.map(n => path.join(ROOT, 'js', n));
 
+/* ------------------------------------------------------------------ 乱数の固定
+
+   シミュレーターには乱数が入っているので、同じコードでも走らせるたびに
+   結果が変わる。実測すると「1分以上動けない列車の割合」は、同じコードで
+   9.9% 〜 22.0% まで振れた (人身事故が起きた回で跳ねる)。
+   調整の前後を比べるには、同じ1日を走らせる必要がある。
+
+       node tools/harness.js --seed=20260922 tools/check_convoy.js
+
+   ★ソースを読み込む前に差し替えること。js/39-boot.js は読み込みの時点で
+     GameSystem と Spawner を作り、その中で乱数を使っている。
+     読み込み後に差し替えても、そこだけ毎回変わってしまう。 */
+const SEED_ARG = process.argv.find(a => a.indexOf('--seed') === 0);
+if (SEED_ARG) {
+    let a = (parseInt(SEED_ARG.split('=')[1], 10) || 1) >>> 0;
+    Math.random = function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 // ------------------------------------------------------------------ DOM スタブ
 function makeCtx() {
     const noop = () => {};
@@ -197,7 +220,8 @@ globalThis.__run = function (seconds, onTick) {
 globalThis.__api = { game, Train, Vehicle, CONFIG, DEPOTS, STATIONS, STATION_MAP, EXCEL_VEHICLES };
 `, ctxObj, { filename: 'harness-bootstrap.js' });
 
-const script = process.argv.slice(2).filter(a => a !== '--orig' && a !== '--tid')[0];
+const script = process.argv.slice(2)
+    .filter(a => a !== '--orig' && a !== '--tid' && a.indexOf('--seed') !== 0)[0];
 if (!script) {
     console.log('読み込み成功: ' + SOURCES.length + ' ファイル' + (USE_ORIG ? ' (原本)' : ''));
     process.exit(0);
