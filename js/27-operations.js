@@ -784,6 +784,18 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     if (h >= 22.0 || h < 4.5) return false;
     // 大きく遅れている列車は運用を切って車両所へ戻す
     if (train.delayTime > 1800) return false;
+    /* ★その線区のその種別が目安を大きく（3割）超えているときは折り返さない。
+
+     終端に着いた列車は nextAction="depot" でもここを通るので
+     （js/15-train-depot.js の tryConvertDeadhead がまず折り返しを試す）、
+     本数の目安（TT_ACTIVE_BUDGET）がまったく効かない経路に
+     なっていた。実測では JR東西線の普通が目安10本に対して
+     24.7本まで増え、京橋〜放出の1線しかない区間が飽和して
+     尼崎経由で本線の下りまで止まっていた。
+     ただし「折り返した先に続く列車がいない」ときは
+     区間が空っぽになるので、これまでどおり折り返す。 */
+    if (ttOverBudget(this.game, ttLineOf(train), train.type, 1.3) &&
+        !ttStillNeeded(this.game, train, stName)) return false;
     // 回送・貨物・特急はここでは扱わない
     if (["回送", "貨物", "特急"].includes(train.type)) return false;
 
@@ -845,6 +857,9 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
        4番・5番だけにつながっている (js/03-stations.js の
        canTurnBackOnPlatform)。折り返せない駅では車両所へ回送する。 */
     if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
+    /* ★実物の配線で方転できない駅では折り返さない (js/03-stations.js の canReverseAt)。
+       車両所へ回送するか、運用を終える。 */
+    if (!canReverseAt(stName)) return false;
 
     const inPlace = !globalThis.__TB_OFF &&
                     canTurnBackOnPlatform(stName, train.trackId, train.lane, newTrackId) &&

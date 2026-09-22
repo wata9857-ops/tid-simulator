@@ -172,7 +172,8 @@ class GameSystem {
                 depot.trains.forEach(t => {
                     if (t !== reserveTrain && t.timer > maxTimer) maxTimer = t.timer;
                 });
-                reserveTrain.timer = Math.max(300 + Math.random() * 180, maxTimer + 180);
+                // ★待ち時間の上限 (js/14-train-turnback.js と同じ理由)
+                reserveTrain.timer = Math.max(300 + Math.random() * 180, Math.min(maxTimer + 120, 660));
                 
                 return true; 
             }

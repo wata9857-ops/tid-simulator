@@ -200,7 +200,8 @@ class Train {
                     if (t.timer > maxTimer) maxTimer = t.timer;
                 });
                 // ★修正: 出区前のもう少し早い段階から表示するため、基本の待機時間を 5〜8分(300〜480秒) に延ばす
-                this.timer = Math.max(300 + Math.random() * 180, maxTimer + 180); 
+                // ★待ち時間の上限 (js/14-train-turnback.js と同じ理由)
+                this.timer = Math.max(300 + Math.random() * 180, Math.min(maxTimer + 120, 660)); 
                 
                 this.depotOutConfig = { type: this.type, dest: this.dest, trainNo: this.trainNo,
                                         dir: this.dir, dutyName: this.dutyName };
@@ -584,6 +585,27 @@ class Train {
                         const aheadBlk = fwdBlks[this.currBlockIndex + this.dir];
                         if (aheadBlk && aheadBlk.x === -1000) this.checkLogicUpdates();
                         if (this.state === "running") return;   // 転線できたら次のTickで走らせる
+
+                        /* ★転線もできず前方に線路が無いなら、ここが線区の端。
+                           終点扱いにして運用を終える (js/12-train-move.js の
+                           endOfLineStop)。以前はここで checkHold が
+                           「前が塞がっている」と見て抑止を続けたため、
+                           放出・新三田に列車が溜まり、尼崎から本線の下りまで
+                           詰まりが波及していた。
+
+                           山科のように「転線すれば先へ進める」場所で
+                           打ち切らないよう、
+                             ・自分の終点に着いている
+                             ・または前方に線路が無いまま10分以上動けていない
+                           のどちらかに限る。 */
+                        if (aheadBlk && aheadBlk.x === -1000) {
+                            const hereName = blockStationName(blks[this.currBlockIndex]);
+                            const atDest = hereName && (hereName === this.dest ||
+                                                        STATION_MAP[this.dest] === undefined);
+                            if (atDest || this.stuckTime > 600) {
+                                if (this.endOfLineStop()) return;
+                            }
+                        }
                     }
 
                     // 修正: 常に true を渡し、ホールド状態でもしっかり間隔チェックを継続させる
@@ -618,9 +640,17 @@ class Train {
                                        運用に入れることが条件。
                                        (例: 東西線直通の207系が、打ち切りによって
                                         本線の姫路口の運用に化けてしまうのを防ぐ) */
+                                    /* ★実物の配線で方転できる駅だけ。
+                                       SWITCHABLE_STATIONS / OVERTAKE_STATIONS は
+                                       「転線できる駅」「待避できる駅」の表であって
+                                       「向きを変えられる駅」ではない。
+                                       これを条件にしていたため、長岡京のように
+                                       上下をつなぐ渡り線も引上線も無い駅で
+                                       折り返しが発生していた。
+                                       方転できない駅では折り返さず、そのまま
+                                       抑止して待つ (下の遅延加算に進む)。 */
                                     const canTurnHere = isRealStationBlock(cb) &&
-                                        (SWITCHABLE_STATIONS.includes(turnName) ||
-                                         OVERTAKE_STATIONS.includes(turnName)) &&
+                                        canReverseAt(turnName) &&
                                         this.game.fleet.canServe(this.vehicles, turnName, this.type,
                                             this.trackId, turnName, this.dutyName);
                                     if (congestedTrains >= 3 && canTurnHere && Math.random() < 0.1) {

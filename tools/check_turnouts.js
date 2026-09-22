@@ -98,20 +98,23 @@ const REF = {
     '須磨海浜公園': { none: true, src: '704 島式1面2線' },
     '鷹取':   { cross: 0, stubs: 1, src: '704 神戸貨物ターミナルは須磨側の下' },
     '新長田': { none: true, src: '704 相対式2面2線' },
-    '兵庫':   { cross: 0, stubs: 1, src: '704 和田岬線は上へ (和田岬は南)' },
+    '兵庫':   { cross: 2, pairs: [['Down_Out', 'Down_In', 'l', 'R'], ['Up_In', 'Up_Out', 'r', 'R']],
+                stubs: 1, src: '704 新長田側に片渡り2つ。上下はつながらない。和田岬線は上へ' },
     '垂水':   { none: true, src: '705 相対式2面2線 (電車線)' },
     '塩屋':   { none: true, src: '705 相対式2面2線 (電車線)' },
     '神戸':   { cross: 2, pairs: [['Down_In', 'Up_In', 'l', 'L'], ['Up_In', 'Up_Out', 'r', 'L']],
                 src: '704 元町側に片渡り2つ。下り内↔下り外 は無い' },
     '三ノ宮': { none: true, src: '698 島式2面4線。渡り線なし' },
     '元町':   { none: true, src: '698 相対式2面2線' },
-    '摩耶':   { none: true, src: '698 島式1面2線＋下り待避線 (渡り線は無い)' },
+    '摩耶':   { cross: 2, pairs: [['Down_In', 'Up_In', 'r', 'R'], ['Up_In', 'Up_Out', 'r', 'R']],
+                src: '698 島式1面2線 (内側線のあいだ)。灘側に片渡り2つ' },
     '灘':     { cross: 2, pairs: [['Down_In', 'Up_In', 'l', 'L'], ['Down_In', 'Up_In', 'x', 'R']],
                 src: '698 電車線どうしの渡り線が両側に' },
 
     // ================================ 東海道本線 (JR神戸線)  画像(698)
-    '芦屋':       { cross: 2, src: '698 島式2面4線＋待避線' },
-    'さくら夙川': { cross: 1, pairs: [['Down_In', 'Up_In', 'l', 'R']], src: '698 島式1面2線' },
+    '芦屋':       { cross: 3, pairs: [['Down_In', 'Up_In', 'r', 'L']],
+                    src: '698 島式2面4線＋待避線。大阪側のどに 下り内↔上り内 の片渡り' },
+    'さくら夙川': { none: true, src: '698 島式1面2線。神戸方の渡り線は芦屋ののど' },
     '甲南山手':   { none: true, src: '698 相対式2面2線' },
     '摂津本山':   { none: true, src: '698 相対式2面2線' },
     '住吉':       { none: true, src: '698 相対式2面2線' },
@@ -128,7 +131,8 @@ const REF = {
     '大阪':   { cross: 2, pairs: [['Up_Out', 'Up_In'], ['Down_In', 'Down_Out']], stubs: 2,
                 src: '697 環状線は天満方=左・福島方=右、どちらも上' },
     '新大阪': { cross: 2, stubs: 2, src: '697 おおさか東線は東淀川側の上' },
-    '吹田':   { cross: 0, junctions: 2, stubs: 1, src: '696 貨物ターミナルは岸辺側の下' },
+    '吹田':   { cross: 1, pairs: [['Down_In', 'Up_In', 'x', 'R']], junctions: 2, stubs: 1,
+                src: '696 東淀川側に 下り内↔上り内 の両渡り。貨物ターミナルは岸辺側の下' },
     '岸辺':   { cross: 0, stubs: 1, src: '696 吹田総合車両所は吹田側の下' },
     '千里丘': { none: true, src: '696 相対式2面2線' },
     '東淀川': { none: true, src: '697 相対式2面2線' },
@@ -239,19 +243,24 @@ const REF = {
     '放出':       { cross: 1, stubs: 3, src: '712 おおさか東線・片町線・電留線はすべて徳庵側' }
 };
 
-/* 実物の配線では方転も待避もできないのに、シミュレーターが
-   折り返し・待避に使っている駅。配線略図で確かめた事実として残す。
-   (線路そのものを直すと運転本数が変わるので、ここでは記録だけ) */
 /* 配線略図では図の端で切れていて読み切れなかった駅。
    正直に「未確認」として残す (REF に入れない)。 */
 const NOT_READ = {
     '道場': 'スクリーンショット(709).png の右端で切れており、(710) は三田から始まる'
 };
 
+/* 実物の配線では方転できないのに SWITCHABLE_STATIONS / OVERTAKE_STATIONS に
+   入っている駅。この2つは「転線できる駅」「待避できる駅」の表なので、
+   入っていること自体は誤りではない。
+   折り返しを作るかどうかは canReverseAt() が決める
+   (js/03-stations.js / js/14-train-turnback.js)。 */
 const KNOWN_NO_REVERSE = {
-    '西宮':       '相対式2面2線＋外側線の待避線のみ。上下をつなぐ渡り線が無い (画像698)',
+    '長岡京':     '下り外↔下り内 と 上り内↔上り外 の片渡りだけ (画像694)',
+    '西宮':       '外側線の待避線への転てつ器だけ。上下をつなぐ渡り線が無い (画像698)',
     'おごと温泉': '相対式2面2線。渡り線も待避線も無い (画像703)',
-    '川西池田':   '相対式2面2線。渡り線が無い (画像709)'
+    '川西池田':   '相対式2面2線。渡り線が無い (画像709)',
+    '向日町':     '同じ向きどうしの渡り線だけ。折り返しは向日町操へ入る (画像694)',
+    '茨木':       '島式2面4線＋上下の待避線。上下をつなぐ渡り線が無い (画像695)'
 };
 
 
@@ -348,9 +357,67 @@ head('折り返す駅に方転できる設備があるか');
     ok('折り返す駅はすべて渡り線か引上線を持つ', bad.length === 0,
        bad.length + '駅: ' + bad.join(' '));
     const known = Object.keys(KNOWN_NO_REVERSE);
-    console.log('  ※実物の配線では方転できないのに折り返しに使っている駅 ' +
-                known.length + '駅:');
+    console.log('  ※転線・待避はできるが方転はできない駅 ' + known.length + '駅' +
+                ' (canReverseAt() が折り返しを止める):');
     known.forEach(k => console.log('      ' + k + ' — ' + KNOWN_NO_REVERSE[k]));
+}
+
+// ------------------------------------------------------------------ 6b. 方転できる駅
+head('方転できる駅の判定が配線と合っているか');
+{
+    /* canReverseAt() は「上り側と下り側をつなぐ渡り線」「引上線」「車両基地」の
+       どれかを持つ駅だけを true にする。ここでは
+         ・同じ向きどうしの渡り線しか無い駅を true にしていないか
+         ・配線略図で確かめた「できる駅」を false にしていないか
+       の両方を見る。 */
+    const dirOf = (t) => /^Up_|_Up$/.test(t) ? 1 : (/^Down_|_Down$/.test(t) ? -1 : 0);
+    const bad = [];
+
+    /* (1) 線路の定義 (js/03-stations.js の STATION_REVERSE_BY_CROSSOVER) と
+           線路図の描画データ (js/40-tid-theme.js の TID_JUNCTIONS) が
+           同じ内容か。
+           ★方転できるかの判定は旅客向け画面 (index.html) でも要るので、
+             描画データではなく線路の定義ファイル側を見るようにした。
+             2つが食い違うと、画面と判定がずれるのでここで見張る。 */
+    for (const st in TID_JUNCTIONS) {
+        const cs = TID_JUNCTIONS[st].crossovers || [];
+        const linked = cs.some(c => dirOf(c[0]) * dirOf(c[1]) < 0);
+        if (linked && !STATION_REVERSE_BY_CROSSOVER[st]) {
+            bad.push(st + ' 線路図には上下をつなぐ渡り線があるが、線路の定義に無い');
+        }
+    }
+    for (const st in STATION_REVERSE_BY_CROSSOVER) {
+        const cs = (TID_JUNCTIONS[st] || {}).crossovers || [];
+        const linked = cs.some(c => dirOf(c[0]) * dirOf(c[1]) < 0);
+        if (!linked) bad.push(st + ' 線路の定義にあるが、線路図に上下をつなぐ渡り線が無い');
+        const n1 = STATION_REVERSE_BY_CROSSOVER[st].length;
+        const n2 = cs.filter(c => dirOf(c[0]) * dirOf(c[1]) < 0).length;
+        if (n1 !== n2) bad.push(st + ' 上下をつなぐ渡り線の数 定義=' + n1 + ' 線路図=' + n2);
+    }
+    ok('線路の定義と線路図で、上下をつなぐ渡り線が一致する', bad.length === 0, bad.join(' / '));
+
+    // (2) 実物で方転できないと確かめた駅が false になっているか
+    const wrong = Object.keys(STATION_NO_REVERSE_NOTE).filter(st => canReverseAt(st));
+    ok('方転できないと確かめた駅が false になっている', wrong.length === 0,
+       wrong.length ? (wrong.join(' ') + ' が true') : (Object.keys(STATION_NO_REVERSE_NOTE).length + '駅'));
+    Object.keys(STATION_NO_REVERSE_NOTE).forEach(k =>
+        console.log('      ' + k + ' — ' + STATION_NO_REVERSE_NOTE[k]));
+
+    // (3) 引上線・車両基地で方転できる駅が true になっているか
+    const musts = Object.keys(STATION_REVERSE_BY_DRAWUP).concat(['吹田', '芦屋', '須磨', '神戸',
+        '西明石', '草津', '尼崎', '高槻', '放出', '京橋', '塚口', '宝塚', '新三田', '姫路', '米原']);
+    const miss = musts.filter(st => !canReverseAt(st));
+    ok('引上線・渡り線を確かめた駅はすべて方転できる', miss.length === 0, miss.join(' '));
+    console.log('      吹田 … 下り内↔上り内の両渡り (画像696)');
+    console.log('      高槻 … 京都方の内側線のあいだの引上線2本 (画像695)');
+
+    // (4) 方転できる駅の数
+    const all = STATIONS.map(x => x.name)
+        .concat(Object.values(KOSEI_STATIONS_MAP))
+        .concat(Object.values(FUKUCHI_STATIONS_MAP))
+        .concat(Object.values(TOZAI_STATIONS_MAP));
+    const rev = all.filter(canReverseAt);
+    console.log('  方転できる駅: ' + rev.length + ' / 全 ' + all.length + ' 駅');
 }
 
 // ------------------------------------------------------------------ 7. 配線略図との照合

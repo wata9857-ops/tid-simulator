@@ -278,7 +278,15 @@ Train.prototype.executeTurnBack = function () {
                 if (t.timer > maxTimer) maxTimer = t.timer;
             });
             // ★修正: 出区前の表示時間を長く確保するため、最低5分(300秒)留置。先客がいればその後ろ(+180秒)。
-            this.timer = Math.max(300, maxTimer + 180); 
+            /* ★出区待ちの列に並ばせるが、待ち時間に上限をつける。
+               以前は「先客の待ち時間 + 180秒」と累み上げていたので、
+               6本並ぶと最後の1本は20分待ちになっていた。
+               放出の電留線が JR東西線 下りの主な供給源になっている
+               時間帯には、下りが 2本/時 しか出せなくなっていた
+               (実際の時刻表は 8本/時)。
+               線路が空くまで待つのは checkHold が受け持つので、
+               出区の間隔は実際の電留線と同じ 2分程度でよい。 */
+            this.timer = Math.max(300, Math.min(maxTimer + 120, 660)); 
             
             depotAdd(stName, this);   // ★二重登録を防ぐためヘルパー経由にする
             return;
@@ -439,6 +447,59 @@ Train.prototype.executeTurnBack = function () {
                     return; 
                 }
             }
+        }
+
+        /* ================================================== 方転できる駅かの確認
+
+           ★ここが最後の砦。定時の終着でも、遅れの回復でも、詰まりの緩和でも、
+             折り返しは必ずこの関数を通る。実物の配線で向きを変えられない駅
+             (js/03-stations.js の canReverseAt) では折り返さない。
+
+             以前は SWITCHABLE_STATIONS / OVERTAKE_STATIONS に入っているかで
+             判断していたが、これは「転線できる駅」「待避できる駅」の表で、
+             上下をつなぐ渡り線も引上線も無い 長岡京・西宮・向日町・茨木・
+             川西池田・おごと温泉 も入っている。そのため遅れた列車が
+             長岡京で勝手に折り返していた (利用者の指摘)。
+
+           代わりの扱い (実際の運転整理と同じ順)
+             1. その駅に留置場があれば入区して運用を終える
+             2. 無ければ、前方でいちばん近い「方転できる駅」まで延長運転する
+             3. それも無ければ車両所へ回送する / 運用を終える          */
+        if (!canReverseAt(stName)) {
+            const hh = (this.game.currentTime / 3600) % 24;
+            const dep = DEPOTS[stName];
+            if (this.type !== "貨物" && this.type !== "特急" &&
+                dep && dep.trains.length < dep.capacity) {
+                this.game.ui.updateBanner(
+                    `【運転整理】${stName}駅は方向を変えられない配線のため、` +
+                    `${this.trainNo} は折り返さず入区します。`, "banner-orange");
+                this.enterDepot(stName);
+                return;
+            }
+            /* ★延長する先の区間に、いまの編成で入れることも条件。
+               宜原の223系を北陸線へ延長してしまうなど、
+               編成の運用規則 (js/24-service-rules.js) を破らないようにする。 */
+            let ahead = nextReversibleAhead(stName, this.dir);
+            if (ahead && !this.game.fleet.canServe(this.vehicles, stName, this.type,
+                                                   this.trackId, ahead, this.dutyName)) {
+                ahead = null;
+            }
+            if (ahead && hh >= 4.0 && hh < 22.75) {
+                const oldNo = this.trainNo;
+                this.dest = ahead;
+                this.nextAction = "turnback";
+                this.isFinalStop = false;
+                this.hasStoppedAtCurrent = false;
+                this.state = "running";
+                this.timer = 15;
+                this.updateKoseiRoute();
+                this.game.ui.updateBanner(
+                    `【運転整理】${stName}駅は方向を変えられない配線のため、` +
+                    `${oldNo} は折り返さず ${ahead}まで延長運転します。`, "banner-orange");
+                return;
+            }
+            if (!this.tryConvertDeadhead(stName)) this.remove();
+            return;
         }
 
         const newDir = this.dir * -1;

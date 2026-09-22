@@ -243,11 +243,21 @@ function ttLineOf(t) {
 }
 
 /** いま走っている本数 (線区・種別ごと)。line に "branch" を渡すと3線区の合計。 */
-function ttActiveCount(game, line, type) {
+/**
+ * その線区・その種別の在線本数。
+ *   dir を渡すと、その向きだけを数える。
+ *
+ * ★向きを分けて数えられるようにした理由
+ *   分岐線は片方向だけが詰まることがある。線区ごとの合計だけを
+ *   見ていると、上りが詰まって在線が目安を超えたときに
+ *   下りの始発まで止まり、「JR東西線 下り 0本/時」になっていた。
+ */
+function ttActiveCount(game, line, type, dir) {
     let n = 0;
     for (const t of game.trains) {
         if (t.state === "finished" || t.state === "in_depot") continue;
         if (t.type !== type) continue;
+        if (dir !== undefined && t.dir !== dir) continue;
         const l = ttLineOf(t);
         if (line === "branch") { if (l === "main") continue; }
         else if (l !== line) continue;
@@ -266,10 +276,17 @@ function ttActiveCount(game, line, type) {
  * 埋められず、10駅以上の空きがそのまま残ってしまう。
  * 実際のダイヤでも、間隔が開いたときは臨時に1本入れる。
  */
-function ttOverBudget(game, line, type, allow) {
-    const b = (TT_ACTIVE_BUDGET[line] || {})[type];
+/**
+ * その線区のその種別が本数の目安を超えているか。
+ *   allow … 目安の何倍で見るか (省略したら 1.0)
+ *   dir   … 渡すとその向きだけを数え、目安も半分で見る
+ *           (TT_ACTIVE_BUDGET の値は上下あわせた本数)
+ */
+function ttOverBudget(game, line, type, allow, dir) {
+    let b = (TT_ACTIVE_BUDGET[line] || {})[type];
     if (b === undefined) return false;
-    return ttActiveCount(game, line, type) >= b * (allow || 1.0);
+    if (dir !== undefined) b = b / 2;
+    return ttActiveCount(game, line, type, dir) >= b * (allow || 1.0);
 }
 
 /**

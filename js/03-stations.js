@@ -87,10 +87,15 @@ const MAINLINE_EAST_OF_AMAGASAKI = ["大阪", "新大阪", "東淀川", "吹田"
 const FUKUCHI_THROUGH_DESTS = ["塚口", "新三田", "三田", "道場", "宝塚",
                                "篠山口", "福知山", "豊岡", "城崎温泉"];
 
+/* 内側線と外側線を行き来できる駅 (転線できる駅)。
+   ★「方向を変えられる駅」ではない。方転できるかは canReverseAt() で見る。
+     この表には 長岡京・西宮・向日町・茨木・川西池田 のように
+     同じ向きどうしの渡り線しか無い駅も入っている。 */
 const SWITCHABLE_STATIONS = ["新三田", "宝塚", "川西池田", "塚口", "放出", "京橋",
     "京都", "向日町", "長岡京", "高槻", "茨木", "新大阪", "大阪", "尼崎", "芦屋", "西宮", "須磨", "大久保", "加古川", "宝殿", "御着", "姫路", "西明石", "草津", "野洲", "米原", "長浜", "近江塩津", "敦賀",
     "堅田", "近江舞子", "近江今津" // ★追加
 ];
+/* 待避 (追い抜き) ができる駅。これも方転できるかとは別。 */
 const OVERTAKE_STATIONS = ["新三田", "道場", "宝塚", "川西池田", "塚口", "放出","高槻","大阪","尼崎","芦屋","須磨","大久保","西明石","加古川", "宝殿", "草津", "野洲", "河瀬", "安土", "近江八幡", "能登川", "米原", "長浜", "近江塩津", "敦賀", "大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原"]; STATION_MAP = {};
 STATIONS.forEach((s,i) => {
     STATION_MAP[s.name] = i;
@@ -1016,16 +1021,25 @@ const STATION_NO_PLATFORM_TURNBACK = ["大阪", "新大阪"];
  */
 function canTurnBackOnPlatform(stName, trackId, lane, toTrackId) {
     if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
+    /* ★そもそも方転できない駅では、ホーム折り返しも構内折り返しもできない
+       (js/03-stations.js の canReverseAt)。 */
+    if (!canReverseAt(stName)) return false;
 
-    // --- 渡り線で反対方向の線路につながっているか
-    if (toTrackId && typeof TID_JUNCTIONS !== "undefined") {
-        const def = TID_JUNCTIONS[stName];
-        if (def && def.crossovers) {
-            const linked = def.crossovers.some(c =>
-                (c[0] === trackId && c[1] === toTrackId) ||
-                (c[1] === trackId && c[0] === toTrackId));
-            if (linked) return true;
-        }
+    /* --- 渡り線で反対方向の線路につながっているか
+
+       ★以前は線路図の描画データ (js/40-tid-theme.js の TID_JUNCTIONS) を
+         見ていたが、あのファイルは Super-TID の画面 (tid.html) でしか
+         読み込まれない。そのため旅客向けの画面 (index.html) と
+         Super-TID で折り返しの可否が違うというおかしな状態になっていた
+         (検証も --tid を付けるかで結果が変わっていた)。
+         上下をつなぐ渡り線は配線の事実なので、このファイルの
+         STATION_REVERSE_BY_CROSSOVER から見る。 */
+    if (toTrackId) {
+        const pairs = STATION_REVERSE_BY_CROSSOVER[stName] || [];
+        const linked = pairs.some(c =>
+            (c[0] === trackId && c[1] === toTrackId) ||
+            (c[1] === trackId && c[0] === toTrackId));
+        if (linked) return true;
     }
 
     // --- 引上線につながる番線か
@@ -1036,6 +1050,166 @@ function canTurnBackOnPlatform(stName, trackId, lane, toTrackId) {
        (tools/check_turnouts.js が「折り返す駅はすべて渡り線か引上線を持つ」
         ことを見張っているので、書き起こしの進んだ駅では上で決まる) */
     return true;
+}
+
+
+/* ------------------------------------------------------------------ 方転できる駅
+
+   「その駅で列車の向きを物理的に変えられるか」の表。
+   根拠は同梱の配線略図 (スクリーンショット(690)〜(712).png) の読み取りで、
+   README の「転てつ器（渡り線・分岐・側線）の総点検」と同じものである。
+
+   方転できるのは、次のどれかを持つ駅だけ。
+     1. 上り側の線路と下り側の線路をつなぐ渡り線
+        複線区間なら上下本線をつなぐ渡り線。
+        複々線区間なら「下り内側線と上り内側線をつなぐ渡り線」。
+        ★同じ向きどうしの渡り線 (下り外↔下り内 など) では向きは変えられない。
+     2. 引上線 … 行き止まりの線に引き上げてから反対方向へ出る
+     3. 併設の車両基地 … 構内に入って方転する
+
+   ■ なぜ表を分けたか
+     以前は SWITCHABLE_STATIONS / OVERTAKE_STATIONS に入っているかどうかで
+     折り返しを作っていた。しかしこの2つは
+       SWITCHABLE_STATIONS … 内側線と外側線を行き来できる駅
+       OVERTAKE_STATIONS  … 待避 (追い抜き) ができる駅
+     の表であって、「向きを変えられる駅」ではない。
+     そのため 長岡京 (下り外↔下り内 と 上り内↔上り外 の渡り線しか無い) で、
+     遅れの回復のために自動で折り返しが発生していた。実物では不可能である。
+
+   ■ 「できる駅」を止めてしまわないこと
+     吹田は下り内側線と上り内側線をつなぐ両渡りを持つ (画像696)。
+     芦屋・摩耶・灘・神戸・須磨・西明石・草津・尼崎も電車線どうしの渡り線を持つ。
+     高槻は京都方の内側線のあいだに引上線2本を持つ (画像695)。
+     これらは方転できる駅として扱う。
+*/
+
+/** 線路IDの向き (1=上り / -1=下り / 0=不明) */
+function trackDirOf(trackId) {
+    if (!trackId) return 0;
+    if (/^Up_|_Up$/.test(trackId)) return 1;
+    if (/^Down_|_Down$/.test(trackId)) return -1;
+    return 0;
+}
+
+/* 上り側の線路と下り側の線路をつなぐ渡り線を持つ駅。
+   これがあると、構内で向きを変えて折り返せる。
+   配線略図 (スクリーンショット(690)〜(712).png) から読み取ったもので、
+   Super-TID の描画データ (js/40-tid-theme.js の TID_JUNCTIONS) と
+   同じ内容であることを tools/check_turnouts.js が照合している。
+
+   ★同じ向きどうしの渡り線 (下り外↔下り内 など) はここに入らない。
+     それでは向きを変えられないので、長岡京・向日町・茨木・兵庫・膳所などは
+     この表に無い。 */
+const STATION_REVERSE_BY_CROSSOVER = {
+    // ---- 山陽本線 (複線区間) … 上下本線をつなぐ渡り線
+    "姫路":     [["Up_Out", "Down_Out"]],
+    "御着":     [["Up_Out", "Down_Out"]],
+    "宝殿":     [["Up_Out", "Down_Out"]],
+    "加古川":   [["Up_Out", "Down_Out"]],
+    "東加古川": [["Up_Out", "Down_Out"]],
+    "土山":     [["Up_Out", "Down_Out"]],
+    "大久保":   [["Up_Out", "Down_Out"]],
+    // ---- 複々線区間 … 下り内側線 (電車線) と上り内側線をつなぐ渡り線
+    "西明石":   [["Up_In", "Down_In"]],
+    "須磨":     [["Down_In", "Up_In"]],
+    "摩耶":     [["Down_In", "Up_In"]],
+    "灘":       [["Down_In", "Up_In"], ["Down_In", "Up_In"]],
+    "神戸":     [["Down_In", "Up_In"]],
+    "芦屋":     [["Down_In", "Up_In"]],
+    "尼崎":     [["Down_In", "Up_In"]],
+    "吹田":     [["Down_In", "Up_In"]],
+    "草津":     [["Down_In", "Up_In"]],
+    // ---- 琵琶湖線・北陸本線 (複線区間)
+    "野洲":     [["Up_Out", "Down_Out"]],
+    "篠原":     [["Up_Out", "Down_Out"]],
+    "近江八幡": [["Up_Out", "Down_Out"]],
+    "安土":     [["Up_Out", "Down_Out"]],
+    "能登川":   [["Up_Out", "Down_Out"]],
+    "河瀬":     [["Up_Out", "Down_Out"]],
+    "彦根":     [["Up_Out", "Down_Out"]],
+    "米原":     [["Up_Out", "Down_Out"]],
+    "長浜":     [["Up_Out", "Down_Out"]],
+    "虎姫":     [["Up_Out", "Down_Out"]],
+    "高月":     [["Up_Out", "Down_Out"]],
+    "木ノ本":   [["Up_Out", "Down_Out"]],
+    "新疋田":   [["Up_Out", "Down_Out"]],
+    "近江塩津": [["Up_Out", "Down_Out"]],
+    "敦賀":     [["Up_Out", "Down_Out"]],
+    // ---- 湖西線
+    "大津京":   [["Kosei_Up", "Kosei_Down"]],
+    "堅田":     [["Kosei_Up", "Kosei_Down"]],
+    "和邇":     [["Kosei_Up", "Kosei_Down"]],
+    "近江舞子": [["Kosei_Up", "Kosei_Down"]],
+    "安曇川":   [["Kosei_Up", "Kosei_Down"]],
+    "近江今津": [["Kosei_Up", "Kosei_Down"]],
+    "永原":     [["Kosei_Up", "Kosei_Down"]],
+    // ---- JR宝塚線 (福知山線)
+    "塚口":     [["Fukuchi_Up", "Fukuchi_Down"], ["Fukuchi_Up", "Fukuchi_Down"]],
+    "宝塚":     [["Fukuchi_Up", "Fukuchi_Down"], ["Fukuchi_Up", "Fukuchi_Down"]],
+    "道場":     [["Fukuchi_Up", "Fukuchi_Down"]],
+    "新三田":   [["Fukuchi_Up", "Fukuchi_Down"]],
+    // ---- JR東西線・片町線
+    "京橋":     [["Tozai_Up", "Tozai_Down"]],
+    "放出":     [["Tozai_Up", "Tozai_Down"]]
+};
+
+/* 引上線・車両基地で方転できる駅。
+   渡り線では上下がつながっていないが、引き上げれば向きを変えられる。 */
+const STATION_REVERSE_BY_DRAWUP = {
+    "大阪":     "環状線ホームの西2本・東海道ホームの東西各1本の引上線 (画像697)。" +
+                "ホームでは方転できないので宮原まで引き上げる (STATION_NO_PLATFORM_TURNBACK)",
+    "新大阪":   "駅に引上線が無く、宮原操へ引き上げて方転する (画像697/699)",
+    "京都":     "駅の南側、4〜7番につながる引上線 (画像693/680)",
+    "尼崎":     "西側の引上線 (4番・5番につながる)。渡り線もある (画像698/711)",
+    "高槻":     "京都方、内側線のあいだの引上線2本。両渡りでつながる (画像695)",
+    "京橋":     "大阪城北詰方の引上線。渡り線もある (画像711)",
+    "鴫野":     "京橋方の引上線 (画像712)",
+    "向日町操": "吹田総合車両所京都支所。構内で方転する (画像694/681)",
+    "宮原操":   "網干総合車両所宮原支所。構内で方転する (画像699/683)"
+};
+
+/* 方転できない駅のうち、以前は折り返しに使っていたもの。
+   「なぜ使えないか」を残しておく (README とも対応)。 */
+const STATION_NO_REVERSE_NOTE = {
+    "長岡京":     "下り外↔下り内 と 上り内↔上り外 の片渡りだけ。上下はつながらない (画像694)",
+    "西宮":       "外側線の待避線への転てつ器だけ。上下をつなぐ渡り線が無い (画像698)",
+    "川西池田":   "相対式2面2線。渡り線が無い (画像709)",
+    "おごと温泉": "相対式2面2線。渡り線も待避線も無い (画像703)",
+    "向日町":     "島式2面4線。同じ向きどうしの渡り線だけ。折り返しは向日町操へ入る (画像694)",
+    "茨木":       "島式2面4線＋上下の待避線。上下をつなぐ渡り線が無い (画像695)"
+};
+
+/**
+ * その駅で列車の向きを物理的に変えられるか。
+ * 遅れの回復・詰まりの緩和が目的でも、false の駅で折り返してはいけない。
+ */
+function canReverseAt(stName) {
+    if (!stName) return false;
+    // 上り側と下り側をつなぐ渡り線があるか
+    if (STATION_REVERSE_BY_CROSSOVER[stName]) return true;
+    // 引上線・車両基地で方転できるか
+    if (STATION_REVERSE_BY_DRAWUP[stName]) return true;
+    // 進路の表 (STATION_ROUTES) に引上線があるか
+    if (typeof stationDrawUpTracks === "function" && stationDrawUpTracks(stName).length) return true;
+    // 併設の車両基地 (構内で方転できる)
+    if (typeof DEPOTS !== "undefined" && DEPOTS[stName]) return true;
+    return false;
+}
+
+/**
+ * いまの位置から進行方向の前方で、いちばん近い「方転できる駅」。
+ * 方転できない駅で折り返しを作らないための代わりの行先に使う。
+ * 見つからなければ null。
+ */
+function nextReversibleAhead(stName, dir) {
+    const here = STATION_MAP[stName];
+    if (here === undefined) return null;
+    for (let i = here + dir; i >= 0 && i < STATIONS.length; i += dir) {
+        const n = STATIONS[i].name;
+        if (STATIONS[i].isSeparateLine) continue;   // 向日町操などは本線の駅ではない
+        if (canReverseAt(n)) return n;
+    }
+    return null;
 }
 
 /** その番線から引上線へ入れるか */

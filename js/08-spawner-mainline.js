@@ -673,18 +673,36 @@ Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type, tr
     const amaIdx = STATION_MAP["尼崎"];
     const tid = trackId || "";
     const sIdx0 = STATION_MAP[startName];
+    /* ★分岐線がこんでいるときは、本線からの直通を入れない。
+
+       JR東西線の普通は目安 10本 (TT_ACTIVE_BUDGET) なのに、乱数の種に
+       よっては実測で 24.7本 まで増えていた。分岐線の生成側には目安が
+       あるが、本線の列車に「松井山手行き」などの行先を与える経路には
+       無かったためである。京橋〜放出は鴫野が片方向1線しかないので
+       すぐ飽和し、尼崎で本線と着発線を共有しているため、そこから
+       尼崎 → 大阪 → 新大阪 → 高槻 と本線の下りまで止まっていた。
+       すでに分岐線の中にいる列車は行先を変えない
+       (その線区から抜けられなくなる)。 */
+    const branchFull = (line) =>
+        (typeof ttOverBudget === "function") &&
+        ttOverBudget(this.game, line, type || "普通", 1.15);
+
     if (TOZAI_THROUGH_DESTS.includes(dest)) {
         // JR東西線へ直通するのは、西明石〜尼崎 の神戸線内から上ってきた列車。
         // 姫路など西明石より西からの直通は無い (207系/321系の走る範囲外)。
-        const okSide = TOZAI_PLACES.indexOf(startName) >= 0 ||
+        const inTozai = TOZAI_PLACES.indexOf(startName) >= 0 || tid.indexOf("Tozai") === 0;
+        const okSide = inTozai ||
                        (sIdx0 !== undefined && sIdx0 >= STATION_MAP["西明石"] && sIdx0 <= amaIdx);
+        if (!inTozai && branchFull("tozai")) return this.fallbackTerminal(dir, startName, trackId);
         return (dir === 1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
     }
     if (FUKUCHI_THROUGH_DESTS.includes(dest)) {
         // JR宝塚線へ直通するのは、高槻〜尼崎 の京都線内から下ってきた列車。
         // 琵琶湖線(草津・米原)からの直通は無い。
-        const okSide = FUKUCHI_PLACES.indexOf(startName) >= 0 ||
+        const inFuku = FUKUCHI_PLACES.indexOf(startName) >= 0 || tid.indexOf("Fukuchi") === 0;
+        const okSide = inFuku ||
                        (sIdx0 !== undefined && sIdx0 >= amaIdx && sIdx0 <= STATION_MAP["高槻"]);
+        if (!inFuku && branchFull("fukuchi")) return this.fallbackTerminal(dir, startName, trackId);
         return (dir === -1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
     }
 

@@ -247,7 +247,9 @@ Train.prototype.checkLocalThinning = function (stationName) {
 
                     if (this.dir === -1) {
                         // ★改善③: 行先候補を拡張し、到着予想時刻と上り列車の到達予測から最も安全に折り返せる駅を選択する
+                        // ★候補はすべて方転できる駅 (念のためここでも確かめる)
                         let candidates = ["大阪", "尼崎", "芦屋", "神戸", "須磨"].filter(st => {
+                            if (!canReverseAt(st)) return false;
                             let idx = STATION_MAP[st];
                             // 現在地より先(西)にあり、現在の目的地より手前(東)にある駅を候補とする
                             return idx !== undefined && idx < stIdx && (currentDestIdx === undefined || currentDestIdx < idx);
@@ -347,7 +349,8 @@ Train.prototype.checkCongestionAndAdjust = function (stationName) {
                 });
                 
                 // trainCountの条件を厳格化(10以上)、かつ30%の確率で発動
-                if (trainCount >= 10 && Math.random() < 0.3) {
+                // ★方転できる駅でしか間引き (折り返し) はできない
+                if (trainCount >= 10 && Math.random() < 0.3 && canReverseAt(stationName)) {
                     let oldDest = this.dest;
                     this.dest = stationName;
                     this.nextAction = "turnback"; 
@@ -578,6 +581,9 @@ Train.prototype.checkLateNightDestination = function () {
                 
                 let stInfo = STATIONS[stIdx];
                 if (!this.shouldStop(stInfo)) continue;
+                /* ★打ち切る駅は、方転できるか留置場があるかのどちらか。
+                   どちらも無い駅を終点にすると、実物では不可能な折り返しになる。 */
+                if (!canReverseAt(stName) && !DEPOTS[stName]) continue;
 
                 let b = cand;
                 let distToCand = (b.index - this.currBlockIndex) * this.dir;

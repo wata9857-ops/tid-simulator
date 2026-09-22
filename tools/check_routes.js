@@ -26,8 +26,16 @@ const HOURS = 18;
 
 // ------------------------------------------------------------------ 計測
 const bad = {
-    arrive: {}, depart: {}, platJump: {}, noReverse: {}, ghostTrack: {}, side: {}
+    arrive: {}, depart: {}, platJump: {}, noReverse: {}, ghostTrack: {}, side: {},
+    /* ★実物の配線で方転できない駅で折り返そうとしていないか
+       (js/03-stations.js の canReverseAt)。
+       長岡京・西宮・向日町・茨木・川西池田・おごと温泉 は、
+       上下をつなぐ渡り線も引上線も持たないので折り返せない。 */
+    cantReverse: {}
 };
+/* 方転できる駅で、ちゃんと折り返しが起きているかも数える
+   (「全部の駅で折り返しを止めてしまった」を見つけるため) */
+const revSeen = {};
 const count = (bag, key) => { bag[key] = (bag[key] || 0) + 1; };
 
 /* 列車ごとに「前のTickでどこの番線に居たか」を覚えて、
@@ -80,13 +88,28 @@ function probe() {
                 count(bad.platJump, st + ' ' + prev.lbl + ' → ' + (platformLabelOf(st, t.trackId, t.lane) || '?'));
             }
         }
-        prevAt[t.id] = { st: st, key: key, trackId: t.trackId,
+        prevAt[t.id] = { st: st, key: key, trackId: t.trackId, dir: t.dir,
                          lbl: platformLabelOf(st, t.trackId, t.lane) || '?' };
 
         // --- 5. 方転できない駅での折り返し
         if (t.turnbackTrack && !canTurnBackOnPlatform(st, t.trackId, t.lane, t.turnbackTrack)) {
             count(bad.noReverse, st + ' ' + (platformLabelOf(st, t.trackId, t.lane) || '?'));
         }
+        /* --- 5b. 実物の配線で方転できない駅での折り返し
+           ★state が 'turning_back' になった時点ではまだ折り返していない
+             (executeTurnBack がこれから「方転できるか」を見る)。
+             実際に折り返したかどうかは
+               ・その場で向きを変えた印 (turnbackTrack) が付いたか
+               ・同じ駅に居るまま向き (dir) が変わったか
+             で見る。 */
+        if (t.turnbackTrack && !canReverseAt(st)) {
+            count(bad.cantReverse, st + ' ' + t.trainNo + '(' + t.type + ') 同一ホーム折返');
+        }
+        if (prev && prev.st === st && prev.dir !== undefined && prev.dir !== t.dir &&
+            !canReverseAt(st)) {
+            count(bad.cantReverse, st + ' ' + t.trainNo + '(' + t.type + ') 構内折返');
+        }
+        if (t.turnbackTrack && canReverseAt(st)) count(revSeen, st);
 
         // --- 7. 走行線路の規則
         if (['新快速', '快速', '普通'].indexOf(t.type) >= 0 &&
@@ -132,6 +155,20 @@ head('方転できない駅での折り返し');
 {
     const r = report(bad.noReverse);
     ok('引上線・渡り線の無い所で向きを変えていない', r.total === 0, r.detail);
+}
+
+head('実物の配線で方転できない駅での折り返し');
+{
+    const keys = Object.keys(bad.cantReverse).sort((a, b) => bad.cantReverse[b] - bad.cantReverse[a]);
+    const total = keys.reduce((n, k) => n + bad.cantReverse[k], 0);
+    ok('上下をつなぐ渡り線も引上線も無い駅で折り返していない', total === 0,
+       total + '件  ' + keys.slice(0, 8).join(' / '));
+    /* 「できる駅」で折り返しが止まっていないことも確かめる。
+       吹田は下り内↔上り内の両渡りを持つので折り返せる (画像696)。 */
+    const rk = Object.keys(revSeen).sort((a, b) => revSeen[b] - revSeen[a]);
+    console.log('  方転できる駅での折り返し: ' + rk.length + '駅  ' +
+                rk.slice(0, 12).map(k => k + '×' + revSeen[k]).join(' '));
+    ok('方転できる駅では折り返しが起きている', rk.length >= 8, rk.length + '駅');
 }
 
 head('存在しない線路の走行');

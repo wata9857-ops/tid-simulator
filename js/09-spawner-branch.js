@@ -86,9 +86,50 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         /* ★線区ごとの目安で見る。以前は3線区の合計で見ていたので、
              湖西線だけが実際の2倍以上走っていても抑えられなかった。
              JR宝塚線と JR東西線は行先で分かれるので、両方に空きがあるかで見る。 */
-        const budget = (ty) => ty !== "普通" ||
-            !ttOverBudget(this.game, "fukuchi", "普通") ||
-            !ttOverBudget(this.game, "tozai", "普通");
+        /* ★本数の目安は線区ごと・種別ごとに見る (TT_ACTIVE_BUDGET)。
+           以前は
+               ty !== "普通" || !ttOverBudget(…,"fukuchi",…) || !ttOverBudget(…,"tozai",…)
+           と || でつないでいたため、
+             ・快速をまったく数えていない
+             ・宝塚線が目安を超えていても東西線に余裕があれば作り続ける
+           という状態だった。乱数の種によって宝塚線の在線が2倍以上になり、
+           線内が飽和して尼崎から本線の下りまで詰まる原因になっていた。 */
+        /* 本数の目安 (TT_ACTIVE_BUDGET) を線区ごと・種別ごとに見る。
+           以前は
+               ty !== "普通" || !ttOverBudget(…,"fukuchi",…) || !ttOverBudget(…,"tozai",…)
+           と || でつないでいたため、
+             ・快速をまったく数えていない
+             ・宝塚線が目安を超えていても東西線に余裕があれば作り続ける
+           という状態だった。乱数の種によって宝塚線の在線が2倍以上になり、
+           線内が飽和して尼崎から本線の下りまで詰まる原因になっていた。 */
+        const budget = (ty, line) => !ttOverBudget(this.game, line, ty);
+
+        /* ★その向きに列車がほとんどいないときは、目安を超えていても出す。
+           目安は上下あわせた在線本数なので、片方向が詰まって在線が
+           目安を超えると、反対向きの始発まで止まってしまう。
+           実測では乱数の種によって「JR東西線 下り 0本/時」になっていた。
+           実際の指令も、片方向が止まっていても反対向きの列車は出す。 */
+        const starved = (line, dir) =>
+            ttActiveCount(this.game, line, "普通", dir) +
+            ttActiveCount(this.game, line, "快速", dir) <= 1;
+
+        /* ★その線区の入口付近が詰まっているときは始発を出さない。
+           尼崎は本線・宝塚線・東西線が着発線を共有しているので、
+           分岐線に送り込みすぎると本線の下りまで止まってしまう。
+           前方3駅ぶんに1分以上動けない列車が2本以上いたら見送る。 */
+        const jammedAhead = (trackId, fromSt, dir) => {
+            const blks = this.game.trackMgr.blocks[trackId];
+            if (!blks) return false;
+            const b0 = blks.find(b => b.stationIdx === STATION_MAP[fromSt]);
+            if (!b0) return false;
+            let stuck = 0;
+            for (let k = 0; k <= UNITS_PER_STATION * 2; k++) {
+                const b = blks[b0.index + dir * k];
+                if (!b || b.x === -1000) break;
+                b.lanes.forEach(l => { if (l && l.stuckTime > 60) stuck++; });
+            }
+            return stuck >= 4;
+        };
         let timeFactor = 0.83; 
         if ((h >= 6.0 && h < 8.5) || (h >= 17 && h < 19.5)) {
             timeFactor = 0.42;  
@@ -130,7 +171,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 canSpawn = false;
             }
 
-            if (canSpawn && budget(type)) {
+            if (canSpawn && (budget(type, "fukuchi") || starved("fukuchi", 1)) && !jammedAhead("Fukuchi_Up", "新三田", 1)) {
                 this.game.addTrain({type:type, dir:1, trackId:"Fukuchi_Up", dest:dest, startName:"新三田", nextAction:"depot"});
                 this.nextFukuchiUp += (isRapid ? 700 : 500) * timeFactor;
             } else {
@@ -188,7 +229,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 }
             }
 
-            if (canSpawn && budget(type)) {
+            if (canSpawn && (budget(type, "tozai") || starved("tozai", -1)) && !jammedAhead("Tozai_Down", "放出", -1)) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Tozai_Down", dest:dest, startName:"放出", nextAction:"depot"});
                 this.nextTozaiDown += (type === "快速" ? 750 : 600) * timeFactor;
             } else {
@@ -224,7 +265,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 canSpawn = false;
             }
 
-            if (canSpawn && budget(type)) {
+            if (canSpawn && (budget(type, "fukuchi") || starved("fukuchi", -1)) && !jammedAhead("Fukuchi_Down", "尼崎", -1)) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Fukuchi_Down", dest:dest, startName:"尼崎", nextAction:"depot"});
                 this.nextFukuchiDown += (type === "快速" ? 620 : 430) * timeFactor;
             } else {
@@ -255,7 +296,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 canSpawn = false;
             }
 
-            if (canSpawn && budget(type)) {
+            if (canSpawn && (budget(type, "tozai") || starved("tozai", 1)) && !jammedAhead("Tozai_Up", "尼崎", 1)) {
                 this.game.addTrain({type:type, dir:1, trackId:"Tozai_Up", dest:dest, startName:"尼崎", nextAction:"depot"});
                 this.nextTozaiUp += (type === "快速" ? 750 : 600) * timeFactor;
             } else {

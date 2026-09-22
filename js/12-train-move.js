@@ -1,5 +1,34 @@
 /* このファイルは index.html から分割されたものです。
    Train: 進行(ブロック移動)と停車判定 */
+
+/**
+ * 線区の端 (前方が線路の無いプレースホルダ) に着いたときの終点扱い。
+ *
+ * ★以前は move() の中に書いてあり、しかも
+ *     if (this.state !== "stopped") { … }
+ *   という条件が付いていた。状態が "holding" のあいだ move() は
+ *   呼ばれないので、いちど抑止に入った列車は二度と終点扱いにならず、
+ *   放出・新三田のような線区の端に溜まり続けていた。
+ *   そこが詰まると線区いっぱいに列車が連なり、尼崎で着発線を共有している
+ *   本線の下りまで止まっていた (乱数の種による詰まりの崩壊の主因)。
+ *
+ * 戻り値: 終点扱いにしたら true
+ */
+Train.prototype.endOfLineStop = function () {
+    if (this.isFinalStop) return false;      // すでに終点扱い
+    const blks = this.game.trackMgr.blocks[this.trackId];
+    const here = blks ? blks[this.currBlockIndex] : null;
+    const endName = blockStationName(here);
+    this.turnbackTrack = null;
+    this.state = "stopped";
+    this.hasStoppedAtCurrent = true;
+    this.isFinalStop = true;
+    this.timer = 30;
+    this.stuckTime = 0;
+    this.dest = endName || this.dest;
+    if (!this.nextAction || this.nextAction === "turnback") this.nextAction = "depot";
+    return true;
+};
 Train.prototype.move = function () {
         const blks = this.game.trackMgr.blocks[this.trackId];
         const nextIdx = this.currBlockIndex + this.dir;
@@ -20,17 +49,7 @@ Train.prototype.move = function () {
            以前はここを素通りできてしまい、線路の無い場所を走り続ける
            列車が生まれていた。線区の端に着いたら、そこで運転を打ち切る。 */
         if (nextBlock.x === -1000) {
-            const here = blks[this.currBlockIndex];
-            this.turnbackTrack = null;
-            const endName = blockStationName(here);
-            if (this.state !== "stopped") {
-                this.state = "stopped";
-                this.hasStoppedAtCurrent = true;
-                this.isFinalStop = true;
-                this.timer = 30;
-                this.dest = endName || this.dest;
-                if (!this.nextAction || this.nextAction === "turnback") this.nextAction = "depot";
-            }
+            this.endOfLineStop();
             return;
         }
         let targetTrackId = this.trackId;
