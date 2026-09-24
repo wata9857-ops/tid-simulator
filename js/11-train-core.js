@@ -355,6 +355,9 @@ class Train {
             }
         }
 
+        // 指令の着発番線変更: すでにその駅に居るなら、その場で構内の転線をする
+        if (this.trackChangeReservation) this.applyTrackReservation();
+
         /* ★複々線 (西明石〜草津) の外に内側線は無い。
            線路データには全線ぶんの内側線ブロックがあるが、実際の線路は
            草津から東・西明石から西は複線なので、何かの経路で内側線に
@@ -730,6 +733,16 @@ class Train {
                             if (this.hasDeparted) {
                                 this.addBlockedDelay(blks);
                             }
+                            /* ★走行中 (running) のまま線区の端で止まった列車も終点扱いにする。
+                               以前は停車・抑止中の列車しか見ていなかったので、
+                               走りながら線区の端に着いた列車は checkHold に止められたまま
+                               いつまでも running で残り、後続を塞いでいた
+                               (放出を過ぎて四条畷方へ進んだ列車がこの形で動けなくなった)。 */
+                            if (this.lineEndAhead()) {
+                                const hn = blockStationName(blks[this.currBlockIndex]);
+                                const atDest = hn && (hn === this.dest || STATION_MAP[this.dest] === undefined);
+                                if (atDest || this.stuckTime > 300) this.endOfLineStop();
+                            }
                         } else {
                             this.stuckTime = 0;
                             this.forceStart = false; // ★移動が完了したら強制発車フラグを解除
@@ -750,6 +763,15 @@ class Train {
                 this.addHoldDelay();
             }
         }
+    }
+
+    /** 進行方向の前方が線区の端 (線路の無い区間) か */
+    lineEndAhead() {
+        const own = this.game.trackMgr.blocks[this.trackId];
+        const fwd = (this.turnbackTrack && this.game.trackMgr.blocks[this.turnbackTrack]) || own;
+        if (!fwd) return false;
+        const nb = fwd[this.currBlockIndex + this.dir];
+        return !nb || nb.x === -1000;
     }
 
     checkLogicUpdates() {
@@ -841,10 +863,9 @@ class Train {
             }
         }
 
-        if (this.trackChangeReservation && this.trackChangeReservation.status === "pending") {
-             const stName = blockStationName(blk);
-             if (stName === this.trackChangeReservation.stationName) this.attemptTrackSwitch(this.trackChangeReservation.targetTrackId);
-        }
+        /* 指令の着発番線変更は applyTrackReservation / reservedEntry
+           (js/13-train-hold.js) が受け持つ。以前はここで駅に着くたびに
+           転線を試し、指定のレーンを見ないうえに予約も消さなかった。 */
 
         if (this.type === "回送" && this.trackId.includes("In")) this.rerouteToOuter = true;
         if (this.rerouteToOuter && this.trackId.includes("In")) {

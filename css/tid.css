@@ -131,7 +131,8 @@
 /* 駅の在線パネル */
 .tid-station {
     display: none;
-    position: absolute; top: 10px; right: 10px; width: 340px; max-height: calc(100% - 20px);
+    position: absolute; top: 10px; right: 10px; width: 470px; max-width: calc(100% - 20px);
+    max-height: calc(100% - 20px);
     overflow: auto;
     background: rgba(255,255,255,0.97);
     border: 2px solid var(--tid-edge);
@@ -153,6 +154,30 @@
 .tid-table tr.is-busy td { background: #FFF0F0; }
 .tid-free { color: #8A93A8; }
 .tid-mini { display: inline-block; padding: 1px 5px; border-radius: 2px; font-weight: bold; font-size: 10px; }
+/* 番線ごとの発着予定 (js/46-tid-station.js) */
+.tid-pl-now { margin-left: 8px; color: var(--tid-sub); font-weight: normal; }
+.tid-pl-legend { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 10px; margin-bottom: 4px; }
+.tid-pl-hint { color: #7A849C; margin-left: 4px; }
+.tid-pl-b { display: inline-block; padding: 0 5px; border-radius: 8px; font-size: 10px; font-weight: bold;
+            line-height: 15px; white-space: nowrap; }
+.tid-pl-stop { background: #DDEBFF; color: #1B3E8A; border: 1px solid #9FB8E8; }
+.tid-pl-term { background: #FFE9C7; color: #8A4B00; border: 1px solid #E8BD7A; }
+.tid-pl-pass { background: #ECEEF3; color: #5B6275; border: 1px dashed #A5ACBD; }
+.tid-plat { border: 1px solid #C9D1E6; border-radius: 3px; margin: 4px 0; background: #FAFBFE; }
+.tid-plat.is-busy { border-color: #E7A3A3; }
+.tid-plat-h { display: flex; align-items: center; gap: 6px; padding: 3px 6px; background: #E9EEF9;
+              border-bottom: 1px solid #D3DAEC; font-size: 11px; }
+.tid-plat.is-busy .tid-plat-h { background: #FCECEC; }
+.tid-plat-no { font-size: 13px; min-width: 52px; }
+.tid-plat-line { color: var(--tid-sub); font-size: 10px; }
+.tid-plat-occ { margin-left: auto; text-align: right; }
+.tid-pl-t { width: 100%; border-collapse: collapse; font-size: 11px; }
+.tid-pl-t td { padding: 2px 4px; border-top: 1px dotted #D6DCEA; white-space: nowrap; }
+.tid-pl-t tr.is-pass td { color: #6B7285; }
+.tid-pl-time { font-variant-numeric: tabular-nums; width: 52px; }
+.tid-pl-note { color: #C2121B; font-size: 10px; }
+.tid-pl-note small { color: var(--tid-sub); }
+.tid-pl-none { margin: 3px 6px; color: #8A93A8; font-size: 10px; }
 .tid-soon { display: flex; gap: 6px; align-items: center; font-size: 11px; padding: 2px 0;
             border-bottom: 1px dotted #CCD4E6; }
 .tid-soon-eta { margin-left: auto; color: var(--tid-sub); }
@@ -397,3 +422,29 @@
 .tid-comm-urge   { font-size: 11px; color: #C2121B; font-weight: bold; margin: 0 0 4px; }
 .tid-comm-held   { font-size: 10px; color: #8A3A00; background: #FFF0D8;
                    border-radius: 2px; padding: 3px 5px; margin-bottom: 5px; }
+
+/* ===================================================== 指令連絡・輸送障害の記録 (js/32-records.js) */
+.tid-rec { border-bottom: 1px solid #D6DCEA; }
+.tid-rec-row { display: flex; gap: 6px; align-items: center; width: 100%; padding: 3px 2px;
+               background: none; border: none; text-align: left; font: inherit; font-size: 11px;
+               cursor: pointer; color: inherit; flex-wrap: wrap; }
+.tid-rec-row:hover { background: #EEF2FC; }
+.tid-rec-title { flex: 1 1 auto; min-width: 8em; }
+.tid-rec-ans { color: #1B3E8A; font-weight: bold; }
+.tid-rec-by { color: var(--tid-sub); font-size: 10px; white-space: nowrap; }
+.tid-rec-st { font-size: 10px; font-weight: bold; padding: 0 6px; border-radius: 8px;
+              background: #2E7D32; color: #fff; white-space: nowrap; }
+.tid-rec-st.is-live { background: #C2121B; }
+.tid-rec-btn { padding: 2px 8px !important; font-size: 11px !important; margin: 0 !important;
+               min-height: 0 !important; }
+.tid-rec-detail { padding: 3px 6px 6px 16px; background: #FAFBFE; font-size: 11px; }
+.tid-rec-meta { color: var(--tid-sub); margin: 2px 0; }
+.tid-rec-inc.is-live { background: #FFF5F5; }
+.tid-inc .tid-rec-btn { margin-left: auto !important; }
+
+/* 報告書の窓 (線路図の上にかぶせる) */
+.tid-report { left: auto; right: 10px; width: min(860px, calc(100% - 20px)); z-index: 26; }
+.tid-report-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.tid-report-tools .tid-btn { margin: 0; padding: 3px 10px; font-size: 11px; }
+.tid-report-tools .tid-x { margin-left: 0; }
+.tid-report-body { background: #fff; padding: 6px 4px; }

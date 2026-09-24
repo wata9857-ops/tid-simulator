@@ -170,27 +170,149 @@ const TID_AREAS = [
       groups: ["北方貨物線", "本線", "湖西線", "JR宝塚線", "JR東西線"] }
 ];
 
+/* ------------------------------------------------------------------ 線区の帯と駅名札
+
+   ■ 何が問題だったか (山科〜近江塩津で目立った)
+     線区と線区のあいだは groupGap (58px) の決め打ちだった。
+     本線の下の駅名札は「上り外の 84px 下」、湖西線の上の駅名札は
+     「湖西下りの 113px 上」に置くので、あいだが 58px しか無いと
+       本線の札 … 上り外 ＋ 109px
+       湖西線の札 … 上り外 ＋ 22px (本線の上り外のすぐ下)
+     となり、湖西線の駅名 (大津京・唐崎 …) が本線の上り外の線路・ホーム・
+     列車表示に重なり、しかも本線の札より上 (= 本線の側) に出ていた。
+     山科〜近江塩津は本線と湖西線が同じ位置に駅を持つので、全駅で起きていた。
+     JR宝塚線 (尼崎〜新三田)・JR東西線 (尼崎〜放出) も同じ形だった。
+
+   ■ どう直したか
+     線区ごとに「駅の中で番線がどこまで上下に広がるか」を全駅ぶん測り、
+     線区と線区のあいだを
+       上の線区の下の札 ＋ 札の高さ ＋ 余白 ＋ 下の線区の上の札
+     が入るだけ空ける。駅ごとに直すのではなく、番線の配置から計算するので、
+     駅や番線を足しても重ならない。上端・下端も同じ考え方で札が画面に収まる
+     だけ空ける。 */
+
+const TID_PLATE_MARGIN = 8;      // 札と、となりの線区の札・線路とのすき間 [px]
+const TID_LABEL_RESERVE = 52;    // 駅名札の無い線区 (北方貨物線) の外側に要る幅 (列車表示ぶん)
+
+/** その線区の、駅インデックス → 駅名。駅名札を出さない線区は空 */
+function tidGroupStationMap(group) {
+    if (group === "本線") {
+        const m = {};
+        STATIONS.forEach((s, i) => { m[i] = s.name; });
+        return m;
+    }
+    if (group === "湖西線") return KOSEI_STATIONS_MAP;
+    if (group === "JR宝塚線") return FUKUCHI_STATIONS_MAP;
+    if (group === "JR東西線") return TOZAI_STATIONS_MAP;
+    return {};
+}
+
+/** その線区の線路が通っているインデックスの範囲 */
+function tidGroupRange(group) {
+    if (group === "湖西線") return tidTrackRange("Kosei_Up");
+    if (group === "JR宝塚線") return tidTrackRange("Fukuchi_Up");
+    if (group === "JR東西線") return tidTrackRange("Tozai_Up");
+    if (group === "北方貨物線") return tidTrackRange("Up_Hoppo");
+    return [0, STATIONS.length - 1];
+}
+
+/**
+ * その線区の、インデックス i での上下の「要る幅」。
+ *   top … いちばん上の線路から上に要る幅 / bot … いちばん下の線路から下に要る幅
+ * 駅があれば、番線のはみ出し ＋ 駅名札 ＋ 余白。
+ * 駅が無くても線路が通っていれば、列車表示ぶん。線路も無ければ null。
+ */
+const _tidReserveCache = {};
+function tidGroupReserveAt(group, i) {
+    const key = group + "|" + i;
+    if (key in _tidReserveCache) return _tidReserveCache[key];
+    const range = tidGroupRange(group);
+    let out = null;
+    if (i >= range[0] && i <= range[1]) {
+        const name = tidGroupStationMap(group)[i];
+        if (!name || group === "北方貨物線") {
+            out = { top: TID_LABEL_RESERVE, bot: TID_LABEL_RESERVE };
+        } else {
+            const branch = (group !== "本線");
+            const K = TID_GEO.virtualGap;
+            const top = branch ? tidVirtualToY(K, 0, true) : tidVirtualToY(3 * K, 0, false);
+            let above = 0, below = 0;
+            if (STATION_PLATFORM_RULES[name]) {
+                tidStationLaneYs(name, 0, branch).forEach(y => {
+                    if (top - y > above) above = top - y;
+                    if (y > below) below = y;
+                });
+            }
+            out = {
+                top: above + TID_GEO.plateTopGap * TID_SCALE_Y + TID_GEO.plateH / 2 + TID_PLATE_MARGIN,
+                bot: below + TID_GEO.plateBotGap * TID_SCALE_Y + TID_GEO.plateH / 2 + TID_PLATE_MARGIN
+            };
+        }
+    }
+    _tidReserveCache[key] = out;
+    return out;
+}
+
+/** その線区の上側 (または下側) に要る幅の最大 */
+function tidGroupEdgeReserve(group, side) {
+    let m = 0;
+    for (let i = 0; i < STATIONS.length; i++) {
+        const r = tidGroupReserveAt(group, i);
+        if (r && r[side] > m) m = r[side];
+    }
+    return m;
+}
+
+/**
+ * 上の線区 upper の下端から、下の線区 lower の上端までに要る距離。
+ * 同じ横位置 (インデックス) に両方の線路があるところだけを見る。
+ * ★駅の横位置が同じ所 (山科〜近江塩津の本線と湖西線など) で、
+ *   上の線区の下の札と、下の線区の上の札が縦に並んでも重ならないようにする。
+ */
+function tidGroupPairGap(upper, lower) {
+    let need = 0;
+    for (let i = 0; i < STATIONS.length; i++) {
+        const a = tidGroupReserveAt(upper, i), b = tidGroupReserveAt(lower, i);
+        if (!a || !b) continue;
+        if (a.bot + b.top > need) need = a.bot + b.top;
+    }
+    return need;
+}
+
 /**
  * 表示する線区にあわせて、線路IDごとの縦位置を作る。
  * 全線を並べると縦に長くなりすぎるので、ふだんは本線＋1線区だけを出す。
+ * 線区と線区のあいだは、駅名札が重ならないだけ空ける (上の説明を参照)。
  */
 function buildTidTrackY(groups) {
     const want = groups || ["本線"];
     const y = { __rows: [] };
-    let cur = TID_GEO.topPad * TID_SCALE_Y;
-    let lastGroup = null;
-    TID_ROWS.forEach(row => {
-        if (want.indexOf(row.group) < 0) return;
-        if (lastGroup !== null && row.group !== lastGroup) cur += TID_GEO.groupGap * TID_SCALE_Y;
+    const rows = TID_ROWS.filter(row => want.indexOf(row.group) >= 0);
+    let cur = 0;
+    let lastGroup = null, lastRow = null;
+    rows.forEach((row, k) => {
+        if (k === 0) {
+            cur = Math.max(TID_GEO.topPad * TID_SCALE_Y, tidGroupEdgeReserve(row.group, "top"));
+        } else if (row.group !== lastGroup) {
+            const fixed = ((lastRow.gap || TID_GEO.rowGap) + TID_GEO.groupGap) * TID_SCALE_Y;
+            const need = tidGroupPairGap(lastGroup, row.group);
+            cur = y[lastRow.id] + Math.max(fixed, need);
+        } else {
+            /* 実物と同じく間隔は一定ではない。内側線どうし (下り内〜上り内) は
+               あいだにホームが入らないので狭く、外側線との間は
+               ホーム帯と「N番のりば」の札が入るので広い。 */
+            cur = y[lastRow.id] + (lastRow.gap || TID_GEO.rowGap) * TID_SCALE_Y;
+        }
         y[row.id] = cur;
         y.__rows.push(row);
-        /* 実物と同じく間隔は一定ではない。内側線どうし (下り内〜上り内) は
-           あいだにホームが入らないので狭く、外側線との間は
-           ホーム帯と「N番のりば」の札が入るので広い。 */
-        cur += (row.gap || TID_GEO.rowGap) * TID_SCALE_Y;
         lastGroup = row.group;
+        lastRow = row;
     });
-    y.__height = cur + TID_GEO.bottomPad * TID_SCALE_Y;
+    const tail = lastRow
+        ? Math.max(((lastRow.gap || TID_GEO.rowGap) + TID_GEO.bottomPad) * TID_SCALE_Y,
+                   tidGroupEdgeReserve(lastGroup, "bot"))
+        : TID_GEO.bottomPad * TID_SCALE_Y;
+    y.__height = (lastRow ? y[lastRow.id] : cur) + tail;
     return y;
 }
 

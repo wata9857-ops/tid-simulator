@@ -216,6 +216,7 @@ UIManager.prototype.renderLogList = function () {
     if (!ul) return;
 
     const view = this.currentLogView;
+    if (view === "comm" || view === "inc") { this.renderRecordList(ul); return; }
     const ofView = this.logHistory.filter(log => log.type === view);
 
     // --- タブ
@@ -226,6 +227,7 @@ UIManager.prototype.renderLogList = function () {
         tabs.innerHTML =
             `<button class="log-tab ${view === "cmd" ? "is-active" : ""}" onclick="game.ui.setLogView('cmd')">運転指令ログ<span class="log-tab-num">${nCmd}</span></button>` +
             `<button class="log-tab ${view === "staff" ? "is-active" : ""}" onclick="game.ui.setLogView('staff')">業務連絡<span class="log-tab-num">${nStaff}</span></button>` +
+            this.recordTabsHtml(view) +
             `<button class="log-imp ${this.logImportantOnly ? "is-active" : ""}" onclick="game.ui.toggleLogImportantOnly()" title="事故・運休・運転整理・乗務員連絡だけを表示">重要のみ</button>`;
     }
 
@@ -298,4 +300,106 @@ UIManager.prototype.renderLogList = function () {
             `</span>`;
         ul.appendChild(li);
     });
+};
+
+/* ------------------------------------------------------------------ 指令連絡・輸送障害の記録
+   (js/32-records.js)。運転指令ログ・業務連絡とは別に、1件ずつの記録を残す。
+   ログは200件で古いものから消えるが、こちらは件ごとにまとめて残るので、
+   あとから「その連絡に誰がどう答えたか」「その障害で何があったか」を追える。 */
+UIManager.prototype.recordTabsHtml = function (view) {
+    const R = this.game.records;
+    const nComm = R ? R.comms.length : 0, nInc = R ? R.incidents.length : 0;
+    return `<button class="log-tab ${view === "comm" ? "is-active" : ""}" onclick="game.ui.setLogView('comm')">指令連絡<span class="log-tab-num">${nComm}</span></button>` +
+           `<button class="log-tab ${view === "inc" ? "is-active" : ""}" onclick="game.ui.setLogView('inc')">輸送障害<span class="log-tab-num">${nInc}</span></button>`;
+};
+
+UIManager.prototype.renderRecordList = function (ul) {
+    const R = this.game.records;
+    const view = this.currentLogView;
+    const tabs = document.getElementById("log-tabs");
+    if (tabs) {
+        const nCmd = this.logHistory.filter(l => l.type === "cmd").length;
+        const nStaff = this.logHistory.filter(l => l.type === "staff").length;
+        tabs.innerHTML =
+            `<button class="log-tab" onclick="game.ui.setLogView('cmd')">運転指令ログ<span class="log-tab-num">${nCmd}</span></button>` +
+            `<button class="log-tab" onclick="game.ui.setLogView('staff')">業務連絡<span class="log-tab-num">${nStaff}</span></button>` +
+            this.recordTabsHtml(view);
+    }
+    const bar = document.getElementById("log-filter-bar");
+    if (bar) bar.innerHTML = "";
+    ul.innerHTML = "";
+    if (!R) { ul.innerHTML = '<li class="log-empty">記録の仕組みがありません。</li>'; return; }
+    const esc = escapeLogHtml;
+    if (view === "comm") {
+        if (!R.comms.length) { ul.innerHTML = '<li class="log-empty">指令連絡の記録はありません。</li>'; return; }
+        R.comms.slice(0, 150).forEach(r => {
+            const src = LOG_SOURCES[r.cat] || LOG_SOURCES.unten;
+            const li = document.createElement("li");
+            li.className = "log-row rec-li log-lv-" + (r.level === "critical" ? "critical" : r.level === "important" ? "warn" : "normal");
+            li.style.setProperty("--hue", src.hue);
+            li.innerHTML =
+                `<span class="log-time">${esc(recClock(r.at))}</span>` +
+                `<span class="log-chip" style="background:${src.hue}">${esc(r.levelLabel)}</span>` +
+                `<span class="log-text"><span class="log-src">${esc(r.from)}</span>` +
+                `<span class="log-head">${esc(r.title)}</span>` +
+                `<span class="log-body">${esc(r.text)}</span>` +
+                `<span class="rec-li-ans">${r.answer ? "→ 「" + esc(r.answer) + "」 " + esc(r.reply || "") : "応答待ち"}` +
+                ` <small>(${esc(r.answeredBy || r.status)}` +
+                `${r.responseSec !== null && r.responseSec !== undefined ? "・" + Math.round(r.responseSec) + "秒" : ""})</small></span>` +
+                `</span>`;
+            ul.appendChild(li);
+        });
+        return;
+    }
+    if (!R.incidents.length) { ul.innerHTML = '<li class="log-empty">輸送障害の記録はありません。</li>'; return; }
+    R.incidents.slice(0, 60).forEach(r => {
+        const live = r.status === "対応中";
+        const li = document.createElement("li");
+        li.className = "log-row rec-li " + (live ? "log-lv-critical" : "log-lv-info");
+        const dur = (r.endedAt || this.game.currentTime) - r.startedAt;
+        li.innerHTML =
+            `<span class="log-time">${esc(recClock(r.startedAt))}</span>` +
+            `<span class="log-chip" style="background:${live ? "#c62828" : "#2e7d32"}">${esc(R.statusText(r))}</span>` +
+            `<span class="log-text"><span class="log-src">${esc(r.no)}</span>` +
+            `<span class="log-head">${esc(r.name)}</span>` +
+            `<span class="log-body">${esc(r.place)} ・ ${live ? "経過" : "支障"} ${esc(recDuration(dur))} ・ ` +
+            `影響 ${Object.keys(r.affected || {}).length}本 ・ 最大遅延 ${Math.round((r.maxDelaySec || 0) / 60)}分</span>` +
+            `<button class="rec-open" onclick="game.ui.openIncidentReport('${esc(r.id)}')">報告書を開く</button>` +
+            `</span>`;
+        ul.appendChild(li);
+    });
+};
+
+/** 輸送障害の報告書 (社員限り) を開く */
+UIManager.prototype.openIncidentReport = function (id) {
+    const R = this.game.records;
+    const m = document.getElementById("report-modal");
+    const body = document.getElementById("report-modal-body");
+    if (!R || !m || !body) return;
+    this.reportId = id;
+    body.innerHTML = R.incidentReportHtml(id);
+    m.style.display = "flex";
+};
+
+UIManager.prototype.closeIncidentReport = function () {
+    const m = document.getElementById("report-modal");
+    if (m) m.style.display = "none";
+    this.reportId = null;
+};
+
+/** 報告書を文字だけのファイルで保存する */
+UIManager.prototype.saveIncidentReport = function () {
+    const R = this.game.records;
+    if (!R || !this.reportId) return;
+    const text = R.incidentReportText(this.reportId);
+    const rec = R.incidents.find(r => r.id === this.reportId);
+    try {
+        const blob = new Blob(["\ufeff" + text], { type: "text/plain;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "輸送障害報告_" + (rec ? rec.no : this.reportId) + ".txt";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    } catch (e) { /* 保存できない環境では何もしない */ }
 };

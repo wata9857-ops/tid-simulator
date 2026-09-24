@@ -286,6 +286,12 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         let targetIdx = fleetIndexOf(targetDest);
         let currentIdx = fleetIndexOf(stName);
         if (targetIdx === null || currentIdx === null) return false;
+        /* ★いちばん近い車両所が「いまいる場所」なら回送は組まない。
+           その駅の留置場が満杯でここへ来ているので、同じ留置場への回送にすると
+           行先が後ろになり (放出 → 放出 の回送が尼崎方へ走り出す)、
+           行先へたどり着けない列車ができていた。
+           呼び出し側が運用を終わらせ、編成はこの駅の留置線 (在庫) へ戻る。 */
+        if (targetIdx === currentIdx) return false;
         let nextDir = (targetIdx > currentIdx) ? 1 : -1;
 
         /* ★向きが変わる場合は、先に線路を移せるか確かめてから書き換える。

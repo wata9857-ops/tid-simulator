@@ -18,6 +18,13 @@ Train.prototype.executeTurnBack = function () {
             if (wantDir !== 0 && wantDir !== this.dir) {
                 if (!this.game.ops.moveToOppositeTrack(this, stName, wantDir)) {
                     this.timer = 30;
+                    // 反対方向の番線が10分空かないときは、番線を空ける処置に切り替える
+                    this.turnbackStall = (this.turnbackStall || 0) + 2;
+                    if (this.turnbackStall * 15 >= 600) {
+                        this.turnbackStall = 0;
+                        this.serviceChange = null;
+                        this.resolveStall(stName, "送り込み先で反対方向の番線が空かない");
+                    }
                     return;
                 }
             }
@@ -136,6 +143,11 @@ Train.prototype.executeTurnBack = function () {
                 // 反対方向の番線が空くまで待つ (進路が開いてから動かす)
                 this.timer = 30;
                 this.type = "回送";
+                this.turnbackStall = (this.turnbackStall || 0) + 2;
+                if (this.turnbackStall * 15 >= 600) {
+                    this.turnbackStall = 0;
+                    this.resolveStall(stName, "宮原への引き上げ進路が開かない");
+                }
                 return;
             }
             // 回送は列車線 (外側線) を走らせる
@@ -156,11 +168,19 @@ Train.prototype.executeTurnBack = function () {
         // ★追加: 米原駅 上り快速の近江塩津・敦賀への延長運転（4時～9時台、16時～20時台）
         if (stName === "米原" && this.dir === 1 && this.dest === "米原" && this.type === "快速") {
             if ((hOfDay >= 4.0 && hOfDay < 10.0) || (hOfDay >= 16.0 && hOfDay < 21.0)) {
-                if (this.game.currentTime >= this.game.spawner.nextMaibaraExtendTime) {
+                /* ★北陸線へ延長するのは、いまの編成が北陸線の普通に入れるときだけ。
+                   以前は編成を見ずに延長していたので、宮原の223系6000番台などが
+                   北陸線へ出てしまい、編成の規則の見張り (fixIllegalStock) が
+                   行先を「米原」に戻したときには、列車はもう米原を発車していた。
+                   行先が後ろになった列車は坂田へ回され、北陸線を走り続けていた。 */
+                const extDest = (Math.random() < 0.5) ? "近江塩津" : "敦賀";
+                const canExtend = this.game.fleet.canServe(this.vehicles, "米原", "普通",
+                                                           this.trackId, extDest);
+                if (canExtend && this.game.currentTime >= this.game.spawner.nextMaibaraExtendTime) {
                     this.game.spawner.nextMaibaraExtendTime = this.game.currentTime + (45 * 60) + (Math.random() * 600 - 300); // 約45分後
                     this.game.spawner.activeTrainNos.delete(this.trainNo);
                     this.type = "普通";
-                    this.dest = (Math.random() < 0.5) ? "近江塩津" : "敦賀";
+                    this.dest = extDest;
                     this.trainNo = this.game.spawner.generateTrainNumber("普通", 1, "米原", this.trackId);
                     // ★ここから始まる列車になるので始発駅も更新する
                     this.startName = stName || this.startName;
@@ -597,6 +617,7 @@ Train.prototype.executeTurnBack = function () {
             this.vehicles = newVehicles;
 
             this.state = "waiting_start"; this.timer = 15; this.stuckTime = 0;
+            this.turnbackStall = 0;
             this.hasStoppedAtCurrent = false;
             this.hasDeparted = false;
             this.carryOverDelay(180);
@@ -692,6 +713,7 @@ Train.prototype.executeTurnBack = function () {
                 this.vehicles = newVehicles;
 
                 this.state = "waiting_start"; this.timer = 15; this.stuckTime = 0; this.hasStoppedAtCurrent = false; 
+                this.turnbackStall = 0;
                 this.hasDeparted = false;
                 /* ★遅れの引き継ぎ。
                    以前は折り返すたびに遅れを0に戻していたため、輸送障害で
@@ -712,7 +734,55 @@ Train.prototype.executeTurnBack = function () {
                 return;
             }
         }
+        /* ★折り返し先の番線が空かないまま待ち続けない。
+           以前はここで 15秒おきに試し直すだけだったので、折り返し先の番線が
+           ふさがり続ける駅 (線区の端の放出・新三田など) では、到着した番線を
+           占めたまま永久に待つことがあり、後続がすべて止まっていた
+           (向かい合う2本が互いの番線を待つ形の詰まり)。
+           10分待っても折り返せないときは、留置場へ入れるか、
+           車両所へ回送するか、運用を打ち切って番線を空ける。 */
+        this.turnbackStall = (this.turnbackStall || 0) + 1;
+        if (this.turnbackStall * 15 >= 600) {
+            this.turnbackStall = 0;
+            this.resolveStall(stName, "折り返し先の番線が空かない");
+            return;
+        }
         this.timer = 15;
+};
+
+/**
+ * 動けなくなった列車の後始末 (詰まりの崩壊を防ぐ最後の手段)。
+ * 実際の運転整理と同じ順に試す。
+ *   1. その駅に留置場があれば入区させる (出区待ちの枠が空いていれば)
+ *   2. 車両所へ回送する (向きを変えずに行けるとき)
+ *   3. どちらも駄目なら運用を打ち切って編成を回収する
+ * どの場合も番線・閉塞を空けるので、後続は動けるようになる。
+ * 措置は運転指令の記録に残す。
+ */
+Train.prototype.resolveStall = function (stName, reason) {
+    const where = stName || blockStationName(
+        (this.game.trackMgr.blocks[this.trackId] || [])[this.currBlockIndex]) || "駅間";
+    const oldNo = this.trainNo || "(列番なし)";
+    const note = (how) => {
+        this.game.ui.updateBanner(
+            `【運転整理】${where}で${reason}ため、${oldNo} は${how}。`, "banner-orange");
+        if (this.game.records) {
+            this.game.records.noteDisposition(this, where, reason, how);
+        }
+    };
+    const dep = DEPOTS[stName];
+    if (this.type !== "貨物" && dep && dep.trains.length < dep.capacity) {
+        note("入区させて番線を空けます");
+        this.enterDepot(stName);
+        return true;
+    }
+    if (this.type !== "貨物" && this.type !== "回送" && stName && this.tryConvertDeadhead(stName)) {
+        note("回送に変更して車両所へ向かわせます");
+        return true;
+    }
+    note("運用を打ち切り、編成を回収します");
+    this.remove();
+    return true;
 };
 
 Train.prototype.triggerMinorTrouble = function () {

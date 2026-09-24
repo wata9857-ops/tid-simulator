@@ -20,6 +20,9 @@ class GameSystem {
         // 信号機と閉塞の管理 (js/25-signals.js)。
         // ブロックの在線から現示を組み立て、列車の発車・進入・速度を決める。
         this.signals = new SignalSystem(this);
+        /* 運転指令の記録簿 (js/32-records.js)。指令連絡と輸送障害を1件ずつ残し、
+           輸送障害の報告書 (社員限り) を作る。障害より先に作っておく。 */
+        this.records = (typeof OpsRecords === "function") ? new OpsRecords(this) : null;
         // 輸送障害 (js/26-incidents.js)。事故・故障を線路と信号の状態として起こす。
         this.incidents = new IncidentSystem(this);
         // 運用計画 (js/27-operations.js)。出区・送り込み・増発・復旧回送。
@@ -111,7 +114,8 @@ class GameSystem {
         document.getElementById("cmd-stop-at").innerHTML += stOpts;
         document.getElementById("sus-start").innerHTML += stOpts;
         document.getElementById("sus-end").innerHTML += stOpts;
-        document.getElementById("cmd-chg-station").innerHTML += stOpts;
+        // 着発番線変更の駅は、選んだ列車に合わせて js/20-ui-cmd.js が作る
+        if (this.ui.fillTrackChangeStations) this.ui.fillTrackChangeStations(null);
     }
 
     addTrain(config) {
@@ -267,6 +271,9 @@ class GameSystem {
                (js/27-operations.js の fixIllegalStock) */
             if (!globalThis.__NOFIX) this.ops.fixIllegalStock(t);
         });
+        /* 詰まりの見張り (js/27-operations.js の watchdog)。
+           どこにも行けない列車を放置すると、後続が次々に止まって線区全体が詰まる。 */
+        this.ops.watchdog(this.currentTime);
 
         
         this.duty.update();                // 編成ごとの行路を書き留める

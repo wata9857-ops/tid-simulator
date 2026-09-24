@@ -131,30 +131,64 @@ const DISPATCH = {
         return { ok: true, msg: changed.join(" / ") };
     },
 
-    /** 着発番線変更 (転線) の予約 */
+    /**
+     * 着発番線変更 (転線) の予約。
+     * 入れるかどうかを先に確かめる (js/13-train-hold.js の trackChangeCheck)。
+     * trackId が "cancel" なら予約を取り消す。
+     */
     trackChange(game, cmd) {
         const t = game.getTrain(cmd.trainId);
         if (!t) return { ok: false, msg: "対象の列車が見つかりません。" };
-        if (!cmd.station || !cmd.trackId) return { ok: false, msg: "駅と番線を選んでください。" };
+        if (cmd.trackId === "cancel") {
+            const r = t.trackChangeReservation;
+            if (!r || r.status !== "pending") return { ok: false, msg: "取り消す予約がありません。" };
+            r.status = "cancelled";
+            game.ui.updateBanner(
+                `【指令】${t.trainNo} の${r.stationName}駅 ${r.label || ""}への着発番線変更を取り消しました。`,
+                "banner-orange");
+            return { ok: true, msg: "番線変更の予約を取り消しました。" };
+        }
+        const lane = parseInt(cmd.lane, 10);
+        const ck = trackChangeCheck(game, t, cmd.station, cmd.trackId, isNaN(lane) ? -1 : lane);
+        if (!ck.ok) return { ok: false, msg: ck.msg };
         t.trackChangeReservation = {
             stationName: cmd.station, targetTrackId: cmd.trackId,
-            targetLane: cmd.lane | 0, status: "pending"
+            targetLane: lane, label: ck.label, status: "pending",
+            setAt: game.currentTime, waitSince: null
         };
         game.ui.updateBanner(
-            `【指令】${t.trainNo} に ${cmd.station}駅での着発番線変更を手配しました。`, "banner-orange");
-        return { ok: true, msg: "転線を予約しました。" };
+            `【指令】${t.trainNo} の${cmd.station}駅の着発番線を ${ck.label}（${trackLabelOf(cmd.trackId)}）に変更します。`,
+            "banner-orange");
+        // すでにその駅に居るなら、その場で転線する
+        t.applyTrackReservation();
+        const r = t.trackChangeReservation;
+        const done = r.status === "done";
+        return { ok: true, msg: done ? `${cmd.station}駅 ${ck.label}へ転線しました。`
+                                     : `${cmd.station}駅 ${ck.label}への着発番線変更を予約しました。` };
     },
 
-    /** 留置場からの出区 */
+    /**
+     * 留置場からの出区。
+     *
+     * ★向きは線区のつながりから決める (js/06-fleet.js の routeDirection)。
+     *   以前は駅インデックスを比べるだけだったので、
+     *     ・放出の電留線 → 本線の京都 … 放出 46 < 京都 55 で「上り」になり、
+     *       放出から四条畷方の行き止まりへ走り出していた
+     *     ・放出の電留線 → 放出       … 差が無いのに「上り」扱い
+     *   となっていた。放出の電留線は放出駅の四条畷方 (徳庵との間) にあり、
+     *   本線へ向かう列車は必ず放出駅を尼崎方 (下り) へ抜ける。
+     *   方向転換しないと行けない行先・同じ駅は、ここで断る。
+     */
     depotOut(game, cmd) {
         const dep = DEPOTS[cmd.depot];
         if (!dep) return { ok: false, msg: "留置場が見つかりません。" };
         const t = game.getTrain(cmd.trainId);
         if (!t || t.state !== "in_depot") return { ok: false, msg: "該当の車両が見つかりません。" };
+        if (!cmd.dest) return { ok: false, msg: "行先を選んでください。" };
 
-        const sIdx = fleetIndexOf(cmd.depot);
-        const dIdx = fleetIndexOf(cmd.dest);
-        const dir = (sIdx !== null && dIdx !== null && dIdx < sIdx) ? -1 : 1;
+        const check = depotOutRoute(game, cmd.depot, cmd.dest, cmd.type);
+        if (!check.ok) return { ok: false, msg: check.msg };
+        const dir = check.dir;
 
         t.type = cmd.type;
         t.dest = cmd.dest;
@@ -163,6 +197,10 @@ const DISPATCH = {
         t.trainNo = game.spawner.generateTrainNumber(cmd.type, dir, cmd.depot,
             depotTrackId(cmd.depot, dir, cmd.type));
         t.dutyName = t.trainNo;
+        /* 終着後の処置。指定が無ければ、回送は入区、営業列車は折り返し。
+           ★以前は前の運用の値が残っていて、回送なのに折り返しを試みることがあった。 */
+        t.nextAction = cmd.action || (cmd.type === "回送" ? "depot" : "turnback");
+        t.isFinalStop = false;
         t.depotOutConfig = { type: cmd.type, dest: cmd.dest, trainNo: t.trainNo,
                              dir: dir, dutyName: t.trainNo };
         t.timer = (cmd.delayMin | 0) * 60;
@@ -174,7 +212,7 @@ const DISPATCH = {
                 `【出区予約】${t.trainNo} は ${cmd.delayMin}分後に ${cmd.depot}留置場から出区します。`,
                 "banner-orange");
         }
-        return { ok: true, msg: `${t.trainNo} の出区を手配しました。` };
+        return { ok: true, msg: `${t.trainNo} の出区を手配しました (${dir === 1 ? "上り" : "下り"}方向)。` };
     },
 
     /** 運転見合わせの設定 */
@@ -251,10 +289,36 @@ const DISPATCH = {
 };
 
 /**
+ * 留置場からその行先へ出区できるかを確かめ、出る向きを返す。
+ *   { ok: true, dir } / { ok: false, msg }
+ * 指令パッドの行先一覧の絞り込みにも使う (js/42-tid-ui.js)。
+ */
+function depotOutRoute(game, depotName, dest, type) {
+    if (!DEPOTS[depotName]) return { ok: false, msg: "留置場が見つかりません。" };
+    const dir = routeDirection(depotName, dest);
+    if (!dir) return { ok: false, msg: routeDirectionReason(depotName, dest) };
+    /* 出たとたんに線区の端になる向き (放出の電留線から四条畷方など) は組めない。
+       線路図の外へは出られないので、行き止まりに列車が残ってしまう。 */
+    const tid = depotTrackId(depotName, dir, type || "回送");
+    const blks = game && game.trackMgr ? game.trackMgr.blocks[tid] : null;
+    if (blks) {
+        const st = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
+                                  blockStationName(b) === depotName);
+        const ahead = st ? blks[st.index + dir] : null;
+        if (st && (!ahead || ahead.x === -1000)) {
+            return { ok: false, msg: `${depotName}の留置場から${dest}方へは、線路図の範囲の外になるため出区できません。` };
+        }
+    }
+    return { ok: true, dir: dir };
+}
+
+/**
  * 指令を実行する。
  * シミュレーションを持っていないタブ (従側) なら、本体のタブへ転送する。
  */
 GameSystem.prototype.dispatch = function (cmd) {
+    // 画面の指令員が出した指令 (記録で、別の指令員の代行処理と区別する)
+    if (cmd && !cmd.by) cmd.by = "指令";
     if (this.bus && !this.bus.isHost) {
         this.bus.send(cmd);
         return { ok: true, msg: "指令を送信しました。", forwarded: true };
@@ -267,7 +331,10 @@ GameSystem.prototype.applyCommand = function (cmd) {
     const fn = DISPATCH[cmd && cmd.name];
     if (!fn) return { ok: false, msg: "不明な指令です。" };
     try {
-        return fn(this, cmd) || { ok: true, msg: "" };
+        const r = fn(this, cmd) || { ok: true, msg: "" };
+        // 輸送障害の対応中なら、指令の措置として記録に残す (js/32-records.js)
+        if (this.records) this.records.dispatcherCommand(cmd, r);
+        return r;
     } catch (e) {
         console.error("指令の実行に失敗しました", cmd, e);
         return { ok: false, msg: "指令の実行に失敗しました。" };

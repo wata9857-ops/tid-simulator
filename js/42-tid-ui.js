@@ -132,7 +132,7 @@ class TidUI {
             .concat(Object.values(TOZAI_STATIONS_MAP));
         const all = stNames.concat(branch);
         const stOpts = all.map(n => opt(n)).join("");
-        ["tid-hold-at", "tid-chg-station"].forEach(id => {
+        ["tid-hold-at"].forEach(id => {
             const e = this.el(id);
             if (e) e.innerHTML = '<option value="">指定なし</option>' + stOpts;
         });
@@ -165,6 +165,9 @@ class TidUI {
             dt.value = CONFIG.dayType;
         }
 
+        // 着発番線変更の駅 (列車を選ぶと、その列車がこれから通る駅に絞られる)
+        this.refreshTrackStations();
+
         // 留置場
         this.refreshDepotSelect();
     }
@@ -178,6 +181,33 @@ class TidUI {
             ).join("");
         this.writeSelect("tid-depot", html, sel.value);
         this.refreshDepotTrains();
+    }
+
+    /**
+     * 出区の行先の候補。選んだ留置場から向きを変えずに行けない行先は、
+     * 理由つきで選べなくする (js/28-dispatch.js の depotOutRoute)。
+     * ★以前は全部の行先を選べたので、放出の電留線から「京都」「宮原操」を選ぶと
+     *   放出から四条畷方の行き止まりへ走り出していた。
+     */
+    refreshDepotDests() {
+        const sel = this.el("tid-depot-dest");
+        if (!sel) return;
+        if (!this._depotDests) {
+            this._depotDests = Array.from(sel.options || []).map(o => o.value).filter(Boolean);
+        }
+        const dName = this.el("tid-depot") ? this.el("tid-depot").value : "";
+        const type = this.el("tid-depot-type") ? this.el("tid-depot-type").value : "回送";
+        const keep = sel.value;
+        let firstOk = "";
+        const html = this._depotDests.map(d => {
+            const ck = dName ? depotOutRoute(this.game, dName, d, type) : { ok: true };
+            if (ck.ok && !firstOk) firstOk = d;
+            return `<option value="${escapeLogHtml(d)}"${ck.ok ? "" : " disabled"} title="${escapeLogHtml(ck.ok ? "" : ck.msg)}">` +
+                   escapeLogHtml(d + (ck.ok ? "" : "（不可）")) + "</option>";
+        }).join("");
+        sel.innerHTML = html;
+        const keepOk = keep && dName && depotOutRoute(this.game, dName, keep, type).ok;
+        sel.value = keepOk ? keep : (firstOk || keep || "");
     }
 
     refreshDepotTrains() {
@@ -208,7 +238,12 @@ class TidUI {
             // 表示区間の駅へスクロールし直す
             this.game.tidRenderer.scrollToStation(this.el("tid-jump").value);
         });
-        onCh("tid-depot", () => this.refreshDepotTrains());
+        onCh("tid-depot", () => { this.refreshDepotTrains(); this.refreshDepotDests(); });
+        const incBox = this.el("tid-incidents");
+        if (incBox) incBox.addEventListener("click", (e) => {
+            const b = e.target.closest ? e.target.closest("[data-rec='report']") : null;
+            if (b) this.openReport(b.getAttribute("data-id"));
+        });
         onCh("tid-speed", () => {
             const v = Number(this.el("tid-speed").value);
             setTimeScale(v);                       // 手元にもすぐ反映する
@@ -220,6 +255,7 @@ class TidUI {
             this.run({ name: "dayType", value: v });
         });
         onCh("tid-train", () => this.selectTrain(this.el("tid-train").value));
+        onCh("tid-depot-type", () => this.refreshDepotDests());
         onCh("tid-chg-station", () => this.refreshTrackCandidates());
 
         ["signal", "occupy", "fleet", "route", "platform"].forEach(k => {
@@ -243,6 +279,25 @@ class TidUI {
         on("tid-btn-radio-off", () => this.cmdClearRadio());
         on("tid-log-cmd",       () => { this.logTab = "cmd"; this.renderLogs(); });
         on("tid-log-staff",     () => { this.logTab = "staff"; this.renderLogs(); });
+        on("tid-log-comm",      () => { this.logTab = "comm"; this.renderLogs(); });
+        on("tid-log-inc",       () => { this.logTab = "inc"; this.renderLogs(); });
+        on("tid-report-close",  () => this.closeReport());
+        on("tid-report-save",   () => this.saveReport());
+        /* 記録の一覧の中のボタン (報告書を開く・連絡の詳細を開く) はまとめて受ける。
+           一覧は描き直すので、個々のボタンに付けると消えてしまう。 */
+        const logs = this.el("tid-logs");
+        if (logs) logs.addEventListener("click", (e) => {
+            const b = e.target.closest ? e.target.closest("[data-rec]") : null;
+            if (!b) return;
+            const id = b.getAttribute("data-id");
+            if (b.getAttribute("data-rec") === "report") this.openReport(id);
+            if (b.getAttribute("data-rec") === "comm") {
+                this._openComm = this._openComm || {};
+                this._openComm[id] = !this._openComm[id];
+                this._logSig = null;
+                this.renderLogs();
+            }
+        });
         on("tid-station-close", () => { this.stationName = null; this.renderStation(); });
     }
 
@@ -251,6 +306,9 @@ class TidUI {
         this.selectedId = id || null;
         const sel = this.el("tid-train");
         if (sel && sel.value !== (id || "")) sel.value = id || "";
+        // 番線変更の候補は列車ごとに違う (向き・これから通る駅)
+        this.refreshTrackStations();
+        this.refreshTrackCandidates();
         this.renderTrainInfo();
         if (this.game.tidRenderer) this.game.tidRenderer.draw();
     }
@@ -316,11 +374,15 @@ class TidUI {
         const val = this.el("tid-chg-track").value || "";
         const parts = val.split(",");
         if (!this.selectedId || !parts[0]) { this.notify("列車・駅・番線を選んでください。"); return; }
-        this.run({
+        const r = this.run({
             name: "trackChange", trainId: this.selectedId,
             station: this.el("tid-chg-station").value,
             trackId: parts[0], lane: parseInt(parts[1], 10) || 0
         });
+        // 結果 (予約中の表示・取り消しの項目) を候補に反映する
+        this._selSig["tid-chg-track"] = null;
+        this.refreshTrackCandidates();
+        return r;
     }
 
     cmdDepotOut() {
@@ -347,120 +409,73 @@ class TidUI {
     cmdRadio()        { this.run({ name: "radio" }); }
     cmdClearRadio()   { this.run({ name: "clearRadio" }); }
 
+    /**
+     * 着発番線変更の「駅」の候補。
+     * 列車を選んでいれば、その列車がこれから通る駅だけを出す
+     * (通過済みの駅・通らない線区の駅を選べてしまうと、予約しても効かない)。
+     */
+    refreshTrackStations() {
+        const sel = this.el("tid-chg-station");
+        if (!sel) return;
+        const t = this.selected();
+        const opt = (v, txt) => `<option value="${escapeLogHtml(v)}">${escapeLogHtml(txt || v)}</option>`;
+        let names;
+        if (t && t.state !== "in_depot" && t.state !== "finished") {
+            names = trainStationsAhead(this.game, t, 25);
+        } else {
+            names = STATIONS.map(s => s.name)
+                .concat(Object.values(KOSEI_STATIONS_MAP))
+                .concat(Object.values(FUKUCHI_STATIONS_MAP))
+                .concat(Object.values(TOZAI_STATIONS_MAP));
+        }
+        const html = '<option value="">駅を選択</option>' + names.map(n => opt(n)).join("");
+        if (this.writeSelect("tid-chg-station", html, sel.value)) this.refreshTrackCandidates();
+    }
+
+    /**
+     * 着発番線変更の「番線」の候補 (js/13-train-hold.js の trackChangeCandidates)。
+     * その列車が入れない番線は、理由つきで選べなくしてある。
+     */
     refreshTrackCandidates() {
-        const stName = this.el("tid-chg-station").value;
+        const stSel = this.el("tid-chg-station");
+        const stName = stSel ? stSel.value : "";
         const sel = this.el("tid-chg-track");
         if (!sel) return;
-        sel.innerHTML = '<option value="">番線を選択</option>';
-        if (!stName) return;
-        const rule = STATION_PLATFORM_RULES[stName];
-        TID_ROWS.forEach(row => {
-            const blks = this.game.trackMgr.blocks[row.id];
-            if (!blks) return;
-            const blk = blks.find(b => blockStationName(b) === stName && b.x !== -1000);
-            if (!blk) return;
-            blk.lanes.forEach((_, li) => {
-                const lbl = platformLabelOf(stName, row.id, li);
-                const label = lbl ? platformText(lbl) : ("第" + (li + 1) + "線");
-                sel.innerHTML += `<option value="${row.id},${li}">${row.label} ${label}</option>`;
-            });
-        });
-    }
-
-    cmdTrackChange() {
         const t = this.selected();
-        const stName = this.el("tid-chg-station").value;
-        const val = this.el("tid-chg-track").value;
-        if (!t || !stName || !val) { this.notify("列車・駅・番線を選んでください。"); return; }
-        const parts = val.split(",");
-        t.trackChangeReservation = {
-            stationName: stName, targetTrackId: parts[0],
-            targetLane: parseInt(parts[1], 10), status: "pending"
-        };
-        this.game.ui.updateBanner(
-            `【指令】${t.trainNo} に ${stName}駅での着発番線変更を手配しました。`, "banner-orange");
-        this.notify("転線を予約しました。");
-    }
-
-    cmdDepotOut() {
-        const dName = this.el("tid-depot").value;
-        const tid = this.el("tid-depot-train").value;
-        if (!dName || !tid) { this.notify("留置場と車両を選んでください。"); return; }
-        const t = this.game.getTrain(tid);
-        if (!t || t.state !== "in_depot") { this.notify("該当の車両が見つかりません。"); return; }
-
-        const delayMin = parseInt(this.el("tid-depot-time").value, 10) || 0;
-        const newType = this.el("tid-depot-type").value;
-        const newDest = this.el("tid-depot-dest").value;
-
-        const sIdx = fleetIndexOf(dName);
-        const dIdx = fleetIndexOf(newDest);
-        const dir = (sIdx !== null && dIdx !== null && dIdx < sIdx) ? -1 : 1;
-
-        t.type = newType;
-        t.dest = newDest;
-        t.dir = dir;
-        if (t.trainNo) this.game.spawner.activeTrainNos.delete(t.trainNo);
-        t.trainNo = this.game.spawner.generateTrainNumber(newType, dir, dName, depotTrackId(dName, dir, newType));
-        t.dutyName = t.trainNo;
-        t.depotOutConfig = { type: newType, dest: newDest, trainNo: t.trainNo, dir: dir, dutyName: t.trainNo };
-        t.timer = delayMin * 60;
-        t.forceDepotOut = true;
-        if (t.timer === 0) t.tryDepotOut(dName, true);
-        else this.game.ui.updateBanner(
-            `【出区予約】${t.trainNo} は ${delayMin}分後に ${dName}留置場から出区します。`, "banner-orange");
-        this.notify(t.trainNo + " の出区を手配しました。");
-        this.render();
-    }
-
-    cmdSuspend() {
-        const tid = this.el("tid-sus-track").value;
-        const s = this.el("tid-sus-start").value;
-        const e = this.el("tid-sus-end").value;
-        const sIdx = STATION_MAP[s], eIdx = STATION_MAP[e];
-        if (sIdx === undefined || eIdx === undefined) { this.notify("区間の両端の駅を選んでください。"); return; }
-        const blks = this.game.trackMgr.blocks[tid];
-        if (!blks) return;
-        const sB = blks.find(b => b.stationIdx === sIdx && b.x !== -1000);
-        const eB = blks.find(b => b.stationIdx === eIdx && b.x !== -1000);
-        if (!sB || !eB) { this.notify("その線路にはこの区間がありません。"); return; }
-        const lo = Math.min(sB.index, eB.index) + 1, hi = Math.max(sB.index, eB.index) - 1;
-        if (lo > hi) { this.notify("区間が短すぎます。"); return; }
-        this.game.trackMgr.manualSuspensions.push({ trackId: tid, start: lo, end: hi });
-        this.game.ui.updateBanner(`【指令】${s}〜${e} 間の運転を見合わせます。`, "banner-red");
-        this.notify(s + "〜" + e + " を見合わせに設定しました。");
-    }
-
-    cmdClearSuspend() {
-        this.game.trackMgr.manualSuspensions = [];
-        this.game.signals.clearFaults();
-        this.game.trains.forEach(t => { if (t.state === "holding") { t.state = "running"; t.timer = 15; } });
-        this.game.ui.updateBanner("【指令】運転見合わせを全て解除しました。", "banner-orange");
-        this.notify("見合わせを全解除しました。");
-    }
-
-    cmdRadio() {
-        const t = this.selected();
-        const inc = this.game.incidents.trigger("jinshin");
-        if (!inc) {
-            // 当該列車が見つからないときは、防護無線だけを発報する
-            this.game.isEmergency = true;
-            this.game.radioTimer = 180;
-            this.game.ui.updateBanner("🚨【防護無線】指令により防護無線を発報しました。付近の列車は直ちに停車してください。", "banner-red");
+        const live = (t && t.state !== "in_depot" && t.state !== "finished") ? t : null;
+        let html = '<option value="">番線を選択</option>';
+        const r = live ? live.trackChangeReservation : null;
+        if (r && r.status === "pending") {
+            html += `<option value="cancel">― 予約中の変更 (${escapeLogHtml(r.stationName)} ${escapeLogHtml(r.label || "")}) を取り消す ―</option>`;
         }
-        this.notify("防護無線を発報しました。");
-        this.render();
+        if (stName) {
+            trackChangeCandidates(this.game, live, stName).forEach(o => {
+                html += `<option value="${o.value}"${o.disabled ? " disabled" : ""} title="${escapeLogHtml(o.note)}">` +
+                        escapeLogHtml(o.text + (o.disabled ? "（不可）" : "")) + "</option>";
+            });
+        }
+        this.writeSelect("tid-chg-track", html, sel.value);
+        const hint = this.el("tid-chg-hint");
+        if (hint) {
+            const bad = stName ? trackChangeCandidates(this.game, live, stName).filter(o => o.disabled) : [];
+            hint.textContent = !live ? "列車を選ぶと、その列車が入れる番線だけが選べます。"
+                : (bad.length ? "選べない番線: " + bad[0].note : "");
+        }
     }
 
     // ============================================================ 表示
     render() {
         this.renderHeader();
         this.renderTrainSelect();
+        // 番線の在線は刻々と変わるので、候補も毎秒作り直す (操作中は待つ)
+        this.refreshTrackStations();
+        this.refreshTrackCandidates();
         this.renderTrainInfo();
         this.renderIncidents();
         this.renderLogs();
         this.renderStation();
         this.refreshDepotSelect();
+        this.refreshReport();
     }
 
     renderHeader() {
@@ -554,6 +569,11 @@ class TidUI {
                 return escapeLogHtml(platformText(lbl)) + (plat ? "" : " <em>(側線・待避線)</em>");
             }).call(this)) +
             row("状態", escapeLogHtml(stateText) + (t.isManuallySuspended ? " <em>抑止中</em>" : "")) +
+            (t.trackChangeReservation ? row("番線変更", (function (r) {
+                const st = { pending: "予約中", done: "変更済み", failed: "取りやめ", cancelled: "取消" }[r.status] || r.status;
+                return escapeLogHtml(r.stationName + " " + (r.label || "") + " … " + st) +
+                       (r.note ? " <em>" + escapeLogHtml(r.note) + "</em>" : "");
+            })(t.trackChangeReservation)) : "") +
             row("信号現示", asp ? `<span class="tid-asp tid-asp-${aspect}">${asp.name} (${aspect})</span>` : "—") +
             row("遅れ", Math.floor((t.delayTime || 0) / 60) + "分") +
             row("始発", escapeLogHtml(t.startName || "—")) +
@@ -581,15 +601,20 @@ class TidUI {
             `<span class="tid-inc-stage">${escapeLogHtml(i.stage)}</span>` +
             `<span class="tid-inc-rem">再開見込 約${i.remain}分</span>` +
             (i.trainNo ? `<span class="tid-inc-train">当該 ${escapeLogHtml(i.trainNo)}</span>` : "") +
+            `<button class="tid-btn tid-rec-btn" data-rec="report" data-id="${escapeLogHtml(i.id)}">報告書</button>` +
             `</div>`).join("");
     }
 
     renderLogs() {
         const e = this.el("tid-logs");
         if (!e) return;
-        const tabC = this.el("tid-log-cmd"), tabS = this.el("tid-log-staff");
-        if (tabC) tabC.classList.toggle("is-active", this.logTab === "cmd");
-        if (tabS) tabS.classList.toggle("is-active", this.logTab === "staff");
+        const tabs = { cmd: "tid-log-cmd", staff: "tid-log-staff", comm: "tid-log-comm", inc: "tid-log-inc" };
+        Object.keys(tabs).forEach(k => {
+            const tb = this.el(tabs[k]);
+            if (tb) tb.classList.toggle("is-active", this.logTab === k);
+        });
+        if (this.logTab === "comm" || this.logTab === "inc") { this.renderRecords(e); return; }
+        this._logSig = null;
 
         const rows = this.game.ui.logHistory.filter(l => l.type === this.logTab).slice(0, 60);
         if (!rows.length) { e.innerHTML = '<p class="tid-empty">記録はありません。</p>'; return; }
@@ -602,73 +627,122 @@ class TidUI {
         }).join("");
     }
 
-    /** 駅情報 (番線ごとの在線と、次に発着する列車) */
-    renderStation() {
-        const e = this.el("tid-station");
-        if (!e) return;
-        const name = this.stationName;
-        if (!name) { e.classList.remove("is-on"); return; }
-        e.classList.add("is-on");
-
-        const rule = STATION_PLATFORM_RULES[name];
-        const rows = [];
-        TID_ROWS.forEach(row => {
-            const blks = this.game.trackMgr.blocks[row.id];
-            if (!blks) return;
-            const blk = blks.find(b => blockStationName(b) === name && b.x !== -1000);
-            if (!blk) return;
-            /* ★番線は配線データから引く (js/03-stations.js)。
-               以前は rule.labels[レーン番号] と引いていたため、
-               どの線路でも labels[0] になり全部「1番線」と出ていた。 */
-            blk.lanes.forEach((occ, li) => {
-                const lbl = platformLabelOf(name, row.id, li);
-                rows.push({
-                    line: row.label,
-                    label: lbl ? platformText(lbl) : ("第" + (li + 1) + "線"),
-                    platform: isPlatformLane(name, row.id, li),
-                    train: occ
-                });
-            });
-        });
-
-        const body = rows.length ? rows.map(r =>
-            `<tr class="${r.train ? "is-busy" : ""}">` +
-            `<td>${escapeLogHtml(r.line)}</td>` +
-            `<td>${escapeLogHtml(r.label)}${r.platform ? "" : '<small>(側線)</small>'}</td>` +
-            `<td>${r.train
-                ? `<span class="tid-mini" style="background:${(TID_TYPE_COLORS[r.train.type] || {}).bg};color:${(TID_TYPE_COLORS[r.train.type] || {}).text}">${escapeLogHtml(r.train.trainNo)}</span> ` +
-                  escapeLogHtml(r.train.type) + " " + escapeLogHtml(r.train.dest || "")
-                : '<span class="tid-free">空き</span>'}</td>` +
-            `</tr>`).join("") : '<tr><td colspan="3">この駅の番線情報はありません。</td></tr>';
-
-        // 発着予定 (この駅を通る列車を近い順に)
-        const approaching = [];
-        this.game.trains.forEach(t => {
-            if (t.state === "finished" || t.state === "in_depot") return;
-            const blks = this.game.trackMgr.blocks[t.trackId];
-            if (!blks) return;
-            const target = blks.find(b => blockStationName(b) === name && b.x !== -1000);
-            if (!target) return;
-            const d = (target.index - t.currBlockIndex) * t.dir;
-            if (d < 0 || d > UNITS_PER_STATION * 8) return;
-            approaching.push({ t: t, blocks: d });
-        });
-        approaching.sort((a, b) => a.blocks - b.blocks);
-        const soon = approaching.slice(0, 10).map(a =>
-            `<div class="tid-soon">` +
-            `<span class="tid-mini" style="background:${(TID_TYPE_COLORS[a.t.type] || {}).bg};color:${(TID_TYPE_COLORS[a.t.type] || {}).text}">${escapeLogHtml(a.t.trainNo)}</span>` +
-            `<span>${escapeLogHtml(a.t.type)} ${escapeLogHtml(a.t.dest || "")}</span>` +
-            `<span class="tid-soon-eta">あと約${Math.max(0, Math.round(a.blocks * 1.2))}分</span>` +
-            (a.t.delayTime >= 60 ? `<span class="tid-soon-delay">${Math.floor(a.t.delayTime / 60)}分延</span>` : "") +
-            `</div>`).join("") || '<p class="tid-empty">接近中の列車はありません。</p>';
-
-        e.innerHTML =
-            `<div class="tid-station-head"><b>${escapeLogHtml(name)}</b> 駅 在線状況` +
-            `<button id="tid-station-close" class="tid-x">閉じる</button></div>` +
-            `<table class="tid-table"><thead><tr><th>線路</th><th>番線</th><th>在線</th></tr></thead>` +
-            `<tbody>${body}</tbody></table>` +
-            `<div class="tid-station-sub">接近中の列車</div>${soon}`;
-        const btn = this.el("tid-station-close");
-        if (btn) btn.addEventListener("click", () => { this.stationName = null; this.renderStation(); });
+    /**
+     * 指令連絡・輸送障害の記録 (js/32-records.js)。
+     * 中身が変わったときだけ描き直す (開いている詳細やスクロールを保つため)。
+     */
+    renderRecords(e) {
+        const R = this.game.records;
+        if (!R) { e.innerHTML = '<p class="tid-empty">記録の仕組みがありません。</p>'; return; }
+        const esc = escapeLogHtml;
+        let html;
+        if (this.logTab === "comm") {
+            const rows = R.comms.slice(0, 120);
+            const sig = "comm|" + rows.length + "|" + rows.map(r => r.id + r.status + (r.timeline || []).length).join(",") +
+                        JSON.stringify(this._openComm || {});
+            if (sig === this._logSig) return;
+            this._logSig = sig;
+            if (!rows.length) { e.innerHTML = '<p class="tid-empty">指令連絡の記録はありません。</p>'; return; }
+            html = rows.map(r => {
+                const open = !!(this._openComm && this._openComm[r.id]);
+                const src = LOG_SOURCES[r.cat] || LOG_SOURCES.unten;
+                const resp = r.responseSec !== null && r.responseSec !== undefined
+                    ? `応答 ${Math.round(r.responseSec)}秒` : "応答待ち";
+                return `<div class="tid-rec tid-rec-${esc(r.level)}">` +
+                    `<button class="tid-rec-row" data-rec="comm" data-id="${esc(r.id)}">` +
+                    `<span class="tid-log-time">${esc(recClock(r.at))}</span>` +
+                    `<span class="tid-comm-lv tid-comm-lv-${esc(r.level)}">${esc(r.levelLabel)}</span>` +
+                    `<span class="tid-log-chip" style="background:${src.hue}">${src.tag}</span>` +
+                    `<span class="tid-rec-title">${esc(r.title)}${r.trainNo ? " <b>" + esc(r.trainNo) + "</b>" : ""}</span>` +
+                    `<span class="tid-rec-ans">${r.answer ? "→ " + esc(r.answer) : ""}</span>` +
+                    `<span class="tid-rec-by">${esc(r.answeredBy || r.status)}</span>` +
+                    `</button>` +
+                    (open ? `<div class="tid-rec-detail">` +
+                        `<div class="tid-rec-meta">発信: ${esc(r.from)}${r.where ? " / 位置: " + esc(r.where) : ""}` +
+                        `${r.trainNo ? " / 列車: " + esc(r.trainNo + " " + (r.trainType || "") + " " + (r.trainDest || "")) : ""}` +
+                        ` / ${esc(resp)}${r.held ? " / 応答まで当該列車を抑止" : ""}</div>` +
+                        (r.options && r.options.length ? `<div class="tid-rec-meta">選択肢: ${esc(r.options.join(" / "))}</div>` : "") +
+                        `<table class="rec-tl"><tbody>` + (r.timeline || []).map(x =>
+                            `<tr><td class="rec-t">${esc(recClock(x.at, true))}</td><td class="rec-k">${esc(x.kind)}</td>` +
+                            `<td><b>${esc(x.who || "")}</b> ${esc(x.text)}</td></tr>`).join("") +
+                        `</tbody></table></div>` : "") +
+                    `</div>`;
+            }).join("");
+        } else {
+            const rows = R.incidents.slice(0, 40);
+            const sig = "inc|" + rows.map(r => r.id + R.statusText(r) + r.stage + (r.timeline || []).length +
+                        Object.keys(r.affected || {}).length).join(",");
+            if (sig === this._logSig) return;
+            this._logSig = sig;
+            if (!rows.length) { e.innerHTML = '<p class="tid-empty">輸送障害の記録はありません。</p>'; return; }
+            html = rows.map(r => {
+                const live = r.status === "対応中";
+                const dur = (r.endedAt || this.game.currentTime) - r.startedAt;
+                const aff = Object.keys(r.affected || {}).length;
+                const stText = R.statusText(r);
+                return `<div class="tid-rec tid-rec-inc${live ? " is-live" : ""}">` +
+                    `<div class="tid-rec-row">` +
+                    `<span class="tid-log-time">${esc(recClock(r.startedAt))}</span>` +
+                    `<span class="tid-rec-st ${live ? "is-live" : ""}">${esc(stText)}</span>` +
+                    `<span class="tid-rec-title"><b>${esc(r.name)}</b> ${esc(r.place)}</span>` +
+                    `<span class="tid-rec-by">${esc(r.no)} / ${live ? "経過" : "支障"} ${esc(recDuration(dur))} / 影響 ${aff}本 / 最大 ${Math.round((r.maxDelaySec || 0) / 60)}分</span>` +
+                    `<button class="tid-btn tid-rec-btn" data-rec="report" data-id="${esc(r.id)}">報告書</button>` +
+                    `</div></div>`;
+            }).join("");
+        }
+        e.innerHTML = html;
     }
+
+    /** 輸送障害の報告書を開く */
+    openReport(id) {
+        const box = this.el("tid-report");
+        const body = this.el("tid-report-body");
+        if (!box || !body || !this.game.records) return;
+        this.reportId = id;
+        body.innerHTML = this.game.records.incidentReportHtml(id);
+        this._reportHtml = body.innerHTML;
+        box.classList.add("is-on");
+    }
+
+    closeReport() {
+        const box = this.el("tid-report");
+        if (box) box.classList.remove("is-on");
+        this.reportId = null;
+    }
+
+    /** 開いている報告書を、対応中なら描き直す (スクロール位置を保つ) */
+    refreshReport() {
+        if (!this.reportId || !this.game.records) return;
+        const body = this.el("tid-report-body");
+        if (!body) return;
+        const html = this.game.records.incidentReportHtml(this.reportId);
+        if (html === this._reportHtml) return;
+        const top = body.scrollTop;
+        body.innerHTML = html;
+        this._reportHtml = html;
+        body.scrollTop = top;
+    }
+
+    /** 報告書を文字だけのファイルで保存する */
+    saveReport() {
+        if (!this.reportId || !this.game.records) return;
+        const text = this.game.records.incidentReportText(this.reportId);
+        const rec = this.game.records.incidents.find(r => r.id === this.reportId);
+        const name = "輸送障害報告_" + (rec ? rec.no : this.reportId) + ".txt";
+        try {
+            const blob = new Blob(["\ufeff" + text], { type: "text/plain;charset=utf-8" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+            this.notify(name + " を保存しました。");
+        } catch (e) {
+            this.notify("保存できませんでした。");
+        }
+    }
+
+    /* 駅情報 (駅名札をタップしたときのパネル) は js/46-tid-station.js にある。
+       番線ごとに固定して、到着・通過の予定を並べる。 */
 }

@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JR West Super TID</title>
-<link rel="stylesheet" href="css/style.css?v=c55bf0f6">
-<link rel="stylesheet" href="css/header-log.css?v=c55bf0f6">
-<link rel="stylesheet" href="css/depot-view.css?v=c55bf0f6">
+<link rel="stylesheet" href="css/style.css?v=321b513a">
+<link rel="stylesheet" href="css/header-log.css?v=321b513a">
+<link rel="stylesheet" href="css/depot-view.css?v=321b513a">
 </head>
 <body>
 
@@ -189,7 +189,7 @@
             </div>
             <div style="flex:1;">
                 <label>種別</label>
-                <select id="cmd-depot-type">
+                <select id="cmd-depot-type" onchange="game.ui.updateDepotDests()">
                     <option value="普通">普通</option>
                     <option value="快速">快速</option>
                     <option value="新快速">新快速</option>
@@ -294,6 +294,18 @@
     </div>
 </div>
 
+<!-- 輸送障害の報告書 (社員限り)。js/32-records.js が中身を作る -->
+<div id="report-modal" onclick="game.ui.closeIncidentReport()" style="display:none;">
+    <div class="report-modal-box" onclick="event.stopPropagation()">
+        <div class="report-modal-head">
+            <b>輸送障害報告</b>
+            <button onclick="game.ui.saveIncidentReport()">テキストで保存</button>
+            <button onclick="game.ui.closeIncidentReport()">閉じる</button>
+        </div>
+        <div id="report-modal-body"></div>
+    </div>
+</div>
+
 <!-- ★追加: 留置車両一覧モーダル -->
 <div id="depot-modal" onclick="closeDepotModal()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center; flex-direction:column; overflow-y:auto;">
     <div onclick="event.stopPropagation()" style="background:#fff; border: 2px solid #555; width: 94%; max-width: 1040px; padding: 18px 20px; font-family: 'Meiryo UI', 'MS Gothic', sans-serif; border-radius: 8px;">
@@ -309,38 +321,39 @@
 
 
 <!-- 読み込み順に意味があります。データ定義 -> クラス本体 -> prototype への追加 -> 起動 -->
-<script src="js/01-config.js?v=c55bf0f6"></script>
-<script src="js/02-fleet-data.js?v=c55bf0f6"></script>
-<script src="js/03-stations.js?v=c55bf0f6"></script>
-<script src="js/04-depots.js?v=c55bf0f6"></script>
-<script src="js/05-track-manager.js?v=c55bf0f6"></script>
-<script src="js/06-fleet.js?v=c55bf0f6"></script>
-<script src="js/07-spawner-core.js?v=c55bf0f6"></script>
-<script src="js/08-spawner-mainline.js?v=c55bf0f6"></script>
-<script src="js/09-spawner-branch.js?v=c55bf0f6"></script>
-<script src="js/10-timetable.js?v=c55bf0f6"></script>
-<script src="js/11-train-core.js?v=c55bf0f6"></script>
-<script src="js/12-train-move.js?v=c55bf0f6"></script>
-<script src="js/13-train-hold.js?v=c55bf0f6"></script>
-<script src="js/14-train-turnback.js?v=c55bf0f6"></script>
-<script src="js/15-train-depot.js?v=c55bf0f6"></script>
-<script src="js/16-train-adjust.js?v=c55bf0f6"></script>
-<script src="js/17-renderer.js?v=c55bf0f6"></script>
-<script src="js/18-ui-core.js?v=c55bf0f6"></script>
-<script src="js/19-ui-log.js?v=c55bf0f6"></script>
-<script src="js/20-ui-cmd.js?v=c55bf0f6"></script>
-<script src="js/21-ui-board.js?v=c55bf0f6"></script>
-<script src="js/22-depot-view.js?v=c55bf0f6"></script>
-<script src="js/23-game.js?v=c55bf0f6"></script>
-<script src="js/24-service-rules.js?v=c55bf0f6"></script>
-<script src="js/25-signals.js?v=c55bf0f6"></script>
-<script src="js/26-incidents.js?v=c55bf0f6"></script>
-<script src="js/27-operations.js?v=c55bf0f6"></script>
-<script src="js/28-dispatch.js?v=c55bf0f6"></script>
-<script src="js/29-sim-bus.js?v=c55bf0f6"></script>
-<script src="js/30-duty-log.js?v=c55bf0f6"></script>
-<script src="js/31-comms.js?v=c55bf0f6"></script>
-<script src="js/39-boot.js?v=c55bf0f6"></script>
+<script src="js/01-config.js?v=321b513a"></script>
+<script src="js/02-fleet-data.js?v=321b513a"></script>
+<script src="js/03-stations.js?v=321b513a"></script>
+<script src="js/04-depots.js?v=321b513a"></script>
+<script src="js/05-track-manager.js?v=321b513a"></script>
+<script src="js/06-fleet.js?v=321b513a"></script>
+<script src="js/07-spawner-core.js?v=321b513a"></script>
+<script src="js/08-spawner-mainline.js?v=321b513a"></script>
+<script src="js/09-spawner-branch.js?v=321b513a"></script>
+<script src="js/10-timetable.js?v=321b513a"></script>
+<script src="js/11-train-core.js?v=321b513a"></script>
+<script src="js/12-train-move.js?v=321b513a"></script>
+<script src="js/13-train-hold.js?v=321b513a"></script>
+<script src="js/14-train-turnback.js?v=321b513a"></script>
+<script src="js/15-train-depot.js?v=321b513a"></script>
+<script src="js/16-train-adjust.js?v=321b513a"></script>
+<script src="js/17-renderer.js?v=321b513a"></script>
+<script src="js/18-ui-core.js?v=321b513a"></script>
+<script src="js/19-ui-log.js?v=321b513a"></script>
+<script src="js/20-ui-cmd.js?v=321b513a"></script>
+<script src="js/21-ui-board.js?v=321b513a"></script>
+<script src="js/22-depot-view.js?v=321b513a"></script>
+<script src="js/23-game.js?v=321b513a"></script>
+<script src="js/24-service-rules.js?v=321b513a"></script>
+<script src="js/25-signals.js?v=321b513a"></script>
+<script src="js/26-incidents.js?v=321b513a"></script>
+<script src="js/27-operations.js?v=321b513a"></script>
+<script src="js/28-dispatch.js?v=321b513a"></script>
+<script src="js/29-sim-bus.js?v=321b513a"></script>
+<script src="js/30-duty-log.js?v=321b513a"></script>
+<script src="js/31-comms.js?v=321b513a"></script>
+<script src="js/32-records.js?v=321b513a"></script>
+<script src="js/39-boot.js?v=321b513a"></script>
 
 <!-- ===================================================== 版の食い違いの見張り
      詳しくは tid.html の同じ部分を参照。古い js がキャッシュから使われている

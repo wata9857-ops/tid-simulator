@@ -34,6 +34,8 @@ UIManager.prototype.updateCmdActionOptions = function () {
         let dest = document.getElementById("cmd-dest").value;
         const trainId = document.getElementById("cmd-no").value;
         const t = this.game.getTrain(trainId);
+        // 着発番線変更の駅は、その列車がこれから通る駅に絞る
+        this.fillTrackChangeStations(t);
         if (t) {
             if (!dest) dest = t.dest;
             let notes = "情報なし";
@@ -101,7 +103,38 @@ UIManager.prototype.updateDepotSelector = function () {
         this.updateDepotTrains();
 };
 
+/**
+ * 出区の行先の候補。選んだ留置場から向きを変えずに行けない行先は選べなくする
+ * (js/28-dispatch.js の depotOutRoute)。
+ * ★以前はどの行先でも選べ、放出の電留線から京都・大阪を選ぶと
+ *   放出から四条畷方の行き止まりへ走り出していた。
+ */
+UIManager.prototype.updateDepotDests = function () {
+        const sel = document.getElementById("cmd-depot-dest");
+        if (!sel) return;
+        if (!this._depotDests) this._depotDests = Array.from(sel.options || []).map(o => o.value).filter(Boolean);
+        const depotName = (document.getElementById("cmd-depot-sel") || {}).value || "";
+        const type = (document.getElementById("cmd-depot-type") || {}).value || "回送";
+        const keep = sel.value;
+        sel.innerHTML = "";
+        let firstOk = "";
+        this._depotDests.forEach(d => {
+            const ck = depotName ? depotOutRoute(this.game, depotName, d, type) : { ok: true };
+            const o = document.createElement("option");
+            o.value = d;
+            o.text = d + (ck.ok ? "" : "（不可）");
+            o.disabled = !ck.ok;
+            o.title = ck.ok ? "" : ck.msg;
+            sel.add(o);
+            if (ck.ok && !firstOk) firstOk = d;
+        });
+        const keepOk = keep && (!depotName || depotOutRoute(this.game, depotName, keep, type).ok);
+        sel.value = keepOk ? keep : (firstOk || keep);
+        this.updateCmdDepotActionOptions();
+};
+
 UIManager.prototype.updateDepotTrains = function () {
+        this.updateDepotDests();
         const depotName = document.getElementById("cmd-depot-sel").value;
         const sel = document.getElementById("cmd-depot-train");
         if(!sel) return;
@@ -239,38 +272,68 @@ UIManager.prototype.executeForceStart = function () {
     this.updateTrainSelector();
 };
 
+/**
+ * 着発番線変更の「駅」の候補。列車を選んでいれば、その列車がこれから通る駅だけ。
+ * ★以前は本線の駅を全部並べていたので、通過済みの駅や、その列車が通らない
+ *   線区の駅 (湖西線の列車に大阪 など) を選べてしまい、予約しても効かなかった。
+ *   湖西線・JR宝塚線・JR東西線の駅は候補にすら無かった。
+ */
+UIManager.prototype.fillTrackChangeStations = function (t) {
+        const sel = document.getElementById("cmd-chg-station");
+        if (!sel) return;
+        const keep = sel.value;
+        let names;
+        if (t && t.state !== "in_depot" && t.state !== "finished") names = trainStationsAhead(this.game, t, 25);
+        else names = STATIONS.map(s => s.name)
+            .concat(Object.values(KOSEI_STATIONS_MAP))
+            .concat(Object.values(FUKUCHI_STATIONS_MAP))
+            .concat(Object.values(TOZAI_STATIONS_MAP));
+        sel.innerHTML = '<option value="">駅を選択してください</option>';
+        names.forEach(n => {
+            const o = document.createElement("option");
+            o.value = n; o.text = n;
+            sel.add(o);
+        });
+        sel.value = (names.indexOf(keep) >= 0) ? keep : "";
+        this.updateTrackCandidates();
+};
+
+/**
+ * 着発番線変更の「番線」の候補 (js/13-train-hold.js の trackChangeCandidates)。
+ * ★以前は本線の4線だけを「上り内 N番線」の形で並べていて、分岐線の番線が無く、
+ *   向きの違う線路の番線も選べた (選んでも入れないので、列車が手前で止まり続けた)。
+ */
 UIManager.prototype.updateTrackCandidates = function () {
         const stName = document.getElementById("cmd-chg-station").value;
         const trSel = document.getElementById("cmd-chg-track");
         trSel.innerHTML = '<option value="">番線を選択</option>';
-        if(!stName) return;
-        ["Up_In", "Up_Out", "Down_In", "Down_Out"].forEach(tid => {
-            const blks = this.game.trackMgr.blocks[tid];
-            if(!blks) return;
-            const blk = blks.find(b => b.stationIdx === STATION_MAP[stName]);
-            if(blk) {
-                /* ★番線は配線データから引く (js/03-stations.js)。
-                   以前は "Lane:1" のようにレーン番号をそのまま出していて、
-                   実際の番線と対応していなかった。 */
-                blk.lanes.forEach((_, laneIdx) => {
-                    const lbl = platformLabelOf(stName, tid, laneIdx);
-                    /* 線名は旅客向け画面でも使うので、ここで持つ
-                       (TID_ROWS は Super-TID 画面だけが読み込むため参照しない) */
-                    const LINE_LABEL = { Up_Out: "上り外", Up_In: "上り内",
-                                         Down_In: "下り内", Down_Out: "下り外" };
-                    const op = document.createElement("option");
-                    op.value = `${tid},${laneIdx}`;
-                    op.text = (LINE_LABEL[tid] || tid) + " " +
-                              (lbl ? platformText(lbl) : "第" + (laneIdx + 1) + "線");
-                    trSel.add(op);
-                });
-            }
+        const t = this.game.getTrain(document.getElementById("cmd-no").value);
+        const live = (t && t.state !== "in_depot" && t.state !== "finished") ? t : null;
+        const r = live ? live.trackChangeReservation : null;
+        if (r && r.status === "pending") {
+            const op = document.createElement("option");
+            op.value = "cancel";
+            op.text = `― 予約中の変更 (${r.stationName} ${r.label || ""}) を取り消す ―`;
+            trSel.add(op);
+        }
+        if (!stName) return;
+        trackChangeCandidates(this.game, live, stName).forEach(o => {
+            const op = document.createElement("option");
+            op.value = o.value;
+            op.text = o.text + (o.disabled ? "（不可）" : "");
+            op.disabled = !!o.disabled;
+            op.title = o.note || "";
+            trSel.add(op);
         });
 };
 
 UIManager.prototype.applyTrackChange = function () {
         const val = document.getElementById("cmd-chg-track").value || "";
         const parts = val.split(",");
+        if (!document.getElementById('cmd-no').value || !parts[0]) {
+            alert("列車・駅・番線を選んでください。");
+            return;
+        }
         const r = this.game.dispatch({
             name: "trackChange",
             trainId: document.getElementById('cmd-no').value,
@@ -278,6 +341,7 @@ UIManager.prototype.applyTrackChange = function () {
             trackId: parts[0], lane: parseInt(parts[1], 10) || 0
         });
         alert(r.msg || (r.ok ? "予約しました" : "選択不備"));
+        this.updateTrackCandidates();
 };
 
 UIManager.prototype.setSuspension = function () {
@@ -302,7 +366,8 @@ UIManager.prototype.executeDepotOutForce = function () {
             trainId: document.getElementById("cmd-depot-train").value,
             delayMin: parseInt(document.getElementById('cmd-depot-time').value, 10) || 0,
             type: document.getElementById('cmd-depot-type').value,
-            dest: document.getElementById('cmd-depot-dest').value
+            dest: document.getElementById('cmd-depot-dest').value,
+            action: document.getElementById('cmd-depot-action').value || ""
         });
         alert(r.msg || (r.ok ? "出区指令を設定しました" : "設定できませんでした"));
         this.updateDepotSelector();

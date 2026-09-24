@@ -170,6 +170,88 @@ function fleetIndexOf(name) {
     return (home !== name) ? fleetIndexOf(home) : null;
 }
 
+/* ------------------------------------------------------------------ 線区をまたぐ向き
+
+   ■ 何が問題だったか
+     本線・湖西線・JR宝塚線・JR東西線は、同じ駅インデックスの並びを共有している。
+     そのため「行先のインデックスが大きければ上り」と比べるだけでは、
+     線区をまたいだときに向きを取り違える。
+       ・放出の電留線から本線の京都へ出区させると、放出 46 < 京都 55 なので
+         「上り (dir=1)」になり、放出から四条畷方へ走り出していた。
+       ・同じ駅どうし (放出 → 放出) は比べると「差が無い」のに、
+         上り (dir=1) として扱われていた。
+     この2つが重なって、放出で運転を打ち切るはずの列車が四条畷方の
+     行き止まりへ進み、そこで動けなくなって後続を止めていた。
+
+   ■ どう直したか
+     駅がどの線区にあるかを見て、線区どうしのつながり
+     (尼崎で本線・JR東西線・JR宝塚線、山科で本線・湖西線) を通って
+     向きを変えずに行けるときだけ向きを返す。
+     行けないとき (同じ場所・方向転換が要る・線路図の外) は 0 を返すので、
+     呼び出し側は「その出区・回送は組めない」と判断できる。
+
+     JR東西線は 尼崎(36) → 放出(46) が上り (dir=1)。
+     JR宝塚線は 尼崎(36) → 新三田(23) が下り (dir=-1)。
+     湖西線は 山科(56) → 近江塩津(83) が上り (dir=1)。 */
+
+/** その駅 (行先) がどの線区にあるか。"main" / "tozai" / "fukuchi" / "kosei" */
+function routeLineOf(name) {
+    if (!name) return "main";
+    if (TOZAI_PLACES.indexOf(name) >= 0) return "tozai";
+    if (FUKUCHI_PLACES.indexOf(name) >= 0 || ["豊岡", "城崎温泉"].indexOf(name) >= 0) return "fukuchi";
+    if (KOSEI_PLACES.indexOf(name) >= 0) return "kosei";
+    return "main";
+}
+
+/** 線区の中での位置。線路図の外の駅は、線区の端のさらに外に置く */
+function routePosOf(name) {
+    if (KATAMACHI_BEYOND.indexOf(name) >= 0) return TOZAI_EAST_IDX + 1;    // 放出より四条畷方
+    if (["篠山口", "福知山", "豊岡", "城崎温泉"].indexOf(name) >= 0) return 22;   // 新三田より先
+    if (["網干", "播州赤穂", "上郡"].indexOf(name) >= 0) return -1;            // 姫路より西
+    const i = fleetIndexOf(name);
+    return (i === null || i === undefined) ? null : i;
+}
+
+/**
+ * a から b へ、向きを変えずに線路の上をたどって行くときの向き。
+ * 1 = 上り / -1 = 下り / 0 = 行けない (同じ場所・方向転換が要る・不明)。
+ */
+function routeDirection(a, b) {
+    if (!a || !b || a === b) return 0;
+    const ia = routePosOf(a), ib = routePosOf(b);
+    if (ia === null || ib === null) return 0;
+    const la = routeLineOf(a), lb = routeLineOf(b);
+    const AMA = STATION_MAP["尼崎"], YAMA = STATION_MAP["山科"], SHIO = STATION_MAP["近江塩津"];
+    const sgn = (d) => (d > 0 ? 1 : d < 0 ? -1 : 0);
+    if (la === lb) return sgn(ib - ia);
+    // --- 本線 → 分岐線
+    if (la === "main" && lb === "tozai")   return (ia <= AMA) ? 1 : 0;
+    if (la === "main" && lb === "fukuchi") return (ia >= AMA) ? -1 : 0;
+    if (la === "main" && lb === "kosei")   return (ia <= YAMA) ? 1 : 0;
+    // --- 分岐線 → 本線
+    if (la === "tozai" && lb === "main")   return (ib <= AMA) ? -1 : 0;
+    if (la === "fukuchi" && lb === "main") return (ib >= AMA) ? 1 : 0;
+    if (la === "kosei" && lb === "main")   return (ib <= YAMA) ? -1 : (ib >= SHIO ? 1 : 0);
+    // --- 分岐線どうし (尼崎・山科で本線を通り抜ける)
+    if (la === "tozai" && lb === "fukuchi") return -1;
+    if (la === "fukuchi" && lb === "tozai") return 1;
+    if (la === "fukuchi" && lb === "kosei") return 1;
+    if (la === "kosei" && lb === "fukuchi") return -1;
+    return 0;                       // 湖西線 ⇄ JR東西線 は尼崎か山科で方向転換が要る
+}
+
+/** routeDirection が 0 になった理由 (指令の画面に出す) */
+function routeDirectionReason(a, b) {
+    if (!a || !b) return "発駅・行先が決まっていません。";
+    if (a === b || (routePosOf(a) !== null && routePosOf(a) === routePosOf(b) &&
+                    routeLineOf(a) === routeLineOf(b))) {
+        return `${a}から${b}へは移動がありません (同じ場所です)。`;
+    }
+    if (routePosOf(a) === null || routePosOf(b) === null) return `${b}はこの線路図の範囲外です。`;
+    return `${a}から${b}へは、途中で方向を変えないと行けません。` +
+           `方向転換できる駅までの行先にしてください。`;
+}
+
 // ------------------------------------------------------------------ 本体
 class FleetManager {
     constructor(game) {

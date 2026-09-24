@@ -49,6 +49,20 @@ function destReachable(t) {
     const hereIdx = here.stationIdx;
     if (hereIdx === undefined) return true;
 
+    /* ★行先の駅がいまの線路の上にあれば、それが前方 (か当駅) にあるかで決める。
+       下の線区ごとの規則は「宝塚線の行先は下り」「東西線の行先は上り」と決めつけて
+       いるので、宝塚止まりの上り (新三田→宝塚) や、放出から京橋への下りの回送を
+       「たどり着けない」と見ていた (js/27-operations.js の canReach と同じ直し)。 */
+    {
+        const endName = (KATAMACHI_BEYOND.indexOf(t.dest) >= 0) ? '放出'
+            : (['篠山口', '福知山', '豊岡', '城崎温泉'].indexOf(t.dest) >= 0) ? '新三田' : t.dest;
+        const destBlk = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
+                                       blockStationName(b) === endName);
+        if (destBlk && t.trackId.indexOf('Hoppo') < 0) {
+            return (destBlk.index - t.currBlockIndex) * t.dir >= 0;
+        }
+    }
+
     /* JR東西線と JR宝塚線は尼崎でつながっているので、
        宝塚線を上ってきた列車が東西線へ、東西線を下ってきた列車が宝塚線へ
        そのまま入る運用がある。どちらも有効。 */

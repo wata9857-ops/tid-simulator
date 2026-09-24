@@ -151,6 +151,18 @@ class SimBus {
                 isKoseiRoute: !!t.isKoseiRoute,
                 isFinalStop: !!t.isFinalStop,
                 nextAction: t.nextAction,
+                trackChangeReservation: t.trackChangeReservation ? {
+                    stationName: t.trackChangeReservation.stationName,
+                    targetTrackId: t.trackChangeReservation.targetTrackId,
+                    targetLane: t.trackChangeReservation.targetLane,
+                    label: t.trackChangeReservation.label,
+                    status: t.trackChangeReservation.status,
+                    note: t.trackChangeReservation.note || ""
+                } : null,
+                hasStoppedAtCurrent: !!t.hasStoppedAtCurrent,
+                hasDeparted: !!t.hasDeparted,
+                serviceChange: t.serviceChange ? { at: t.serviceChange.at } : null,
+                stuckTime: t.stuckTime,
                 troubleInfo: t.troubleInfo && t.troubleInfo.active ? {
                     active: true, cause: t.troubleInfo.cause,
                     status: t.troubleInfo.status, location: t.troubleInfo.location
@@ -195,7 +207,9 @@ class SimBus {
             /* 指令連絡 (js/31-comms.js)。応答はどちらの画面からでもできるよう、
                本体が抱えている一覧をそのまま流す。 */
             comms: g.comms ? g.comms.list() : [],
-            logs: g.ui.logHistory.slice(0, 80)
+            logs: g.ui.logHistory.slice(0, 80),
+            // 指令連絡・輸送障害の記録 (js/32-records.js)
+            records: g.records ? g.records.snapshot() : null
         };
     }
 
@@ -249,6 +263,7 @@ class SimBus {
 
         // --- 記録
         if (s.logs) g.ui.logHistory = s.logs;
+        if (s.records && g.records) g.records.load(s.records);
         // --- 輸送障害 (一覧の表示だけ)
         this._incidents = s.incidents || [];
         // --- 指令連絡 (一覧の表示だけ。応答は本体へ転送される)

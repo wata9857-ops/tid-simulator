@@ -18,7 +18,17 @@ Train.prototype.endOfLineStop = function () {
     if (this.isFinalStop) return false;      // すでに終点扱い
     const blks = this.game.trackMgr.blocks[this.trackId];
     const here = blks ? blks[this.currBlockIndex] : null;
-    const endName = blockStationName(here);
+    let endName = blockStationName(here);
+    /* ★駅でない所 (駅と駅のあいだ) で線区の端に当たったときは、
+       直前に通った駅を終点として扱う。行先が空のままだと、
+       その後の入区・回収の処理が留置場を決められない。 */
+    if (!endName || !isRealStationBlock(here)) {
+        endName = "";
+        for (let k = 1; blks && k <= UNITS_PER_STATION * 2; k++) {
+            const b = blks[this.currBlockIndex - this.dir * k];
+            if (b && b.x !== -1000 && isRealStationBlock(b)) { endName = blockStationName(b); break; }
+        }
+    }
     this.turnbackTrack = null;
     this.state = "stopped";
     this.hasStoppedAtCurrent = true;
@@ -139,6 +149,21 @@ Train.prototype.move = function () {
 
         let targetLane = -1;
         let actualNextBlock = nextBlock;
+        /* ★指令の着発番線変更 (js/13-train-hold.js の reservedEntry)。
+           予約の駅へ進入するときは、指定の線路・レーンに入れる。
+           ふさがっていれば手前で待つ。待ちの上限を過ぎたら予約は取りやめになり、
+           ふだんの番線の選び方に戻る。 */
+        const resv = this.reservedEntry(nextIdx);
+        if (resv && !resv.free) {
+            this.state = "holding";
+            this.timer = 15;
+            return;
+        }
+        if (resv) {
+            targetTrackId = resv.trackId;
+            targetLane = resv.lane;
+            actualNextBlock = resv.block;
+        } else
         // 転線が発生する場合のブロックと空きレーンの取得
         if (targetTrackId !== this.trackId) {
             let tBlks = this.game.trackMgr.blocks[targetTrackId];
@@ -167,6 +192,7 @@ Train.prototype.move = function () {
             this.lane = targetLane;
             actualNextBlock.lanes[this.lane] = this;
             nextBlock = actualNextBlock; // 以降の処理（停車判定など）を新しいブロックで行うために上書き
+            if (resv) this.completeReservation("進入しました");
         } else {
             // 満線の場合や転線先が見つからない場合は移動せずに手前で待機
             this.state = "holding";

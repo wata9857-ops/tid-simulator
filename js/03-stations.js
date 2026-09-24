@@ -1297,6 +1297,29 @@ function stationLaneY(stName, trackId, lane, upOutY, upInY, downInY, downOutY) {
     return (ys[e.index] !== undefined) ? ys[e.index] : null;
 }
 
+/* 分岐の駅で、分岐線の列車だけが使う着発線の番線名。
+   山科・近江塩津の湖西線の線路は、本線と同じ駅名のブロックを別に持っている。
+   番線の対応表 (stationLaneMap) は本線の4線ぶんしか持たないので、そのまま引くと
+   湖西線の着発線が「上通」「下通」(本線の通過線) と同じ名前になってしまう。
+   画面に出すときだけ、ここで正しい呼び方に直す。
+     山科 … 湖西線の近江今津方面が1番、京都方面が4番 (README の山科の項) */
+const JUNCTION_BRANCH_PLATFORMS = {
+    "山科": { Kosei_Up: "1", Kosei_Down: "4" }
+};
+
+/** 画面に出す番線名 (分岐の駅の分岐線の着発線も正しく呼ぶ) */
+function displayPlatformLabel(stName, trackId, lane) {
+    const j = JUNCTION_BRANCH_PLATFORMS[stName];
+    if (j && j[trackId]) return j[trackId];
+    if (/^(Kosei|Fukuchi|Tozai)_/.test(trackId) && !stationBranchLine(stName) &&
+        !STATION_SHARED_LANES[stName]) {
+        const line = trackId.indexOf("Kosei") === 0 ? "湖西線"
+                   : trackId.indexOf("Fukuchi") === 0 ? "宝塚線" : "東西線";
+        return line + (trackDirOf(trackId) === 1 ? "上り" : "下り") + "着発線";
+    }
+    return platformLabelOf(stName, trackId, lane);
+}
+
 /** 番線の呼び方。数字なら「4番線」、「上待」などはそのまま */
 function platformText(label) {
     if (label === null || label === undefined || label === "") return "";

@@ -555,16 +555,17 @@ class TidRenderer {
             }
 
             // 発着予告 (その駅の線路ごとに、次に来る列車を出す)
-            this.drawPredictions(ctx, st.name, x);
+            this.drawPredictions(ctx, st.name, x, "本線");
 
             // 分岐線の駅の番線
-            [[KOSEI_STATIONS_MAP, "Kosei_Up"],
-             [FUKUCHI_STATIONS_MAP, "Fukuchi_Up"],
-             [TOZAI_STATIONS_MAP, "Tozai_Up"]].forEach(def => {
+            [[KOSEI_STATIONS_MAP, "Kosei_Up", "湖西線"],
+             [FUKUCHI_STATIONS_MAP, "Fukuchi_Up", "JR宝塚線"],
+             [TOZAI_STATIONS_MAP, "Tozai_Up", "JR東西線"]].forEach(def => {
                 const n = def[0][i];
                 if (!n || tY[def[1]] === undefined) return;
                 this.drawJunctions(ctx, n, x);
                 this.drawStationLanes(ctx, n, x, tY[def[1]], true);
+                this.drawPredictions(ctx, n, x, def[2]);
             });
 
             /* 駅名札は最後に描く (線路・ホーム・列車表示の上に出す)。
@@ -643,20 +644,24 @@ class TidRenderer {
      * 実物と同じく、下り線はその線路の下、上り線はその線路の上に、
      * 線名の小札を付けた札で「次に来る列車」を出す。
      */
-    drawPredictions(ctx, stName, cx) {
+    drawPredictions(ctx, stName, cx, group) {
         if (!this.show.predict || !this.predict) return;
         this.rows().forEach(row => {
             const y = this.trackY[row.id];
             if (y === undefined) return;
+            /* ★その駅の線区の線路にだけ出す。
+               以前は本線の駅名で全部の線路に予告の枠を出していたので、
+               湖西線の線路に「大津」「膳所」の枠が並び (中身は必ず空)、
+               湖西線の駅 (大津京・堅田 …) の予告は一度も出ていなかった。 */
+            if (group && row.group !== group) return;
             const p = this.predict[row.id + "|" + stName];
             /* その線路に来る列車が無いときは、実物と同じく薄い空き枠だけを出す。
                (実物の画面も、列車が決まっていない所は枠だけが並んでいる) */
             const range = tidTrackRange(row.id);
             const sIdx = STATION_MAP[stName];
-            if (sIdx !== undefined && (sIdx < range[0] || sIdx > range[1]) &&
-                KOSEI_STATIONS_MAP[sIdx] === undefined &&
-                FUKUCHI_STATIONS_MAP[sIdx] === undefined &&
-                TOZAI_STATIONS_MAP[sIdx] === undefined) return;
+            if (!group || group === "本線") {
+                if (sIdx !== undefined && (sIdx < range[0] || sIdx > range[1])) return;
+            }
             /* 実物では、下り線の予告は駅の右 (進む先) 側、
                上り線の予告は駅の左側に並ぶ。こうすると上下の札が
                横にずれるので、狭い内側線のあいだでも重ならない。 */

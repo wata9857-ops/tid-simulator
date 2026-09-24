@@ -314,7 +314,9 @@ async function canvasFingerprint(page) {
             game.comms.lastMajorAt = -9999;
             game.update();
         }
-        const p = game.comms.pending[0];
+        /* ★前の4時間ぶんの走行で残っていた連絡は、期限が迫っていることがある。
+           いちばん新しい (残り時間の長い) 連絡を見る。 */
+        const p = game.comms.pending.slice().sort((a, b) => b.deadline - a.deadline)[0];
         if (!p) return null;
         const held = game.trains.filter(t => t.commIncident === p.id);
         return { level: p.level, title: p.title, options: p.options.length,
@@ -339,7 +341,8 @@ async function canvasFingerprint(page) {
         const stayed = await page.evaluate((r) => {
             const p0 = game.comms.pending.find(p => p.id === r.id);
             if (!p0) return null;
-            const span = Math.floor(p0.limit * 0.6);
+            // 残り時間の6割まで進める (期限を過ぎると別の指令員が処理してよいので)
+            const span = Math.floor((p0.deadline - game.currentTime) * 0.6);
             const before = r.heldPos;
             for (let sec = 0; sec < span; sec += CONFIG.TICK_SEC) game.update();
             const still = game.comms.pending.some(p => p.id === r.id);

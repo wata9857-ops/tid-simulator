@@ -231,6 +231,7 @@ class OperationsManager {
             /* 送る編成は、送り先の線区で使えるものを選ぶ。
                放出なら 207系/321系 (JR東西線の規則) になる。 */
             const dir = this.dirFromTo(from.name, to.name);
+            if (!dir) continue;                       // 方向転換なしには行けない
             const no = this.deadheadNo();
             const vs = fleet.assign(from.name, "回送",
                                     depotTrackId(from.name, dir, "回送"),
@@ -309,6 +310,12 @@ class OperationsManager {
            京都支所の221系が付いてしまい、京都で本線の普通に変わるときに
            わざわざ差し替えることになっていた。 */
         const serviceTrack = (w.dir === 1 ? "Up_In" : "Down_In");
+        /* 送り込みの向きが組めない (方向転換が要る) 計画は出さない。
+           ★車両を割り当てる前に確かめる。後で気づくと編成が宙に浮く。 */
+        const sameSpot0 = (via === depotName) ||
+            (fleetIndexOf(via) !== null && fleetIndexOf(via) === fleetIndexOf(depotName));
+        if (!sameSpot0 && !this.dirFromTo(depotName, via)) return false;
+
         const vs = this.game.fleet.assign(depotName, w.as, serviceTrack, dest, serviceNo,
                                           { noBorrow: true });
         if (!vs || !vs.length) return false;
@@ -343,11 +350,18 @@ class OperationsManager {
         return false;
     }
 
-    /** a から b へ向かう向き */
+    /**
+     * a から b へ向かう向き。行けないときは 0。
+     *
+     * ★以前は駅インデックスを比べるだけで、同じ場所 (放出 → 放出) のときも
+     *   「上り (1)」を返していた。本線と分岐線はインデックスを共有しているので、
+     *   線区をまたぐと向きも取り違える (js/06-fleet.js の routeDirection)。
+     *   その結果、JR東西線の上りの穴埋めが「放出の電留線から放出行きの上り」
+     *   として組まれ、出区した列車が放出を通り越して四条畷方の
+     *   行き止まりへ進み、そこで動けなくなっていた。
+     */
     dirFromTo(a, b) {
-        const ia = fleetIndexOf(a), ib = fleetIndexOf(b);
-        if (ia === null || ib === null || ia === ib) return 1;
-        return (ib > ia) ? 1 : -1;
+        return routeDirection(a, b);
     }
 
     // ============================================================= 始発の裏付け
@@ -387,6 +401,7 @@ class OperationsManager {
         if (this.game.fleet.poolAt(fromName).length < 2) return false;
 
         const dir = this.dirFromTo(fromName, config.startName);
+        if (!dir) return false;                            // 方向転換なしには送り込めない
         const serviceNo = config.name ||
             this.game.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId);
 
@@ -456,13 +471,15 @@ class OperationsManager {
         const depot = DEPOTS[from];
         if (depot && depot.trains.length >= depot.capacity) return false;
 
+        const dir = this.dirFromTo(from, startName);
+        if (!dir) return false;                           // 方向転換なしには送り込めない
+
         const serviceNo = config.name || this.game.spawner.generateTrainNumber(
             config.type, config.dir, startName, config.trackId);
         const vs = fleet.assign(from, config.type, config.trackId, config.dest,
                                 serviceNo, { noBorrow: true });
         if (!vs || !vs.length) return false;
 
-        const dir = this.dirFromTo(from, startName);
         const ok = this.game.addTrain({
             type: "回送", dir: dir,
             trackId: depotTrackId(from, dir, "回送"),
@@ -514,11 +531,17 @@ class OperationsManager {
             /* JR東西線 (尼崎〜放出)。
                ★尼崎にも電留線があるので、上り (放出方) の穴埋めもできる。
                  下り (尼崎方) だけを見ていたため、東西線の間隔が
-                 5.4駅まで開いても増発できなかった。 */
+                 5.4駅まで開いても増発できなかった。
+               ★上り (放出方) の増発は、上りの「後ろ側」にある尼崎から出す。
+                 以前はここも放出の電留線から出していた。放出の電留線は
+                 放出駅の四条畷方 (徳庵との間) にあるので、そこから
+                 「放出行きの上り」を出すと、出区した列車は放出を過ぎて
+                 四条畷方の行き止まりへ進むしかなく、そこで動けなくなって
+                 後続の東西線を止めていた (利用者の指摘)。 */
             { trackId: "Tozai_Down",   dir: -1, from: "放出",  to: "尼崎",
               depots: ["放出"], dest: "尼崎" },
             { trackId: "Tozai_Up",     dir: 1,  from: "尼崎",  to: "放出",
-              depots: ["放出"], dest: "放出" },
+              depots: ["尼崎"], dest: "放出" },
             /* 琵琶湖線 (京都〜野洲)
                京都から東は複々線ではなく、内側線・外側線が1本ずつになる。
                普通も外側線を走るので、在線を見るときは両方まとめて数える。
@@ -583,7 +606,9 @@ class OperationsManager {
                 /* ★車両を出す車両所が本線のものなら、本線の目安も見る。
                    分岐線の穴埋めのために本線の車両所から次々に出すと、
                    本線 (とくにJR神戸線) の列車が薄くなる。 */
-                const dLine = (dname === "放出") ? "tozai"
+                /* 尼崎の電留線は JR東西線の車両 (明石の207系・321系) の滞泊地でもある。
+                   東西線の穴埋めに使うときは東西線の目安で見る。 */
+                const dLine = (dname === "放出" || (dname === "尼崎" && scLine === "tozai")) ? "tozai"
                             : (dname === "新三田") ? "fukuchi" : "main";
                 if (dLine === "main" && ttOverBudget(this.game, "main", "普通")) continue;
                 const dest = sc.dest;
@@ -734,6 +759,12 @@ class OperationsManager {
  * 下り方向のまま走り続け、行先にたどり着けなかった。
  */
 OperationsManager.prototype.moveToOppositeTrack = function (train, stName, newDir) {
+    /* ★実物の配線で方転できない駅 (上下をつなぐ渡り線も引上線も無い駅) では
+       反対方向の線路へ移さない (js/03-stations.js の canReverseAt)。
+       以前はここで確かめていなかったので、回送への変更 (tryConvertDeadhead) を
+       通ると、坂田のような駅で向きを変えてしまうことがあった。
+       移せないときは false を返すので、呼び出し側は前方の車両所へ向かわせる。 */
+    if (!canReverseAt(stName)) return false;
     const blks = this.game.trackMgr.blocks[train.trackId];
     if (!blks) return false;
     const blk = blks[train.currBlockIndex];
@@ -954,6 +985,21 @@ OperationsManager.prototype.canReach = function (train) {
     const onKosei = tid.indexOf("Kosei") === 0;
     const onHoppo = tid.indexOf("Hoppo") >= 0;
 
+    /* ★行先の駅がいまの線路の上にあるなら、それが前方 (か当駅) にあるかを見る。
+       線区ごとの大まかな判定だけでは、「JR東西線の上りで放出行き」のように
+       線区も向きも合っているのに、すでに放出を通り過ぎている列車を
+       見逃していた (そのまま四条畷方の行き止まりへ進んで動けなくなった)。
+       線路図の外の行先は、線区の端の駅に読み替えて見る。 */
+    if (!onHoppo) {
+        const endName = (KATAMACHI_BEYOND.indexOf(train.dest) >= 0) ? "放出"
+            : (["篠山口", "福知山", "豊岡", "城崎温泉"].indexOf(train.dest) >= 0) ? "新三田"
+            : (["網干", "播州赤穂", "上郡"].indexOf(train.dest) >= 0) ? "姫路"
+            : train.dest;
+        const destBlk = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
+                                       blockStationName(b) === endName);
+        if (destBlk) return (destBlk.index - train.currBlockIndex) * train.dir >= 0;
+    }
+
     // 分岐線へ入る行先
     if (TOZAI_THROUGH_DESTS.indexOf(train.dest) >= 0) {
         if (onKosei || onHoppo) return false;
@@ -1032,4 +1078,86 @@ OperationsManager.prototype.fixUnreachableDest = function (train) {
             `行先を ${newDest} に変更します。`, "banner-orange");
     }
     return true;
+};
+
+/* ------------------------------------------------------------------ 詰まりの見張り
+
+   ■ なぜ要るか
+     個々の運転整理 (折り返し・回送化・行先の見張り) は正しくしてあっても、
+     組み合わせによっては「どこにも行けない列車」が生まれることがある。
+     放出を過ぎて四条畷方の行き止まりへ入った列車がその例で、
+     1本が動けなくなると後続が次々に止まり、尼崎で着発線を共有する本線まで
+     詰まりが広がっていた。
+
+   ■ どうするか (実際の指令の運転整理と同じ順)
+     1分ごとに全列車を見て、
+       1. 線路の無い位置に居る列車 … 運用を打ち切って回収する
+       2. 線区の端で5分以上進めない列車 … 駅なら終点扱いにして入区・折り返しへ、
+          駅間なら直前の駅で打ち切ったものとして回収する
+       3. 輸送障害も抑止も無いのに40分以上動けない列車 …
+          指令扱いの強制発車を出す。3回出しても1時間以上動けないときは
+          番線を空ける処置 (入区・回送・打ち切り) をとる
+     輸送障害・指令の抑止・防護無線で止められている列車には手を出さない。
+     どの措置も運転指令の記録に残す。 */
+OperationsManager.prototype.watchdog = function (ct) {
+    if (ct < (this.watchNext || 0)) return;
+    this.watchNext = ct + 60;
+    const g = this.game;
+    const calm = !g.isEmergency && g.incidents.active.length === 0 &&
+                 g.trackMgr.manualSuspensions.length === 0;
+    const list = g.trains.slice();
+    for (const t of list) {
+        if (t.state === "finished" || t.state === "in_depot") continue;
+        const blks = g.trackMgr.blocks[t.trackId];
+        const b = blks ? blks[t.currBlockIndex] : null;
+
+        // 1. 線路の無い位置に居る
+        if (!b || b.x === -1000) {
+            this.stats.watch = (this.stats.watch || 0) + 1;
+            t.resolveStall("", "線路の無い位置に在線していた");
+            continue;
+        }
+        // 輸送障害・抑止・指令連絡の応答待ちで止められている列車はそのまま
+        if (t.minorTrouble || t.isManuallySuspended || t.commIncident || g.isEmergency) continue;
+
+        // 2. 線区の端で進めない
+        if (t.lineEndAhead() && !t.isFinalStop && t.state !== "turning_back" && t.stuckTime >= 300) {
+            this.stats.watch = (this.stats.watch || 0) + 1;
+            if (isRealStationBlock(b)) {
+                const here = blockStationName(b);
+                g.ui.updateBanner(
+                    `【運転整理】${t.trainNo} は${here}から先に進路が無いため、${here}止まりに変更します。`,
+                    "banner-orange");
+                if (g.records) g.records.noteDisposition(t, here, "線区の端で進路が無い", `${here}止まりに変更`);
+                t.endOfLineStop();
+            } else {
+                t.resolveStall(this.currentStationName(t), "線区の端で進路が無い");
+            }
+            continue;
+        }
+
+        // 3. 何も起きていないのに長時間動けない (詰まりの崩壊の芽)
+        if (!calm) continue;
+        if (t.stuckTime >= 2400) {
+            t.watchForced = (t.watchForced || 0) + 1;
+            if (t.watchForced >= 3 && t.stuckTime >= 3600 && isRealStationBlock(b)) {
+                t.watchForced = 0;
+                this.stats.watch = (this.stats.watch || 0) + 1;
+                t.resolveStall(blockStationName(b), "1時間以上発車できない");
+                continue;
+            }
+            if (!t.forceStart) {
+                t.forceStart = true;
+                if (t.watchForced === 1) {
+                    g.ui.updateBanner(
+                        `【指令介入】${t.trainNo} が長時間発車できないため、指令扱いで発車させます。`,
+                        "banner-orange");
+                    if (g.records) g.records.noteDisposition(t, this.currentStationName(t),
+                        "40分以上発車できない", "指令扱いで発車");
+                }
+            }
+        } else if (t.stuckTime === 0) {
+            t.watchForced = 0;
+        }
+    }
 };

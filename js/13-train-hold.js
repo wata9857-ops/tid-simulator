@@ -26,6 +26,10 @@ Train.prototype.checkHold = function (isStarting) {
             let nextBlk = aheadBlks[nextIdx];
             // 線路の無い区間へは進めない (線区の端)
             if (nextBlk.x === -1000) return true;
+            /* ★指令の着発番線変更。指定の番線が空くまでは手前で待つ
+               (待ちの上限を過ぎると reservedEntry が予約を取りやめる)。 */
+            const resv = this.reservedEntry(nextIdx);
+            if (resv && !resv.free) return true;
             const currentBlk = blks[this.currBlockIndex]; // ★追加
             
             if (nextBlk && nextBlk.stationIdx !== undefined) {
@@ -93,7 +97,10 @@ Train.prototype.checkHold = function (isStarting) {
                 targetTrackId = this.turnbackTrack;
             }
 
-            if (targetTrackId !== this.trackId) {
+            if (resv) {
+                // 指定の番線は空いている。以降の間隔の判定は指定の線路で行う
+                targetTrackId = resv.trackId;
+            } else if (targetTrackId !== this.trackId) {
                 let tBlks = this.game.trackMgr.blocks[targetTrackId];
                 // ★修正: 転線先のブロック配列を定義・取得する
                 if (tBlks) {
@@ -760,10 +767,11 @@ Train.prototype.findFreeLane = function (block, toTrack) {
         if (!block.isStation && !block.hoppoStationName) return (block.lanes[0]===null) ? 0 : -1;
         let stName = block.hoppoStationName || STATIONS[block.stationIdx].name;
         
-        if (this.trackChangeReservation && this.trackChangeReservation.status === "pending" && stName === this.trackChangeReservation.stationName) {
-            const tLane = this.trackChangeReservation.targetLane;
-            if (block.lanes[tLane] === null) { this.trackChangeReservation.status = "done"; return tLane; } else return -1;
-        }
+        /* ★指令の着発番線変更はここでは扱わない。
+           以前はここで予約のレーン番号を「どの線路のブロックか」を見ずに返し、
+           しかも発車判定の見込み (checkHold) から呼ばれた時点で予約を「済み」に
+           していた。指定の線路・レーンへの進入は move() / checkHold() が
+           reservedEntry() を通して行う。 */
 
         /* ------------------------------------------------ 進路の制限にしたがう
 
@@ -833,4 +841,261 @@ Train.prototype.findFreeLane = function (block, toTrack) {
             if (block.lanes[l] === null) return l;
         }
         return -1;
+};
+
+/* ================================================================== 着発番線の変更 (指令)
+
+   ■ 何が壊れていたか
+     指令パッドの「着発番線変更」は予約を記録するだけで、ほとんど効いていなかった。
+       1. 予約の番線番号を「どの線路のブロックか」を見ずに当てていた。
+          上り内側線を走る列車に「上り外側線の 0番目」を予約すると、
+          上り内側線の 0番目のレーンに入ってしまう。そのレーンが無い線路では
+          番線が永久に「空いていない」扱いになり、列車が駅の手前で止まり続けた。
+       2. 予約の「済み」の印を、発車判定の見込み (checkHold) の中で付けていた。
+          実際に入る前に予約が消えるので、指定の番線に入らないことがあった。
+       3. 駅に着いてから線路を移すだけで、指定したレーンを見ていなかった。
+          そのうえ移ったあとも予約が残り、毎回転線を試し続けていた。
+       4. 向きの違う線路・その列車が通らない駅・通過済みの駅も予約できてしまった。
+
+   ■ どう直したか
+     予約は「その駅のその線路のそのレーン」として持ち、
+       ・入れるかを予約のときに確かめる (向き・通過済み・配線の進路・レーンの有無)
+       ・駅へ進入するときに、指定の線路・レーンへ入れる (move / checkHold)
+       ・すでにその駅に居るなら、その場で構内の転線をする
+       ・指定の番線がふさがっているあいだは手前で待つ。5分空かないときは
+         予約を取りやめて通常の番線に入れる (待ち続けて線区を止めない)
+       ・結果 (完了 / 取りやめ) は運転指令の記録に残す
+     という形にした。 */
+
+const TRACK_RES_WAIT = 300;     // 指定の番線が空くのを待つ上限 [秒]
+
+/** 駅の、その線路のブロック (無ければ null) */
+function stationBlockOn(game, trackId, stName) {
+    const blks = game.trackMgr.blocks[trackId];
+    if (!blks) return null;
+    return blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
+                          blockStationName(b) === stName) || null;
+}
+
+/** 線路の呼び名 (画面に出す) */
+function trackLabelOf(trackId) {
+    const t = (typeof TRACKS !== "undefined") ? TRACKS.find(x => x.id === trackId) : null;
+    return t ? t.label : trackId;
+}
+
+/**
+ * 着発番線の変更を予約できるかを確かめる。
+ *   { ok: true, block, label } / { ok: false, msg }
+ */
+function trackChangeCheck(game, t, stName, trackId, lane) {
+    if (!t) return { ok: false, msg: "対象の列車が見つかりません。" };
+    if (t.state === "in_depot" || t.state === "finished") {
+        return { ok: false, msg: "留置中・運用を終えた列車の番線は変更できません。" };
+    }
+    if (!stName || !trackId) return { ok: false, msg: "駅と番線を選んでください。" };
+    const sb = stationBlockOn(game, trackId, stName);
+    if (!sb) return { ok: false, msg: `${trackLabelOf(trackId)}には${stName}駅の番線がありません。` };
+    if (!(lane >= 0 && lane < sb.lanes.length)) return { ok: false, msg: "その番線はありません。" };
+    const label = displayPlatformLabel(stName, trackId, lane);
+    const text = label ? platformText(label) : ("第" + (lane + 1) + "線");
+
+    // 向き (上り列車は上りの線路、下り列車は下りの線路)
+    const td = trackDirOf(trackId);
+    if (td && td !== t.dir) {
+        return { ok: false, msg: `${t.trainNo} は${t.dir === 1 ? "上り" : "下り"}列車です。` +
+                                 `${td === 1 ? "上り" : "下り"}線の${text}には入れません。` };
+    }
+    // その駅がこれから通る (または今いる) 駅か
+    const d = (sb.index - t.currBlockIndex) * t.dir;
+    if (d < 0) return { ok: false, msg: `${t.trainNo} はすでに${stName}駅を通り過ぎています。` };
+    const blks = game.trackMgr.blocks[t.trackId];
+    if (blks) {
+        const endName = (KATAMACHI_BEYOND.indexOf(t.dest) >= 0) ? "放出" : t.dest;
+        const destB = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
+                                     blockStationName(b) === endName);
+        if (destB && (destB.index - t.currBlockIndex) * t.dir >= 0 &&
+            (destB.index - sb.index) * t.dir < 0) {
+            return { ok: false, msg: `${t.trainNo} は${t.dest}止まりのため、${stName}駅へは行きません。` };
+        }
+        // いまの線路からその駅へたどれるか (線区が違えばその駅は通らない)
+        const own = blks[sb.index];
+        const shared = STATION_SHARED_LANES[stName];
+        if (!shared && (!own || own.x === -1000 || blockStationName(own) !== stName)) {
+            return { ok: false, msg: `${t.trainNo} の走る線路は${stName}駅を通りません。` };
+        }
+    }
+    /* 配線の進路。その線路から入れない番線 (尼崎の宝塚線から1番 など) は断る。
+       入ってくる線路に決まりがあればそれを、無ければ指定の線路の決まりを見る。 */
+    const inTrack = (stationRouteLanes(stName, t.trackId, "arrive")) ? t.trackId : trackId;
+    if (!canArriveAt(stName, inTrack, lane)) {
+        const ok = (stationRouteLanes(stName, inTrack, "arrive") || [])
+            .map(l => platformText(platformLabelOf(stName, inTrack, l))).join("・");
+        return { ok: false, msg: `${stName}駅の配線では、${trackLabelOf(inTrack)}から${text}へは進入できません。` +
+                                 (ok ? `（入れるのは ${ok}）` : "") };
+    }
+    return { ok: true, block: sb, label: text };
+}
+
+/**
+ * 指令パッドに出す番線の候補。
+ *   [{ value: "trackId,lane", text, disabled, note }]
+ * 列車を選んでいれば、その列車が入れない番線は理由つきで選べなくする。
+ */
+function trackChangeCandidates(game, t, stName) {
+    const out = [];
+    if (!stName) return out;
+    const seen = {};
+    const tracks = (typeof TRACKS !== "undefined") ? TRACKS.map(x => x.id) : [];
+    tracks.forEach(tid => {
+        if (tid.indexOf("Hoppo") >= 0) return;
+        const sb = stationBlockOn(game, tid, stName);
+        if (!sb) return;
+        sb.lanes.forEach((occ, li) => {
+            const lbl = displayPlatformLabel(stName, tid, li);
+            const text = lbl ? platformText(lbl) : ("第" + (li + 1) + "線");
+            // 尼崎のように番線を共有する駅は、同じ番線を1つにまとめる
+            const key = STATION_SHARED_LANES[stName] ? (trackDirOf(tid) + "|" + lbl) : (tid + "|" + li);
+            if (seen[key]) return;
+            const ck = t ? trackChangeCheck(game, t, stName, tid, li) : { ok: true };
+            // 共有の駅は、その列車が入れる線路の組み合わせを探す
+            if (t && !ck.ok && STATION_SHARED_LANES[stName]) return;
+            seen[key] = true;
+            const plat = isPlatformLane(stName, tid, li);
+            const occText = occ ? ` [在線 ${occ.trainNo || "回送"}]` : "";
+            out.push({
+                value: tid + "," + li,
+                text: `${trackLabelOf(tid)} ${text}${plat ? "" : "(側線)"}${occText}`,
+                disabled: !ck.ok, note: ck.ok ? "" : ck.msg
+            });
+        });
+    });
+    return out;
+}
+
+/** その列車がこれから通る駅 (今いる駅を含む)。番線変更の駅の候補に使う */
+function trainStationsAhead(game, t, maxN) {
+    const out = [];
+    const blks = t ? game.trackMgr.blocks[t.trackId] : null;
+    if (!blks) return out;
+    for (let i = t.currBlockIndex; i >= 0 && i < blks.length && out.length < (maxN || 20); i += t.dir) {
+        const b = blks[i];
+        if (!b || b.x === -1000) break;
+        if (!isRealStationBlock(b)) continue;
+        const n = blockStationName(b);
+        if (n && out.indexOf(n) < 0) out.push(n);
+        if (n === t.dest) break;
+    }
+    return out;
+}
+
+/** 予約を取りやめる (理由を記録に残す) */
+Train.prototype.failReservation = function (reason) {
+    const r = this.trackChangeReservation;
+    if (!r || r.status !== "pending") return;
+    r.status = "failed";
+    r.note = reason;
+    this.game.ui.updateBanner(
+        `【運転整理】${this.trainNo} の${r.stationName}駅 ${r.label || ""}への着発番線変更は、` +
+        `${reason}ため取りやめ、通常の番線へ入れます。`, "banner-orange");
+};
+
+/** 予約どおりに入れたときの後始末 */
+Train.prototype.completeReservation = function (how) {
+    const r = this.trackChangeReservation;
+    if (!r || r.status !== "pending") return;
+    r.status = "done";
+    r.doneAt = this.game.currentTime;
+    this.game.ui.updateBanner(
+        `【指令】${this.trainNo} は${r.stationName}駅 ${r.label || ""}に${how || "進入しました"}（着発番線変更）。`,
+        "banner-orange");
+};
+
+/**
+ * 次のブロックが予約の駅なら、指定の線路・レーンを返す。
+ *   { trackId, block, lane, free } / null (予約が当てはまらない)
+ * 指定の番線がふさがったまま待ちの上限を過ぎたら、予約を取りやめて null を返す。
+ */
+Train.prototype.reservedEntry = function (nextIdx) {
+    const r = this.trackChangeReservation;
+    if (!r || r.status !== "pending") return null;
+    const own = this.game.trackMgr.blocks[this.turnbackTrack || this.trackId] ||
+                this.game.trackMgr.blocks[this.trackId];
+    const nb = own ? own[nextIdx] : null;
+    if (!nb || nb.x === -1000 || !isRealStationBlock(nb) || blockStationName(nb) !== r.stationName) return null;
+    if (trackDirOf(r.targetTrackId) && trackDirOf(r.targetTrackId) !== this.dir) {
+        this.failReservation("列車の向きが変わった");
+        return null;
+    }
+    const rb = this.game.trackMgr.blocks[r.targetTrackId];
+    const blk = rb ? rb[nextIdx] : null;
+    if (!blk || blk.x === -1000 || blockStationName(blk) !== r.stationName) {
+        this.failReservation("指定の線路へ進路が構成できない");
+        return null;
+    }
+    const free = blk.lanes[r.targetLane] === null;
+    if (!free) {
+        if (r.waitSince === undefined || r.waitSince === null) r.waitSince = this.game.currentTime;
+        if (this.game.currentTime - r.waitSince >= TRACK_RES_WAIT) {
+            const occ = blk.lanes[r.targetLane];
+            this.failReservation(`指定の番線が${occ && occ.trainNo ? " " + occ.trainNo + " の在線で" : ""}5分以上空かない`);
+            return null;
+        }
+    } else {
+        r.waitSince = null;
+    }
+    return { trackId: r.targetTrackId, block: blk, lane: r.targetLane, free: free };
+};
+
+/**
+ * すでに予約の駅に居る列車は、その場で構内の転線をする。
+ * 毎Tick呼ぶ (js/11-train-core.js の update)。
+ * 通過済み・向きが変わったなどで当てはまらなくなった予約はここで片付ける。
+ */
+Train.prototype.applyTrackReservation = function () {
+    const r = this.trackChangeReservation;
+    if (!r || r.status !== "pending") return;
+    const blks = this.game.trackMgr.blocks[this.trackId];
+    const cb = blks ? blks[this.currBlockIndex] : null;
+    if (!cb) return;
+    const rb = this.game.trackMgr.blocks[r.targetTrackId];
+    const target = rb ? rb[this.currBlockIndex] : null;
+    const hereName = isRealStationBlock(cb) ? blockStationName(cb) : "";
+
+    // 予約の駅を通り過ぎた
+    const sb = stationBlockOn(this.game, r.targetTrackId, r.stationName);
+    if (sb && (sb.index - this.currBlockIndex) * this.dir < 0 && hereName !== r.stationName) {
+        this.failReservation(`${r.stationName}駅を通過した`);
+        return;
+    }
+    if (hereName !== r.stationName) return;
+
+    // いまの位置がすでに指定の番線
+    if (this.trackId === r.targetTrackId && this.lane === r.targetLane) {
+        this.completeReservation("入っています");
+        return;
+    }
+    if (trackDirOf(r.targetTrackId) && trackDirOf(r.targetTrackId) !== this.dir) {
+        this.failReservation("列車の向きが変わった");
+        return;
+    }
+    if (!target || target.x === -1000 || blockStationName(target) !== r.stationName) {
+        this.failReservation("指定の線路へ進路が構成できない");
+        return;
+    }
+    if (target.lanes[r.targetLane] !== null) {
+        if (r.waitSince === undefined || r.waitSince === null) r.waitSince = this.game.currentTime;
+        if (this.game.currentTime - r.waitSince >= TRACK_RES_WAIT) {
+            this.failReservation("指定の番線が5分以上空かない");
+        }
+        return;
+    }
+    // 構内の転線 (入換)。自分が入っている枠だけを空ける
+    const at = cb.lanes.indexOf(this);
+    if (at >= 0) cb.lanes[at] = null;
+    this.trackId = r.targetTrackId;
+    this.lane = r.targetLane;
+    target.lanes[r.targetLane] = this;
+    // 折り返しで「発車のときに入る線路」を覚えていた場合、同じ線路に移ったら消す
+    if (this.turnbackTrack === this.trackId) this.turnbackTrack = null;
+    this.completeReservation("転線しました");
 };

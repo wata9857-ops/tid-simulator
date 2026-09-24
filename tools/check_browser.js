@@ -324,10 +324,12 @@ const CONFIG_TICK = 30;
                     // 駅情報
                     await page.evaluate(() => game.tidUI.showStation('大阪'));
                     await page.waitForTimeout(200);
+                    /* 駅情報は番線ごとの固定表示 (js/46-tid-station.js)。
+                       大阪は3〜11番の9番線が、列車の動きに関係なく並ぶ。 */
                     const stOpen = await page.evaluate(() =>
                         document.getElementById('tid-station').classList.contains('is-on') &&
-                        document.querySelectorAll('#tid-station .tid-table tr').length > 1);
-                    ok('駅の在線情報が開く', stOpen);
+                        document.querySelectorAll('#tid-station .tid-plat').length);
+                    ok('駅の番線別の発着予定が開く (大阪は9番線)', stOpen === 9, String(stOpen));
                     await page.evaluate(() => { game.tidUI.stationName = null; game.tidUI.renderStation(); });
                     // 留置場の構内図
                     await page.evaluate(() => showDepotModal('放出'));

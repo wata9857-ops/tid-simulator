@@ -1327,11 +1327,13 @@ class CommSystem {
                 p.saidFollow = true;
                 try { p.follow = scene.followUp(this.game, p._ctx); } catch (e) { p.follow = ""; }
                 if (p.follow) this.game.ui.addStaffLogToHistory(p.follow, p.cat, p.from);
+                if (p.follow && this.game.records) this.game.records.commFollow(p, "続報", p.follow);
             }
             if (scene && scene.escalate && !p.saidUrge && past > p.limit * 0.78) {
                 p.saidUrge = true;
                 try { p.urge = scene.escalate(this.game, p._ctx); } catch (e) { p.urge = ""; }
                 if (p.urge) this.game.ui.addStaffLogToHistory(p.urge, p.cat, p.from);
+                if (p.urge && this.game.records) this.game.records.commFollow(p, "催促", p.urge);
             }
             if (now < p.deadline) continue;
             this.pending.splice(i, 1);
@@ -1437,6 +1439,9 @@ class CommSystem {
         /* 細かい連絡は指令に上げない。
            実際の指令所でも、日常的な照会は当務の指令員が裁いている。
            記録には残るので、あとから追える。 */
+        // 指令連絡の記録 (js/32-records.js)
+        if (this.game.records) this.game.records.commRaised(p, scene, lv);
+
         if (!lv.hold && p.level === "minor") {
             this.stats.minor++;
             this.game.ui.addStaffLogToHistory(
@@ -1484,6 +1489,8 @@ class CommSystem {
            解かないまま行先変更などを当てると、抑止されたまま動かなくなる。
            抑止を続けたい答えは、それぞれの apply が commHold で掛け直す。 */
         this.releaseFor(p);
+        // 指令連絡の記録: 誰がどう答えたか
+        if (this.game.records) this.game.records.commResolved(p, opt, byOther, quiet);
 
         if (ctx.train && !this.game.getTrain(ctx.train.id)) {
             if (!quiet) {

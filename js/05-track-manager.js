@@ -177,9 +177,27 @@ class TrackManager {
                 }
 
                 if (i < STATIONS.length - 1) {
+                    /* ★線区の端の駅から先は線路が無い。
+                       以前は端の駅 (放出・近江塩津・草津の内側線・北方貨物線の端) の
+                       先にも、次の駅までのブロックを本物の線路として作っていた。
+                       その先に駅は無いので、何かの拍子にそこへ入った列車は
+                       行き止まりで動けなくなり、後続を止めてしまう。
+                       実際に、放出行きの列車が放出を過ぎて四条畷方へ進み、
+                       JR東西線を詰まらせていた (放出の電留線は四条畷方にあるが、
+                       出入区は放出駅の番線から直接行うので、線路図の上では
+                       ここに線路は要らない)。
+                       端の駅から先はプレースホルダにして、線区の端として扱う
+                       (js/12-train-move.js の endOfLineStop)。 */
+                    const nextValid = !((isHoppo && !(i + 1 >= 36 && i + 1 <= 44)) ||
+                                        (isKosei && !(i + 1 >= 56 && i + 1 <= 83)) ||
+                                        (isFukuchi && !(i + 1 >= 23 && i + 1 <= 36)) ||
+                                        (isTozai && !(i + 1 >= 36 && i + 1 <= TOZAI_EAST_IDX)) ||
+                                        (isInner && !(i + 1 >= STATION_MAP["西明石"] && i + 1 <= STATION_MAP["草津"])));
                     // ★修正: 斜め補間を行わず、純粋に一定のY座標（尼崎だけ本線）でブロックを生成する
                     for (let k = 1; k <= BLOCKS_PER_STATION_GAP; k++) {
-                        trackBlocks.push({ index: trackBlocks.length, trackId: trk.id, isStation: false, x: stationX + (k * BLOCK_WIDTH), y: blockY, lanes: [null] });
+                        trackBlocks.push(nextValid
+                            ? { index: trackBlocks.length, trackId: trk.id, isStation: false, x: stationX + (k * BLOCK_WIDTH), y: blockY, lanes: [null] }
+                            : { index: trackBlocks.length, trackId: trk.id, isStation: false, x: -1000, y: blockY, lanes: [null], stub: true });
                     }
                 }
             }

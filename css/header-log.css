@@ -293,3 +293,52 @@
     font-weight: bold;
 }
 #log-panel-close:hover { background: #2c3e50; }
+
+/* ===================================================== 輸送障害の報告書 (社員限り)
+   js/32-records.js が組み立てる。旅客向け画面・Super-TID の両方で使う。 */
+.rec-report { font-family: 'Meiryo UI', 'Yu Gothic', sans-serif; color: #15181f; font-size: 12px;
+              line-height: 1.55; position: relative; }
+.rec-stamp { position: absolute; top: 0; right: 0; border: 2px solid #b3121b; color: #b3121b;
+             font-weight: bold; padding: 2px 8px; font-size: 12px; transform: rotate(2deg);
+             letter-spacing: 1px; }
+.rec-title { margin: 0 0 2px; font-size: 18px; letter-spacing: 1px; }
+.rec-title small { font-size: 12px; color: #5b6275; font-weight: normal; }
+.rec-from { font-size: 11px; color: #5b6275; margin-bottom: 6px; }
+.rec-kv { width: 100%; border-collapse: collapse; margin: 4px 0 6px; }
+.rec-kv th { width: 7.5em; text-align: left; background: #eef1f7; border: 1px solid #cfd5e3;
+             padding: 3px 6px; font-weight: bold; vertical-align: top; white-space: nowrap; }
+.rec-kv td { border: 1px solid #cfd5e3; padding: 3px 6px; }
+.rec-sec { margin: 8px 0; }
+.rec-sec h3 { margin: 0 0 4px; font-size: 13px; border-bottom: 2px solid #3a4a6b; padding-bottom: 2px; }
+.rec-sec h3 span { display: inline-block; min-width: 1.6em; color: #3a4a6b; }
+.rec-sec p { margin: 2px 0 4px; }
+.rec-sec ul { margin: 2px 0; padding-left: 1.3em; }
+.rec-tl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rec-tl td { border-bottom: 1px dotted #cfd5e3; padding: 2px 4px; vertical-align: top; }
+.rec-t { white-space: nowrap; font-variant-numeric: tabular-nums; color: #3a4a6b; width: 5.5em; }
+.rec-k { white-space: nowrap; color: #5b6275; width: 7em; }
+.rec-aff { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
+.rec-aff th { background: #eef1f7; border: 1px solid #cfd5e3; padding: 2px 4px; white-space: nowrap; }
+.rec-aff td { border: 1px solid #dfe3ec; padding: 2px 4px; white-space: nowrap; }
+.rec-aff .rec-own td { background: #fff1f1; font-weight: bold; }
+.rec-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rec-none, .rec-empty { color: #8a93a8; }
+.rec-note { color: #5b6275; font-size: 11px; }
+.rec-foot { margin-top: 10px; border-top: 1px solid #cfd5e3; padding-top: 4px; font-size: 10px; color: #5b6275; }
+
+/* 旅客向け画面の報告書の窓 */
+#report-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 10000;
+                display: none; justify-content: center; align-items: center; }
+.report-modal-box { background: #fff; width: min(900px, 94vw); max-height: 88vh; display: flex;
+                    flex-direction: column; border-radius: 6px; border: 2px solid #555; }
+.report-modal-head { display: flex; gap: 8px; align-items: center; padding: 8px 12px;
+                     border-bottom: 1px solid #ccc; background: #f3f5fa; }
+.report-modal-head b { margin-right: auto; font-size: 15px; }
+.report-modal-head button { padding: 5px 12px; border: none; border-radius: 3px; cursor: pointer;
+                            background: #555f6b; color: #fff; font-weight: bold; }
+#report-modal-body { overflow: auto; padding: 12px 16px; }
+.rec-li .log-text { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
+.rec-li-ans { flex-basis: 100%; color: #1b3e8a; font-size: 12px; }
+.rec-li-ans small { color: #5b6275; }
+.rec-open { margin-left: auto; border: 1px solid #8fa0c8; background: #eef2fc; color: #12305f;
+            border-radius: 3px; padding: 2px 8px; cursor: pointer; font-size: 12px; }

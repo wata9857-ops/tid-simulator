@@ -56,6 +56,9 @@ UIManager.prototype.updateBanner = function (msg, cls) {
             if (this.logHistory.length > 200) this.logHistory.pop();
         }
 
+        // 輸送障害の対応中は、関係する運転整理を報告書の「措置」に拾う
+        if (this.game && this.game.records) this.game.records.onBanner(msg, cls);
+
         // パネルが開いている状態ならリアルタイムで追記更新する
         const p = document.getElementById("log-panel");
         if (p && p.style.display === "block") this.renderLogList();
