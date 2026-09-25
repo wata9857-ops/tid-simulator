@@ -91,7 +91,9 @@ Spawner.prototype.spawnTokkyu = function (dirName, forcedType = null) {
             } else if (r < 0.45) { 
                 num = this.tokkyuCounters["Sはくと"].up; this.tokkyuCounters["Sはくと"].up += 2;
                 // ★デッドロック対策: 京都駅到着後に消滅させる
-                t = {type:"特急", dir:1, trackId:"Up_Out", dest:"京都", startName:"姫路", name:`Sはくと${num}号`, nextAction: "depot"};
+                /* スーパーはくとは智頭急行から上郡で山陽本線に入る
+                   (姫路より西を線路図に入れたので、上郡から走らせる)。 */
+                t = {type:"特急", dir:1, trackId:"Up_Out", dest:"京都", startName:"上郡", name:`Sはくと${num}号`, nextAction: "depot"};
             } else if (r < 0.7) { 
                 // ★サンダーバード追加
                 num = this.tokkyuCounters["サンダーバード"].up; this.tokkyuCounters["サンダーバード"].up += 2;
@@ -152,7 +154,10 @@ Spawner.prototype.trySpawn = function (type, dir) {
         if (type === "貨物" || type === "回送") {
             if (type === "貨物") {
                 if (dir === 1) {
-                    candidates = Math.random() < 0.5 ? ["姫路"] : ["吹田貨"];
+                    /* 山陽本線の上り貨物は岡山方面から上郡で線路図に入ってくる。
+                       姫路貨物駅 (ひめじ別所) 発のものもある。 */
+                    const rf = Math.random();
+                    candidates = rf < 0.35 ? ["上郡"] : (rf < 0.5 ? ["ひめじ別所"] : ["吹田貨"]);
                 } else {
                     let r = Math.random();
                     candidates = r < 0.15 ? ["敦賀"] : (r < 0.57 ? ["米原"] : ["吹田貨"]);
@@ -171,8 +176,13 @@ Spawner.prototype.trySpawn = function (type, dir) {
                     if (type === "特急") return [{n:"敦賀",w:34}, {n:"米原",w:33}, {n:"京都",w:33}];
                 } else { 
                     // ★修正: 姫路駅での快速・新快速の生成比率を少し下げる
-                    if (type === "新快速") return [{n:"姫路",w:40}, {n:"網干",w:38}, {n:"播州赤穂",w:15}, {n:"上郡",w:7}];
-                    if (type === "快速") return [{n:"網干",w:60}, {n:"加古川",w:30}, {n:"姫路",w:10}];
+                    /* ★播州赤穂・上郡には留置場が無いので、そこを始発にすると
+                       網干の編成がそこへ瞬間移動することになる。
+                       播州赤穂・上郡発の上りは、下りの折り返しで成り立たせる。 */
+                    if (type === "新快速") return [{n:"姫路",w:50}, {n:"網干",w:50}];
+                    /* ★網干が線路図の中の駅になったので、網干始発を減らした
+                       (網干〜姫路は複線で、網干の上り本線は1線しかない)。 */
+                    if (type === "快速") return [{n:"網干",w:30}, {n:"加古川",w:40}, {n:"姫路",w:30}];
                     // ★事象②改善: 大阪・尼崎発の普通を増やし、大阪以東(京都方面)へ向かう列車の総数を増やす
                     if (type === "普通") return [{n:"西明石",w:25}, {n:"新三田",w:23}, {n:"大阪",w:15}, {n:"尼崎",w:10}, {n:"須磨",w:17}, {n:"宝塚",w:9}, {n:"神戸",w:1}];
                     if (type === "特急") return [{n:"姫路",w:100}];
@@ -222,9 +232,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
                続行間隔もまったく見ずに何本も湧いていた。
                これが西明石のまわりで新快速が続けて3本並ぶ主な原因だった。
                Train.initPosition() と同じ読み替えを使う。 */
-            let physName = stName;
-            if (["網干", "播州赤穂", "上郡"].includes(physName)) physName = "姫路";
-            else if (["松井山手", "四条畷"].includes(physName)) physName = "尼崎";
+            let physName = stName;   // 姫路より西・学研都市線も線路図に入ったので読み替えは要らない
 
             if (["姫路","加古川"].includes(physName)) checkTrackId = checkTrackId.replace("In", "Out");
             const blks = this.game.trackMgr.blocks[checkTrackId];
@@ -419,6 +427,25 @@ Spawner.prototype.trySpawn = function (type, dir) {
         return ok;
 };
 
+/**
+ * 貨物ターミナルから出る (または折り返す) 貨物列車の行先。
+ * 進む向きの先にある貨物駅と、線路図の外の貨物駅から選ぶ。
+ */
+Spawner.prototype.freightDestFrom = function (stName, dir) {
+    const here = (stName === "吹田貨") ? STATION_MAP["吹田"] : STATION_MAP[stName];
+    const ahead = [];
+    for (const k in FREIGHT_TERMINALS) {
+        const s = FREIGHT_TERMINALS[k].station;
+        if (s === stName) continue;
+        const i = (s === "吹田貨") ? STATION_MAP["吹田"] : STATION_MAP[s];
+        if (here !== undefined && i !== undefined && (i - here) * dir > 0) ahead.push({ d: k, w: 12 });
+    }
+    const beyond = (dir === 1)
+        ? [{ d: "東京タ", w: 30 }, { d: "名古屋タ", w: 20 }, { d: "富山タ", w: 12 }]
+        : [{ d: "福岡タ", w: 30 }, { d: "広島タ", w: 20 }, { d: "岡山タ", w: 14 }, { d: "高松タ", w: 8 }];
+    return this.weightedRandom(ahead.concat(beyond));
+};
+
 Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
         if (type === "貨物") {
             if (dir === 1) {
@@ -433,12 +460,22 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                     const dests = [
                         {d: "東京タ", w: 30},
                         {d: "大阪タ", w: 10},
-                        {d: "吹田タ", w: 10},
+                        {d: "吹田タ", w: 14},
                         {d: "百済タ", w: 10},
                         {d: "名古屋タ", w: 20},
-                        {d: "富山タ", w: 15}
+                        {d: "富山タ", w: 15},
+                        {d: "神戸タ", w: 8},
+                        {d: "京都タ", w: 6}
                     ];
-                    return this.weightedRandom(dests);
+                    // 姫路タより西から出る列車だけ、姫路タ・神戸タを行先にできる
+                    if (startName === "ひめじ別所") dests.push({d: "京都タ", w: 6});
+                    return this.weightedRandom(dests.filter(o => {
+                        const s = freightTerminalStation(o.d);
+                        if (!s) return true;
+                        const i = (s === "吹田貨") ? STATION_MAP["吹田"] : STATION_MAP[s];
+                        const h = STATION_MAP[startName];
+                        return h === undefined || i === undefined || i > h;
+                    }));
                 }
             } else {
                 if (startName === "敦賀") {
@@ -459,7 +496,10 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                         {d: "高松タ", w: 10},
                         {d: "百済タ", w: 10},
                         {d: "安治川タ", w: 10},
-                        {d: "吹田タ", w: 10}
+                        {d: "吹田タ", w: 14},
+                        {d: "京都タ", w: 6},
+                        {d: "神戸タ", w: 8},
+                        {d: "姫路タ", w: 6}
                     ];
                     return this.weightedRandom(dests);
                 }
@@ -473,9 +513,73 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
         // ★修正: 湖西線内の普通列車は京都行きに固定
         if (type === "普通" && dir === -1 && koseiStations.includes(startName)) return "京都";
 
+        /* ★学研都市線・JR東西線の中から出る下り列車 (木津・同志社前・松井山手などで
+           折り返した列車)。尼崎から JR宝塚線・JR神戸線へ直通する。
+           放出始発の列車と同じ行先の割合にする
+           (js/09-spawner-branch.js の「放出発 下り」)。
+           以前は学研都市線が線路図の外で、下り列車は放出から出していたので、
+           折り返した列車がこの行先の割合を使うことは無かった。 */
+        if (dir === -1 && (TOZAI_PLACES.indexOf(startName) >= 0 || (trackId || "").indexOf("Tozai") === 0)) {
+            let d;
+            if (type === "快速") {
+                const hh = (this.game.currentTime / 3600) % 24;
+                const outer = ["京田辺", "同志社前", "木津"].indexOf(startName) >= 0;
+                if (outer && hh >= 9.0 && hh < 15.0) {
+                    // ★添付の同志社前駅の時刻表: 昼間の同志社前・木津発は区間快速の塚口行き
+                    d = "塚口";
+                } else {
+                    d = (hh < 10.0 || hh >= 15.0)
+                        ? this.weightedRandom([{d:"新三田",w:55}, {d:"宝塚",w:30}, {d:"篠山口",w:10}, {d:"塚口",w:5}])
+                        : this.nextTozaiRapidDest;
+                    if (d === this.nextTozaiRapidDest) this.nextTozaiRapidDest = (d === "新三田") ? "塚口" : "新三田";
+                }
+            } else {
+                d = this.weightedRandom([{d:"西明石",w:40}, {d:"宝塚方面",w:30}, {d:"尼崎",w:14}, {d:"須磨",w:12}, {d:"甲子園口",w:2}]);
+                if (d === "宝塚方面") {
+                    d = this.nextFukuchiLocalDest;
+                    this.nextFukuchiLocalDest = (d === "新三田") ? "宝塚" : "新三田";
+                }
+            }
+            return this.sanitizeDestination(d, dir, startName, type, trackId);
+        }
+
+        /* ★姫路より西の普通 (添付の時刻表 網干・上郡・播州赤穂・姫路下り 2026-03-14 改正)。
+             上り … 上郡発は昼間ほぼ相生止まり (相生〜上郡の折り返し)、夕方以降は姫路行き。
+                    播州赤穂発・網干発は姫路行きが中心で、朝夕に西明石から快速になる直通がある。
+             下り … 姫路で折り返す普通は網干行きが中心で、播州赤穂行きが毎時1本ほど、
+                    上郡行きは少ない。相生で折り返す列車は上郡行き。
+           以前は上郡・播州赤穂で折り返した普通が、そのまま京都・学研都市線まで
+           直通する行先を選んでいた (実際にはそのような普通は無い)。 */
+        if (type === "普通" && routeLineOf(startName) !== "tozai") {
+            const hh = (this.game.currentTime / 3600) % 24;
+            const sIdx = STATION_MAP[startName];
+            const westMain = sIdx !== undefined && sIdx < STATION_MAP["姫路"] && !/Kosei|Fukuchi|Tozai/.test(trackId || "");
+            const onAko = AKO_PLACES.indexOf(startName) >= 0 || (trackId || "").indexOf("Ako") === 0;
+            let opts = null;
+            if (dir === 1 && startName === "上郡") {
+                opts = (hh >= 8.5 && hh < 17.5) ? [{d:"相生",w:85}, {d:"姫路",w:15}]
+                                                : [{d:"姫路",w:75}, {d:"相生",w:25}];
+            } else if (dir === 1 && (onAko || westMain)) {
+                opts = (hh < 8.0 || (hh >= 16.0 && hh < 20.0))
+                    ? [{d:"姫路",w:75}, {d:"西明石",w:25}] : [{d:"姫路",w:100}];
+            } else if (dir === -1 && startName === "相生") {
+                opts = [{d:"上郡",w:100}];
+            } else if (dir === -1 && (westMain || startName === "姫路") && !onAko) {
+                opts = [{d:"網干",w:55}, {d:"播州赤穂",w:30}, {d:"上郡",w:10}, {d:"相生",w:5}];
+                if (sIdx !== undefined && sIdx <= STATION_MAP["網干"]) opts = [{d:"上郡",w:50}, {d:"播州赤穂",w:50}];
+            }
+            if (opts) return this.sanitizeDestination(this.weightedRandom(opts), dir, startName, type, trackId);
+        }
+
         const getDestOptions = () => {
             if (dir === -1) { 
-                if (type === "新快速") return [{d:"姫路",w:58}, {d:"網干",w:28}, {d:"播州赤穂",w:11}, {d:"上郡",w:3}];
+                if (type === "新快速") {
+                    /* ★姫路より西へ行く新快速は、時刻表では夕方以降 (17時〜) だけ。
+                         昼間はすべて姫路止まり。 */
+                    const hh = (this.game.currentTime / 3600) % 24;
+                    if (hh >= 16.5 || hh < 4) return [{d:"姫路",w:45}, {d:"網干",w:25}, {d:"播州赤穂",w:25}, {d:"上郡",w:5}];
+                    return [{d:"姫路",w:92}, {d:"網干",w:8}];
+                }
                 if (type === "快速") {
                     if (["大阪", "高槻"].includes(startName)) {
                         return [{d:"篠山口",w:90}, {d:"福知山",w:10}];
@@ -610,7 +714,11 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
 
         let h = (ct / 3600) % 24;
         // ★改善: 22:00以降の終電間際における段階的な行き先短縮ロジック
-        if (h >= 22.0 || h < 4.0) {
+        /* ★本線の中の行程だけ。分岐線の駅も本線と同じインデックスの並びを
+           使っているので、本線の終着駅の表で選ぶと別の線区の駅になる。 */
+        const mainTrip = routeLineOf(startName) === "main" && routeLineOf(dest) === "main" &&
+                         !/Kosei|Fukuchi|Tozai|Ako|Hoppo/.test(trackId || "");
+        if ((h >= 22.0 || h < 4.0) && mainTrip) {
             let startIdx = STATION_MAP[startName];
             if (startIdx !== undefined) {
                 if (dir === -1) {
@@ -691,16 +799,37 @@ Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type, tr
         // JR東西線へ直通するのは、西明石〜尼崎 の神戸線内から上ってきた列車。
         // 姫路など西明石より西からの直通は無い (207系/321系の走る範囲外)。
         const inTozai = TOZAI_PLACES.indexOf(startName) >= 0 || tid.indexOf("Tozai") === 0;
-        const okSide = inTozai ||
-                       (sIdx0 !== undefined && sIdx0 >= STATION_MAP["西明石"] && sIdx0 <= amaIdx);
-        if (!inTozai && branchFull("tozai")) return this.fallbackTerminal(dir, startName, trackId);
+        /* ★学研都市線を線路図に入れたので、線区の中の列車は行先が
+           どちら向きにもあり得る (木津発 京橋行き など)。線区の中の位置で前方かを見る。 */
+        if (inTozai) {
+            const dI = STATION_MAP[dest];
+            if (dI !== undefined && sIdx0 !== undefined && (dI - sIdx0) * dir > 0) return dest;
+            if (dI === undefined && dir === 1) return dest;          // 木津より先 (奈良など)
+            return this.fallbackTerminal(dir, startName, trackId);
+        }
+        const okSide = (sIdx0 !== undefined && sIdx0 >= STATION_MAP["西明石"] && sIdx0 <= amaIdx);
+        if (branchFull("tozai")) return this.fallbackTerminal(dir, startName, trackId);
         return (dir === 1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
+    }
+    /* 赤穂線へ入るのは、相生より東から下ってきた列車。
+       赤穂線の中の列車は、線区の中の位置で前方かを見る。 */
+    if (AKO_THROUGH_DESTS.includes(dest)) {
+        const inAko = AKO_PLACES.indexOf(startName) >= 0 || tid.indexOf("Ako") === 0;
+        const dI = STATION_MAP[dest];
+        if (inAko) {
+            if (dI !== undefined && sIdx0 !== undefined && (dI - sIdx0) * dir > 0) return dest;
+            return this.fallbackTerminal(dir, startName, trackId);
+        }
+        return (dir === -1 && sIdx0 !== undefined && sIdx0 > STATION_MAP["相生"])
+            ? dest : this.fallbackTerminal(dir, startName, trackId);
     }
     if (FUKUCHI_THROUGH_DESTS.includes(dest)) {
         // JR宝塚線へ直通するのは、高槻〜尼崎 の京都線内から下ってきた列車。
         // 琵琶湖線(草津・米原)からの直通は無い。
         const inFuku = FUKUCHI_PLACES.indexOf(startName) >= 0 || tid.indexOf("Fukuchi") === 0;
-        const okSide = inFuku ||
+        // JR東西線・学研都市線の中から下ってくる列車も尼崎で宝塚線へ直通できる
+        const fromTozai = TOZAI_PLACES.indexOf(startName) >= 0 || tid.indexOf("Tozai") === 0;
+        const okSide = inFuku || fromTozai ||
                        (sIdx0 !== undefined && sIdx0 >= amaIdx && sIdx0 <= STATION_MAP["高槻"]);
         if (!inFuku && branchFull("fukuchi")) return this.fallbackTerminal(dir, startName, trackId);
         return (dir === -1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
@@ -719,6 +848,12 @@ Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type, tr
     const onTozai = (tid.indexOf("Tozai") === 0) || TOZAI_PLACES.indexOf(startName) >= 0;
     const onFukuchi = (tid.indexOf("Fukuchi") === 0) || FUKUCHI_PLACES.indexOf(startName) >= 0;
     const onKosei = (tid.indexOf("Kosei") === 0) || KOSEI_PLACES.indexOf(startName) >= 0;
+    const onAko = (tid.indexOf("Ako") === 0) || AKO_PLACES.indexOf(startName) >= 0;
+    if (onAko) {
+        // 赤穂線から本線へは相生で上りに入る。行先は相生以東の本線の駅
+        if (dir !== 1 || destIdx < STATION_MAP["相生"]) return this.fallbackTerminal(dir, startName, trackId);
+        return dest;
+    }
     if (onTozai) {
         if (dir !== -1 || destIdx > amaIdx) return this.fallbackTerminal(dir, startName, trackId);
         return dest;
@@ -756,14 +891,16 @@ Spawner.prototype.fallbackTerminal = function (dir, startName, trackId) {
     if (tid.indexOf("Fukuchi") === 0 || FUKUCHI_PLACES.indexOf(startName) >= 0) {
         list = (dir === 1) ? ["尼崎"] : ["宝塚", "新三田"];
     } else if (tid.indexOf("Tozai") === 0 || TOZAI_PLACES.indexOf(startName) >= 0) {
-        list = (dir === 1) ? ["京橋", "放出"] : ["尼崎"];
+        list = (dir === 1) ? ["京橋", "放出", "四条畷", "松井山手", "京田辺", "木津"] : ["京橋", "尼崎"];
+    } else if (tid.indexOf("Ako") === 0 || AKO_PLACES.indexOf(startName) >= 0) {
+        list = (dir === 1) ? ["相生", "網干", "姫路"] : ["播州赤穂"];
     } else if (tid.indexOf("Kosei") === 0 || KOSEI_PLACES.indexOf(startName) >= 0) {
         list = (dir === 1) ? ["近江今津", "永原"] : ["京都"];
     } else {
         // 本線。上り(米原方面) / 下り(姫路方面) の主要終着駅を近い順に。
         list = (dir === 1)
             ? ["高槻", "京都", "草津", "野洲", "米原", "長浜", "近江塩津", "敦賀"]
-            : ["尼崎", "大阪", "神戸", "須磨", "西明石", "加古川", "姫路"];
+            : ["尼崎", "大阪", "神戸", "須磨", "西明石", "加古川", "姫路", "網干", "上郡"];
     }
     if (startIdx === undefined) return list[list.length - 1];
     const ahead = list

@@ -212,7 +212,10 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                 this.startName = stationName;   // ★ここから始まる列車になる
                 let extraMsg = "";
                 // 上りの場合のみ行先を草津に短縮する制限
-                if (this.dir === 1 && STATION_MAP[this.dest] > STATION_MAP["草津"]) {
+                /* ★本線の行先だけ。分岐線 (学研都市線など) の駅も本線と同じ
+                   インデックスの並びを使っているので、数の大小だけで比べると
+                   木津行きが「草津より先」に見えてしまう。 */
+                if (this.dir === 1 && isMainlineTrip(this) && STATION_MAP[this.dest] > STATION_MAP["草津"]) {
                     let oldDest = this.dest;
                     this.dest = "草津";
                     extraMsg = ` 行先を${oldDest}から${this.dest}に変更しました。`;
@@ -223,7 +226,19 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
         }
 };
 
+/**
+ * 本線 (琵琶湖線・JR京都線・JR神戸線・北陸線) の中だけを走る行程か。
+ * 行先を「高槻まで」「京都まで」のように短縮する運転整理は、本線の駅の並びで
+ * 考えているので、分岐線へ向かう列車や分岐線の中の列車には使えない。
+ */
+function isMainlineTrip(t) {
+    if (/Kosei|Fukuchi|Tozai|Ako|Hoppo/.test(t.trackId || "")) return false;
+    return routeLineOf(t.dest) === "main" && STATION_MAP[t.dest] !== undefined;
+}
+
 Train.prototype.checkLocalThinning = function (stationName) {
+        // 分岐線へ向かう列車・分岐線の中の列車は、本線の駅の並びで短縮できない
+        if (!isMainlineTrip(this)) return;
         // ★修正: in_depot状態の列車を除外
         let sameLineTrains = this.game.trains.filter(t => t.trackId === this.trackId && t.dir === this.dir && t.state !== "finished" && t.state !== "in_depot");
         sameLineTrains.sort((a, b) => (this.dir === 1) ? (b.currBlockIndex - a.currBlockIndex) : (a.currBlockIndex - b.currBlockIndex));
@@ -335,7 +350,7 @@ Train.prototype.checkCongestionAndAdjust = function (stationName) {
                     let blks = this.game.trackMgr.blocks[tid];
                     if (blks) {
                         let curBlk = blks.find(b => b.stationIdx === stIdx);
-                        let himBlk = blks.find(b => b.stationIdx === 0); // 姫路
+                        let himBlk = blks.find(b => b.stationIdx === STATION_MAP["姫路"]); // 姫路
                         if (curBlk && himBlk) {
                             let startIdx = Math.min(curBlk.index, himBlk.index);
                             let endIdx = Math.max(curBlk.index, himBlk.index);
@@ -369,8 +384,8 @@ Train.prototype.checkCongestionAndAdjust = function (stationName) {
                 [trackIn, trackOut].forEach(tid => {
                     let blks = this.game.trackMgr.blocks[tid];
                     if (blks) {
-                        let curBlk = blks.find(b => b.stationIdx === 47); // 高槻
-                        let shinBlk = blks.find(b => b.stationIdx === 39); // 新大阪
+                        let curBlk = blks.find(b => b.stationIdx === STATION_MAP["高槻"]); // 高槻
+                        let shinBlk = blks.find(b => b.stationIdx === STATION_MAP["新大阪"]); // 新大阪
                         if (curBlk && shinBlk) {
                             let startIdx = Math.min(curBlk.index, shinBlk.index);
                         let endIdx = Math.max(curBlk.index, shinBlk.index);
@@ -400,7 +415,7 @@ Train.prototype.checkCongestionAndAdjust = function (stationName) {
                 [upTrackIn, upTrackOut].forEach(tid => {
                     let blks = this.game.trackMgr.blocks[tid];
                     if (blks) {
-                        let curBlk = blks.find(b => b.stationIdx === 47);
+                        let curBlk = blks.find(b => b.stationIdx === STATION_MAP["高槻"]);
                         if (curBlk) {
                             freeUpLanesCount += curBlk.lanes.filter(l => l === null).length;
                         }
@@ -411,7 +426,7 @@ Train.prototype.checkCongestionAndAdjust = function (stationName) {
                 ["Up_In", "Up_Out", "Down_In", "Down_Out"].forEach(tid => {
                     let blks = this.game.trackMgr.blocks[tid];
                     if (blks) {
-                        let curBlk = blks.find(b => b.stationIdx === 47);
+                        let curBlk = blks.find(b => b.stationIdx === STATION_MAP["高槻"]);
                         if (curBlk) {
                             turningBackTrains += curBlk.lanes.filter(l => l !== null && (l.dest === "高槻" || l.state === "turning_back")).length;
                         }
@@ -543,13 +558,13 @@ Train.prototype.checkLateNightDestination = function () {
             const ALLOWED_TERMINALS = {
                 "新快速": ["敦賀", "近江塩津", "長浜", "米原", "野洲", "姫路", "播州赤穂", "上郡", "網干", "近江今津"],
                 "快速": ["敦賀", "近江塩津", "長浜", "米原", "野洲", "草津", "京都", "高槻", "塚口", "宝塚", "新三田", "篠山口", "福知山", "西明石", "加古川", "姫路", "網干"],
-                "普通": ["永原", "近江今津", "草津", "京都", "高槻", "尼崎", "甲子園口", "神戸", "須磨", "西明石", "塚口", "宝塚", "新三田", "松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "放出"],
+                "普通": ["永原", "近江今津", "草津", "京都", "高槻", "尼崎", "甲子園口", "神戸", "須磨", "西明石", "塚口", "宝塚", "新三田", "松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "放出", "網干", "上郡", "播州赤穂", "相生"],
                 "特急": ["敦賀", "京都", "新大阪", "姫路", "鳥取"]
             };
 
             for (let stName of MAJOR_STATIONS) {
                 // 車庫行きにはしない
-                if (stName.includes("操") || stName.includes("貨") || stName === "網干" || stName === "宮原操") continue;
+                if (stName.includes("操") || stName.includes("貨") || stName === "宮原操") continue;
                 
                 let stIdx = STATION_MAP[stName];
                 if (stIdx === undefined) continue;

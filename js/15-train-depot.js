@@ -3,7 +3,7 @@
 Train.prototype.remove = function () {
         const blks = this.game.trackMgr.blocks[this.trackId];
         if (blks && blks[this.currBlockIndex] && this.lane >= 0) {
-            blks[this.currBlockIndex].lanes[this.lane] = null;
+            freeOwnLane(blks[this.currBlockIndex].lanes, this);
         }
         // ★修正: state が in_depot のときだけ外していたため、留置場リストに
         //        残ったまま消滅する列車があった。状態に関わらず必ず外す。
@@ -29,7 +29,7 @@ Train.prototype.remove = function () {
 Train.prototype.enterDepot = function (stName) {
         const blks = this.game.trackMgr.blocks[this.trackId];
         if (blks && blks[this.currBlockIndex] && this.lane >= 0) {
-            blks[this.currBlockIndex].lanes[this.lane] = null;
+            freeOwnLane(blks[this.currBlockIndex].lanes, this);
         }
         
         this.game.fleet.release(stName, this.vehicles);
@@ -48,6 +48,62 @@ Train.prototype.enterDepot = function (stName) {
         this.game.ui.updateBanner(`【入区】${oldNo} は ${stName}留置場に入区し、待機状態に入りました。`, "banner-orange");
 };
 
+/**
+ * 貨物ターミナルに着いた貨物列車の、荷役・機回し・次の列車への付け替え。
+ *
+ * 着発線に止まったまま、ターミナルごとの時間 (FREIGHT_TERMINALS.dwell) を過ごし、
+ * 次の貨物列車として発車する。半分は機回しをして来た方向へ戻り、
+ * 半分はそのまま先へ進む (実際のターミナルも着発線から両方向へ出ていく)。
+ * 反対方向の着発線が空いていないときは、そのまま先へ進む。
+ */
+Train.prototype.freightTerminalWork = function (stName) {
+    const g = this.game;
+    const key = freightTerminalAt(stName) || this.dest;
+    const ft = FREIGHT_TERMINALS[key] || { name: stName, dwell: [1800, 3600] };
+    const dwell = ft.dwell[0] + Math.random() * (ft.dwell[1] - ft.dwell[0]);
+    let newDir = (Math.random() < 0.5) ? -this.dir : this.dir;
+    if (newDir !== this.dir) {
+        // 機回しをして反対方向の着発線から出る
+        const opp = this.trackId.indexOf("Hoppo") >= 0
+            ? (newDir === 1 ? "Up_Hoppo" : "Down_Hoppo")
+            : (newDir === 1 ? "Up_Out" : "Down_Out");
+        const ob = g.trackMgr.blocks[opp];
+        const nb = ob ? ob[this.currBlockIndex] : null;
+        const blks = g.trackMgr.blocks[this.trackId];
+        const cb = blks ? blks[this.currBlockIndex] : null;
+        let lane = -1;
+        if (nb && nb.x !== -1000) {
+            for (let l = nb.lanes.length - 1; l >= 0; l--) if (nb.lanes[l] === null) { lane = l; break; }
+        }
+        if (lane >= 0 && cb) {
+            freeOwnLane(cb.lanes, this);
+            this.trackId = opp; this.dir = newDir; this.lane = lane;
+            nb.lanes[lane] = this;
+            this.turnbackTrack = null;
+        } else {
+            newDir = this.dir;
+        }
+    }
+    const oldNo = this.trainNo;
+    g.spawner.activeTrainNos.delete(this.trainNo);
+    this.dest = g.spawner.freightDestFrom(stName, newDir);
+    this.trainNo = g.spawner.generateTrainNumber("貨物", newDir, stName, this.trackId);
+    this.dutyName = this.trainNo;
+    this.startName = stName;
+    this.nextAction = "depot";
+    this.isFinalStop = false;
+    this.hasStoppedAtCurrent = false;
+    this.hasDeparted = false;
+    this.delayTime = 0;
+    this.state = "waiting_start";
+    this.timer = Math.round(dwell);
+    g.freightStats = g.freightStats || { arrivals: {}, departures: {} };
+    g.freightStats.arrivals[key] = (g.freightStats.arrivals[key] || 0) + 1;
+    g.ui.updateBanner(
+        `【貨物】${oldNo} は${ft.name}の着発線に到着。荷役・機回しのあと、約${Math.round(dwell / 60)}分後に ` +
+        `${this.trainNo} (${this.dest}行き) として発車します。`, "banner-blue");
+};
+
     // ★追加: 留置場からの出区を試行するメソッド
 Train.prototype.tryDepotOut = function (depotName, force = false) {
         /* ★留置場の名前は別名で渡ってくることがある (網干=姫路電留線 など)。
@@ -61,13 +117,12 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
         let isForced = this.forceDepotOut || false;
 
         let actualStart = depotName;
-        if (["松井山手", "四条畷"].includes(depotName)) actualStart = "尼崎";
-        else if (["網干", "播州赤穂", "上郡"].includes(depotName)) actualStart = "姫路";
+        // (姫路より西・学研都市線は線路図の中の駅になったので読み替えない)
 
         // ★修正: 宮原操・向日町操等のインデックスを明示的に補完し、不正なトラック置換を防ぐ
         let tempStIdx = STATION_MAP[actualStart];
-        if (actualStart === "宮原操") tempStIdx = 39;
-        if (actualStart === "向日町操") tempStIdx = 51;
+        if (actualStart === "宮原操") tempStIdx = STATION_MAP["新大阪"];
+        if (actualStart === "向日町操") tempStIdx = STATION_MAP["向日町操"];
         const startStIdx = tempStIdx !== undefined ? tempStIdx : (this.depotOutConfig.dir===1?0:(STATIONS.length-1));
         
         /* ★出区する線路は留置場が面している線区から決める (js/04-depots.js)。
@@ -112,7 +167,7 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
         if (!startBlock) startBlock = blks.find(b => b.hoppoStationName === actualStart);
         if (!startBlock && ["向日町操", "宮原操"].includes(actualStart)) {
             // 宮原操は新大阪の位置で本線につながる (北方貨物線に出ない旅客の出区)
-            if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === 39);
+            if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === STATION_MAP["新大阪"]);
             else startBlock = blks.find(b => b.hoppoStationName === "向日町操");
         }
 

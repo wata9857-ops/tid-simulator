@@ -18,6 +18,50 @@
 
 const DISPATCH = {
 
+    /* ---------------- 段階的な運転再開 (js/26-incidents.js の RecoveryControl) */
+    /** 区間を開通させる */
+    recoveryOpen(game, cmd) {
+        const p = game.recovery && game.recovery.plans.find(x => x.id === cmd.plan);
+        if (!p) return { ok: false, msg: "その段階開通の手配は終わっています。" };
+        const s = p.segs[cmd.seg];
+        if (!s) return { ok: false, msg: "その区間はありません。" };
+        if (s.state === "開通") return { ok: false, msg: `${s.from}〜${s.to}間はすでに開通しています。` };
+        if (s.state === "点検中" && !cmd.force) {
+            return { ok: false, msg: `${s.from}〜${s.to}間はまだ点検中です。確認列車を1本通すか、点検の完了を待ってください。` };
+        }
+        game.recovery.openSeg(p, cmd.seg, cmd.by || "指令");
+        return { ok: true, msg: `${s.from}〜${s.to}間を開通させました。` };
+    },
+    /** 確認列車を1本通す */
+    recoveryPass(game, cmd) {
+        const p = game.recovery && game.recovery.plans.find(x => x.id === cmd.plan);
+        if (!p) return { ok: false, msg: "その段階開通の手配は終わっています。" };
+        const s = p.segs[cmd.seg];
+        if (!s || s.state === "開通") return { ok: false, msg: "その区間は開通しています。" };
+        game.recovery.passOne(p, cmd.seg, cmd.by || "指令");
+        return { ok: true, msg: `${s.from}〜${s.to}間に確認列車を1本進めます。` };
+    },
+    /** 点検の終わった区間をまとめて開通させる */
+    recoveryOpenReady(game, cmd) {
+        const p = game.recovery && game.recovery.plans.find(x => x.id === cmd.plan);
+        if (!p) return { ok: false, msg: "その段階開通の手配は終わっています。" };
+        let n = 0;
+        p.segs.forEach((s, k) => { if (s.state === "開通可") { game.recovery.openSeg(p, k, cmd.by || "指令"); n++; } });
+        return n ? { ok: true, msg: `${n}区間を開通させました。` } : { ok: false, msg: "点検の終わった区間はありません。" };
+    },
+    /** 画面の指令員が段階開通を受け持つか (Super-TID を開くと true) */
+    recoveryManual(game, cmd) {
+        if (game.recovery) game.recovery.manual = !!cmd.value;
+        return { ok: true, msg: "" };
+    },
+    /** 大規模な障害を起こす (訓練) */
+    majorIncident(game, cmd) {
+        if (!game.recovery) return { ok: false, msg: "使えません。" };
+        const inc = game.recovery.triggerMajor(cmd.kind === "snow" ? "snow" : "rain");
+        return inc ? { ok: true, msg: `${inc.place}で${inc.type.name}を発生させました (訓練)。` }
+                   : { ok: false, msg: "発生させる区間が見つかりませんでした。" };
+    },
+
     /** 即時抑止 / 指定駅で抑止 */
     hold(game, cmd) {
         const t = game.getTrain(cmd.trainId);

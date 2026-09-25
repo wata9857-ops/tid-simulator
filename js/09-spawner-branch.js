@@ -10,7 +10,7 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
         if (stIdx === undefined) return false;
 
         let isFukuchiStart = ["新三田","三田","道場","宝塚","川西池田","塚口"].includes(startName);
-        let isTozaiStart = ["放出","鴫野","京橋","大阪城北詰","大阪天満宮","北新地","新福島","海老江","御幣島","加島"].includes(startName);
+        let isTozaiStart = TOZAI_PLACES.includes(startName);
 
         // 尼崎までのブロック距離を計算
         let dist = 0;
@@ -275,10 +275,18 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
 
         // 4. 尼崎発 上り (東西線 京橋・四条畷方面)
         if (ct >= this.nextTozaiUp) {
-            let type = Math.random() < 0.45 ? "快速" : "普通";
-            let destOptions = [{d:"四条畷",w:34}, {d:"松井山手",w:34}, {d:"同志社前",w:13},
-                               {d:"木津",w:5}, {d:"放出",w:14}];
+            let type = Math.random() < 0.55 ? "快速" : "普通";
+            /* 学研都市線の行先。松井山手までは複線で本数が多く、
+               その先 (京田辺・同志社前・木津) は単線なので少ない。
+               ★添付の同志社前駅の時刻表: 同志社前から京橋方面は 4本/時、
+                 そのうち木津まで行くのは昼間 1本/時・夕方以降 2本/時。
+                 同志社前・木津へ行くのはすべて快速か区間快速。 */
+            const hTz = (ct / 3600) % 24;
+            const kizuW = (hTz >= 9.5 && hTz < 15.5) ? 6 : 12;
+            let destOptions = [{d:"四条畷",w:17}, {d:"松井山手",w:33}, {d:"京田辺",w:4},
+                               {d:"同志社前",w:30 - kizuW}, {d:"木津",w:kizuW}, {d:"放出",w:8}];
             let dest = this.weightedRandom(destOptions);
+            if (dest === "同志社前" || dest === "木津") type = "快速";
 
             let canSpawn = true;
             let blks = this.game.trackMgr.blocks["Tozai_Up"];
@@ -297,12 +305,38 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             }
 
             if (canSpawn && (budget(type, "tozai") || starved("tozai", 1)) && !jammedAhead("Tozai_Up", "尼崎", 1)) {
-                this.game.addTrain({type:type, dir:1, trackId:"Tozai_Up", dest:dest, startName:"尼崎", nextAction:"depot"});
+                // 学研都市線の終点では折り返して尼崎方へ戻る (留置場があるのは放出だけ)
+                this.game.addTrain({type:type, dir:1, trackId:"Tozai_Up", dest:dest, startName:"尼崎",
+                                    nextAction: (dest === "放出") ? "depot" : "turnback"});
                 this.nextTozaiUp += (type === "快速" ? 750 : 600) * timeFactor;
             } else {
                 this.nextTozaiUp += 180;
             }
         }
+};
+
+/* ------------------------------------------------------------------ 姫路より西の普通
+
+   姫路〜網干・相生・上郡・赤穂線 播州赤穂 の普通。網干総合車両所の223系が受け持つ。
+   下りは姫路 (電留線)・網干 (網干総合車両所) から出し、終点で折り返して上りになる。
+   本数は 1時間に3〜4本 (時刻表の添付が無かったため、実際の標準的な運転本数に合わせた)。 */
+/* 添付の姫路駅 (下り) の時刻表: 昼間の普通は網干行き 2本/時・播州赤穂行き 1本/時、
+   上郡行きは朝夕だけ (昼間の上郡へは相生での折り返しが受け持つ)。 */
+const WEST_LOCAL_DESTS = [{d:"網干",w:5}, {d:"相生",w:1}, {d:"上郡",w:1}, {d:"播州赤穂",w:3}];
+Spawner.prototype.checkWestSpawns = function (ct) {
+    const h = (ct / 3600) % 24;
+    if (h < 4.8 || h >= 22.5) return;
+    if (this.nextWestLocal === undefined) this.nextWestLocal = ct + Math.random() * 600;
+    if (ct < this.nextWestLocal) return;
+    const perHour = ttPerHour("west", "Down", "普通", h) || 0;
+    if (perHour <= 0) { this.nextWestLocal = ct + 600; return; }
+    this.nextWestLocal = ct + 3600 / perHour;
+    if (ttOverBudget(this.game, "main", "普通", 1.1)) return;
+    const from = (Math.random() < 0.85) ? "姫路" : "網干";
+    let dest = this.weightedRandom(WEST_LOCAL_DESTS);
+    if (from === "網干" && dest === "網干") dest = "上郡";
+    this.game.addTrain({ type: "普通", dir: -1, trackId: "Down_Out", dest: dest, startName: from,
+                         nextAction: "turnback" });
 };
 
     // ★追加: 湖西線普通列車の独立生成ロジック（本線とは隔離）

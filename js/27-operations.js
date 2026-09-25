@@ -42,6 +42,9 @@ const DEPOT_DUTIES = [
         { h: [4.5, 9.0],  every: 1500, dir: 1, via: "新大阪", as: "普通", dest: ["高槻", "京都"], ratio: 1.0 },
         { h: [4.5, 9.0],  every: 2700, dir: -1, via: "大阪", as: "普通", dest: ["西明石"], ratio: 0.9 },
         { h: [9.0, 16.0], every: 3600, dir: 1, via: "新大阪", as: "普通", dest: ["高槻", "京都"], ratio: 0.6 },
+        /* ★昼間のJR神戸線の普通 (大阪始発)。学研都市線・JR東西線を7両だけにしたぶん、
+             JR東西線から神戸線へ直通する普通が少し減るので、大阪始発で補う。 */
+        { h: [9.0, 16.0], every: 2700, dir: -1, via: "大阪", as: "普通", dest: ["西明石", "須磨"], ratio: 0.8 },
         { h: [16.0, 21.5], every: 1800, dir: 1, via: "新大阪", as: "普通", dest: ["高槻", "京都"], ratio: 1.0 },
         { h: [16.0, 21.5], every: 2400, dir: -1, via: "大阪", as: "普通", dest: ["西明石", "須磨"], ratio: 0.9 },
         /* JR宝塚線の丹波路快速・普通 (宮原の223系/225系6000番台)。
@@ -93,7 +96,11 @@ const DEPOT_DUTIES = [
         { h: [16.0, 22.0], every: 2400, dir: 1, via: "西明石", as: "普通", dest: ["高槻"], ratio: 0.8 }
     ]},
     // --- 放出電留線 (JR東西線・学研都市線)
+    /* ★学研都市線 (放出〜木津) を線路図に入れたので、朝夕は放出から
+         木津方 (四条畷・松井山手・京田辺・同志社前・木津) へも出区する。 */
     { depot: "放出", windows: [
+        { h: [4.8, 9.0],  every: 1800, dir: 1, via: "放出", as: "普通", dest: ["四条畷", "松井山手", "京田辺", "同志社前", "木津"], ratio: 0.9 },
+        { h: [16.0, 21.0], every: 2700, dir: 1, via: "放出", as: "普通", dest: ["四条畷", "松井山手", "同志社前"], ratio: 0.7 },
         { h: [4.5, 9.0],  every: 1500, dir: -1, via: "放出", as: "普通", dest: ["西明石", "尼崎"], ratio: 1.0 },
         /* ★JR東西線の快速 (学研都市線からの直通) の枠を足した。
              京橋駅の時刻表では 快速系4本/時。放出からの出区が普通だけ
@@ -116,6 +123,12 @@ const DEPOT_DUTIES = [
     { depot: "米原", windows: [
         { h: [4.5, 9.0],  every: 2400, dir: -1, via: "米原", as: "普通", dest: ["野洲", "京都"], ratio: 0.9 },
         { h: [16.0, 22.0], every: 3000, dir: -1, via: "米原", as: "普通", dest: ["野洲"], ratio: 0.6 }
+    ]},
+    // --- 網干総合車両所 (姫路より西・JR神戸線の始発)
+    { depot: "網干", windows: [
+        { h: [4.5, 9.0],  every: 1500, dir: 1,  via: "網干", as: "普通", dest: ["姫路", "加古川", "西明石"], ratio: 1.0 },
+        { h: [4.8, 9.0],  every: 2400, dir: -1, via: "網干", as: "普通", dest: ["上郡", "播州赤穂"], ratio: 0.9 },
+        { h: [16.0, 21.5], every: 2700, dir: 1, via: "網干", as: "普通", dest: ["姫路", "西明石"], ratio: 0.7 }
     ]},
     // --- 姫路電留線
     { depot: "姫路", windows: [
@@ -208,9 +221,12 @@ class OperationsManager {
 
         const fleet = this.game.fleet;
         // 在庫の少ない留置場 (少ない順)
+        /* ★放出 (学研都市線・JR東西線) は、編成の数ではなく「7両が何本組めるか」で見る。
+           3両ばかり残っていても7両は組めず、始発が出せない。 */
         const short = FLEET_BASES
             .filter(b => fleet.pools[b.name] && DEPOTS[b.name])
-            .map(b => ({ name: b.name, n: fleet.pools[b.name].length, groups: b.groups }))
+            .map(b => ({ name: b.name, groups: b.groups,
+                         n: (b.name === "放出") ? fleet.sevenCarSets(b.name) : fleet.pools[b.name].length }))
             .filter(b => b.n <= 2)
             .sort((a, b) => a.n - b.n);
         if (!short.length) return;
@@ -542,6 +558,9 @@ class OperationsManager {
               depots: ["放出"], dest: "尼崎" },
             { trackId: "Tozai_Up",     dir: 1,  from: "尼崎",  to: "放出",
               depots: ["尼崎"], dest: "放出" },
+            // 学研都市線の複線区間 (放出〜松井山手)
+            { trackId: "Tozai_Up",     dir: 1,  from: "放出",  to: "松井山手", maxGap: 4.0,
+              depots: ["放出"], dest: "松井山手" },
             /* 琵琶湖線 (京都〜野洲)
                京都から東は複々線ではなく、内側線・外側線が1本ずつになる。
                普通も外側線を走るので、在線を見るときは両方まとめて数える。
@@ -787,10 +806,19 @@ OperationsManager.prototype.moveToOppositeTrack = function (train, stName, newDi
     if (!targetBlks) return false;
     const newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000);
     if (!newB) return false;
+    /* ★上下でレーンを共有する駅では、反対方向の線路も同じ番線。
+       その場で線路の名前と向きだけ変える (木津・上郡・播州赤穂など)。 */
+    if (newB.lanes === blk.lanes && blk.lanes.indexOf(train) >= 0) {
+        train.trackId = newTrackId;
+        train.dir = newDir;
+        train.currBlockIndex = newB.index;
+        train.lane = blk.lanes.indexOf(train);
+        return true;
+    }
     const lane = train.findFreeLane(newB, newTrackId);
     if (lane === -1) return false;
 
-    blk.lanes[train.lane] = null;
+    freeOwnLane(blk.lanes, train);
     train.trackId = newTrackId;
     train.dir = newDir;
     train.currBlockIndex = newB.index;
@@ -902,7 +930,10 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
                     (SWITCHABLE_STATIONS.indexOf(stName) >= 0 ||
                      OVERTAKE_STATIONS.indexOf(stName) >= 0);
     let lane = train.lane;
-    if (!inPlace) {
+    // 上下でレーンを共有する駅 (単線の駅など) は、その場で向きを変えるのと同じ
+    const sharedHere = (newB.lanes === blk.lanes);
+    if (!inPlace && sharedHere) lane = blk.lanes.indexOf(train);
+    if (!inPlace && !sharedHere) {
         lane = train.findFreeLane(newB, newTrackId);
         if (lane === -1) {
             train.turnbackWait = (train.turnbackWait || 0) + 1;
@@ -932,10 +963,16 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
         // 到着した番線のまま。反対方向の線路へ入るのは発車のとき。
         train.dir = newDir;
         train.turnbackTrack = newTrackId;
+    } else if (sharedHere) {
+        // 共有の番線のまま、線路の名前と向きを変える
+        train.trackId = newTrackId;
+        train.dir = newDir;
+        train.currBlockIndex = newB.index;
+        train.lane = lane;
     } else {
         // 本線から外して折り返し先へ (渡り線の無い駅。実際の入換にあたる)
         const at = blk.lanes.indexOf(train);
-        if (at >= 0) blk.lanes[at] = null; else blk.lanes[train.lane] = null;
+        if (at >= 0) blk.lanes[at] = null;
         train.trackId = newTrackId;
         train.dir = newDir;
         train.currBlockIndex = newB.index;
@@ -952,12 +989,12 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     train.nextAction = "turnback";
     train.updateKoseiRoute();
     train.state = "waiting_start";
-    train.timer = 15;
     train.stuckTime = 0;
     train.hasStoppedAtCurrent = false;
     train.hasDeparted = false;
     train.isFinalStop = false;
-    train.carryOverDelay(180);   // 折り返しの余裕分だけ回復し、残りは持ち越す
+    // 折り返しの時間 (乗車・乗務員の移動)。遅れていれば詰めて、そのぶん回復する
+    train.applyTurnbackDwell(stName);
     this.stats.turnback = (this.stats.turnback || 0) + 1;
     return true;
 };
@@ -991,10 +1028,7 @@ OperationsManager.prototype.canReach = function (train) {
        見逃していた (そのまま四条畷方の行き止まりへ進んで動けなくなった)。
        線路図の外の行先は、線区の端の駅に読み替えて見る。 */
     if (!onHoppo) {
-        const endName = (KATAMACHI_BEYOND.indexOf(train.dest) >= 0) ? "放出"
-            : (["篠山口", "福知山", "豊岡", "城崎温泉"].indexOf(train.dest) >= 0) ? "新三田"
-            : (["網干", "播州赤穂", "上郡"].indexOf(train.dest) >= 0) ? "姫路"
-            : train.dest;
+        const endName = lineEndForBeyond(train.dest) || train.dest;
         const destBlk = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
                                        blockStationName(b) === endName);
         if (destBlk) return (destBlk.index - train.currBlockIndex) * train.dir >= 0;
@@ -1104,6 +1138,7 @@ OperationsManager.prototype.watchdog = function (ct) {
     this.watchNext = ct + 60;
     const g = this.game;
     const calm = !g.isEmergency && g.incidents.active.length === 0 &&
+                 !(g.recovery && g.recovery.plans.length) &&
                  g.trackMgr.manualSuspensions.length === 0;
     const list = g.trains.slice();
     for (const t of list) {

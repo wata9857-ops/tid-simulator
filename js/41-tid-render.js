@@ -306,6 +306,11 @@ class TidRenderer {
            線路もホームも無い所に在線が出ていた。
            (js/05-track-manager.js の amaUpLanes / amaDownLanes を参照) */
         if (STATION_SHARED_LANES[stName]) {
+            /* 分岐線の中の共有の駅 (学研都市線の単線の駅・播州赤穂) は分岐線の帯に描く */
+            const bl = stationBranchLine(stName);
+            const row = (bl === "tozai") ? "Tozai_Up" : (bl === "ako") ? "Ako_Up"
+                      : (bl === "kosei") ? "Kosei_Up" : (bl === "fukuchi") ? "Fukuchi_Up" : null;
+            if (row) return (tY[row] === undefined) ? null : tidStationLayout(stName, tY[row], true);
             return (tY["Up_Out"] === undefined) ? null
                  : tidStationLayout(stName, tY["Up_Out"], false);
         }
@@ -320,6 +325,10 @@ class TidRenderer {
         if (trackId.indexOf("Tozai") === 0) {
             return (tY["Tozai_Up"] === undefined) ? null
                  : tidStationLayout(stName, tY["Tozai_Up"], true);
+        }
+        if (trackId.indexOf("Ako") === 0) {
+            return (tY["Ako_Up"] === undefined) ? null
+                 : tidStationLayout(stName, tY["Ako_Up"], true);
         }
         if (tY["Up_Out"] === undefined) return null;
         return tidStationLayout(stName, tY["Up_Out"], false);
@@ -343,7 +352,12 @@ class TidRenderer {
 
     /** そのブロックで線路が通る縦位置 (駅の外なら線路の定位置) */
     blockRailY(trackId, blk) {
-        const base = this.trackY[trackId];
+        let base = this.trackY[trackId];
+        // 単線区間の下り線は、上り線の行の1本の線の上に描く (進路・信号も)
+        if (blk && blk.index !== undefined) {
+            const u = singleUnitAt(trackId, blk.index);
+            if (u && u.down === trackId && this.trackY[u.up] !== undefined) base = this.trackY[u.up];
+        }
         if (!blk || (!blk.isStation && !blk.hoppoStationName)) return base;
         const st = blockStationName(blk);
         if (!st) return base;
@@ -379,6 +393,31 @@ class TidRenderer {
         return out;
     }
 
+    /**
+     * 単線区間 (js/03-stations.js の SINGLE_TRACK_UNITS) で、下り線の行を描かない所。
+     * 線路は1本なので、上り線の行だけに線を描く。交換駅の中 (区間の外) は両方描く。
+     */
+    isSingleShadow(rowId, blockIndex) {
+        const u = singleUnitAt(rowId, blockIndex);
+        return !!(u && rowId === u.down);
+    }
+
+    /** 単線区間の下り線の行で、線を描かない x の範囲の一覧 */
+    singleTrackGaps(rowId) {
+        const out = [];
+        SINGLE_TRACK_UNITS.forEach(u => {
+            if (u.down !== rowId) return;
+            const blks = this.game.trackMgr.blocks[rowId];
+            const r = singleUnitBlockRange(u);
+            const b1 = blks[r[0]], b2 = blks[r[1]];
+            if (!b1 || !b2 || b1.x === -1000 || b2.x === -1000) return;
+            const xa = tidX(b1.x), xb = tidX(b2.x);
+            const half = tidW(BLOCK_WIDTH) / 2;
+            out.push([Math.min(xa, xb) - half, Math.max(xa, xb) + half]);
+        });
+        return out;
+    }
+
     /** 線路と軌道回路 */
     drawTracks(ctx, xMin, xMax) {
         this.rows().forEach(row => {
@@ -396,7 +435,8 @@ class TidRenderer {
             /* 本線 (在線していない部分)。
                駅の中で本線が上下にずれている所は空けておき、
                そこは着発線と取付線のほうで描く。 */
-            const gaps = this.trackGaps(row.id, a, b);
+            const gaps = this.trackGaps(row.id, a, b).concat(this.singleTrackGaps(row.id));
+            gaps.sort((p, q) => p[0] - q[0]);
             let cur = a;
             gaps.forEach(g => {
                 if (g[0] > cur) tidDrawRail(ctx, cur, Math.min(g[0], b), y);
@@ -408,6 +448,8 @@ class TidRenderer {
             for (let i = 0; i < blks.length; i++) {
                 const blk = blks[i];
                 if (blk.x === -1000) continue;
+                // 単線区間の下り線は上り線と同じ1本の線 (上り線の行で描く)
+                if (this.isSingleShadow(row.id, i)) continue;
                 const bx = tidX(blk.x);
                 const bw = tidW(BLOCK_WIDTH);
                 if (bx < xMin - bw || bx > xMax + bw) continue;
@@ -500,8 +542,9 @@ class TidRenderer {
     /** その線区・そのインデックスにある駅名 (無ければ null) */
     stationNameOn(group, i) {
         if (group === "本線" || group === "北方貨物線") {
-            return STATIONS[i] ? STATIONS[i].name : null;
+            return (STATIONS[i] && !STATIONS[i].branchOnly) ? STATIONS[i].name : null;
         }
+        if (group === "赤穂線") return AKO_STATIONS_MAP[i] || null;
         if (group === "湖西線") return KOSEI_STATIONS_MAP[i] || null;
         if (group === "JR宝塚線") return FUKUCHI_STATIONS_MAP[i] || null;
         if (group === "JR東西線") return TOZAI_STATIONS_MAP[i] || null;
@@ -545,22 +588,27 @@ class TidRenderer {
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x, 24); ctx.lineTo(x, this.height - 24); ctx.stroke();
 
-            // 渡り線・他線区との分岐・支線 (配線略図をもとにした TID_JUNCTIONS)。
-            // 番線より先に描いて、線路の下の層に来るようにする。
-            this.drawJunctions(ctx, st.name, x);
+            /* 本線の駅。播州赤穂の位置 (branchOnly) には本線の線路が無いので描かない
+               (赤穂線の駅として下の分岐線の欄で描く)。 */
+            if (!st.branchOnly) {
+                // 渡り線・他線区との分岐・支線 (配線略図をもとにした TID_JUNCTIONS)。
+                // 番線より先に描いて、線路の下の層に来るようにする。
+                this.drawJunctions(ctx, st.name, x);
 
-            // 本線の番線 (旅客向けの線路図と同じ並びを Super-TID の間隔に当てはめる)
-            if (tY["Up_Out"] !== undefined) {
-                this.drawStationLanes(ctx, st.name, x, tY["Up_Out"], false);
+                // 本線の番線 (旅客向けの線路図と同じ並びを Super-TID の間隔に当てはめる)
+                if (tY["Up_Out"] !== undefined) {
+                    this.drawStationLanes(ctx, st.name, x, tY["Up_Out"], false);
+                }
+
+                // 発着予告 (その駅の線路ごとに、次に来る列車を出す)
+                this.drawPredictions(ctx, st.name, x, "本線");
             }
-
-            // 発着予告 (その駅の線路ごとに、次に来る列車を出す)
-            this.drawPredictions(ctx, st.name, x, "本線");
 
             // 分岐線の駅の番線
             [[KOSEI_STATIONS_MAP, "Kosei_Up", "湖西線"],
              [FUKUCHI_STATIONS_MAP, "Fukuchi_Up", "JR宝塚線"],
-             [TOZAI_STATIONS_MAP, "Tozai_Up", "JR東西線"]].forEach(def => {
+             [TOZAI_STATIONS_MAP, "Tozai_Up", "JR東西線"],
+             [AKO_STATIONS_MAP, "Ako_Up", "赤穂線"]].forEach(def => {
                 const n = def[0][i];
                 if (!n || tY[def[1]] === undefined) return;
                 this.drawJunctions(ctx, n, x);
@@ -616,13 +664,21 @@ class TidRenderer {
         });
 
         (def.junctions || []).forEach(j => {
-            const yMain = tY[j[0]], yBranch = tY[j[1]];
+            const yMain = tY[j[0]];
+            let yBranch = tY[j[1]], mode = j[2];
             if (yMain === undefined || yBranch === undefined) return;
+            /* ★分岐した先が単線 (赤穂線の相生〜) のときは、下り線の行には
+               線を描いていないので、上下どちらの分岐も1本の線 (上り線の行) へつなぐ。 */
+            const single = SINGLE_TRACK_UNITS.find(u => (u.down === j[1] || u.up === j[1]) && (u.hi === stName || u.lo === stName));
+            if (single && tY[single.up] !== undefined) {
+                yBranch = tY[single.up];
+                mode = ((j[3] || "R") === "R") ? "out" : "in";
+            }
             /* 合流は駅の手前、分岐は駅の先。どちらも のど から引く。
                ★4つめで側を指定できる。実物は「上りの合流も下りの分岐も
                  駅の同じ端」という所が多い (尼崎の宝塚線・東西線など)。 */
             const sd = j[3] ? j[3] : ((j[2] === "in") ? "L" : "R");
-            tidDrawJunction(ctx, tidThroatX(cx, sd), yMain, yBranch, j[2]);
+            tidDrawJunction(ctx, tidThroatX(cx, sd), yMain, yBranch, mode);
         });
 
         // 同じ向きに複数の支線が出るときは、重ならないようにずらす
@@ -805,7 +861,7 @@ class TidRenderer {
     drawDepots(ctx, xMin, xMax) {
         for (const name in DEPOTS) {
             const dep = DEPOTS[name];
-            const idx = (name === "宮原操") ? 39 : (name === "向日町操") ? 51 : STATION_MAP[name];
+            const idx = (name === "宮原操") ? STATION_MAP["新大阪"] : (name === "向日町操") ? STATION_MAP["向日町操"] : STATION_MAP[name];
             if (idx === undefined) continue;
             const x = tidStationX(idx) -
                       tidW(dep.drawOffset.x * BLOCK_WIDTH * UNITS_PER_STATION);
@@ -895,6 +951,12 @@ class TidRenderer {
 
     /** その列車が居る番線の縦位置 */
     laneY(t, blk, baseY) {
+        // 単線区間の中の列車は、向きにかかわらず1本の線 (上り線の行) に描く
+        const su = singleUnitAt(t.trackId, t.currBlockIndex);
+        if (su && this.trackY[su.up] !== undefined &&
+            !(STATION_PLATFORM_RULES[blockStationName(blk)] && (blk.isStation || blk.hoppoStationName))) {
+            return this.trackY[su.up];
+        }
         const stName = blockStationName(blk);
         if (stName && STATION_PLATFORM_RULES[stName] && (blk.isStation || blk.hoppoStationName)) {
             const L = this.layoutFor(stName, t.trackId);

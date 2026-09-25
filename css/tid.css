@@ -100,6 +100,16 @@
     border-bottom: 1px solid #4A5570;
 }
 .tid-toolbar-title { color: #8FA0C8; }
+/* 表示・時間・表示倍率の欄をたたむボタン。たたむとこのボタンだけの細い帯になる */
+.tid-tb-toggle {
+    border: 1px solid #5A6684; background: #37415F; color: #EAF0FF;
+    border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 11px;
+    padding: 2px 8px; min-height: 22px;
+}
+.tid-tb-toggle:active { background: #0E58C8; }
+#tid-toolbar.is-collapsed { padding: 1px 12px; }
+#tid-toolbar.is-collapsed > *:not(#tid-toolbar-toggle) { display: none !important; }
+#tid-toolbar.is-collapsed .tid-tb-toggle { font-size: 10px; min-height: 18px; padding: 0 8px; }
 #tid-toolbar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 #tid-toolbar input { width: 15px; height: 15px; }
 .tid-legend { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #B7C4E4; }
@@ -198,10 +208,12 @@
     display: flex; gap: 8px;
     padding: 8px;
     background: var(--tid-darker);
-    max-height: 34vh;
+    max-height: 38vh;
     overflow-x: auto;
     overflow-y: hidden;
 }
+/* 「広げる」を押したときの指令卓の高さ (輸送障害・記録を読みやすくする) */
+body.tid-dock-tall #tid-dock { max-height: 62vh; }
 .tid-panel {
     background: var(--tid-panel);
     border: 1px solid var(--tid-edge);
@@ -213,8 +225,8 @@
 }
 .tid-panel-train { flex: 1 1 250px; }
 .tid-panel-cmd   { flex: 1.3 1 300px; }
-.tid-panel-depot { flex: 1.1 1 280px; }
-.tid-panel-info  { flex: 1.4 1 320px; }
+/* 輸送障害・記録は幅も高さも広くとる (記録簿の一覧をスクロールして読めるように) */
+.tid-panel-info  { flex: 2.4 1 460px; }
 .tid-panel h2 {
     margin: 0 0 6px; font-size: 12px; color: #fff; background: var(--tid-dark);
     padding: 4px 8px; border-radius: 2px; letter-spacing: 1px;
@@ -269,7 +281,7 @@
 .tid-empty { color: #8A93A8; font-size: 11px; margin: 6px 0; }
 
 /* 輸送障害 */
-.tid-incidents { font-size: 11px; }
+.tid-incidents { font-size: 11px; max-height: 34%; overflow-y: auto; flex: 0 0 auto; }
 .tid-inc { background: #FFF4E6; border-left: 4px solid var(--tid-warn);
            padding: 4px 6px; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 6px; }
 .tid-inc-name  { font-weight: bold; color: #8A3A00; }
@@ -277,13 +289,32 @@
 .tid-inc-stage { color: #2B3550; }
 .tid-inc-rem   { margin-left: auto; color: #C2121B; }
 .tid-inc-train { width: 100%; color: #5C6680; }
+/* 段階的な運転再開 */
+.tid-rcv { background: #FFF9E0; border-left: 4px solid #B58600; padding: 4px 6px; margin-bottom: 5px; }
+.tid-rcv-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 3px; }
+.tid-rcv-seg { display: flex; gap: 6px; align-items: center; padding: 2px 0; border-top: 1px dotted #D9C98A; }
+.tid-rcv-label { font-weight: bold; min-width: 120px; }
+.tid-rcv-state { flex: 1 1 auto; color: #5C6680; }
+.tid-rcv-seg.is-ready .tid-rcv-state { color: #17823C; font-weight: bold; }
+.tid-rcv-seg.is-open .tid-rcv-state { color: #8A93A8; }
+.tid-rcv-btn { min-height: 26px; padding: 3px 8px; margin: 0; font-size: 11px; }
 
 /* 記録 */
 .tid-tabs { margin-left: auto; display: flex; gap: 4px; }
 .tid-tab { border: none; background: #4A5570; color: #C8D4F0; font-size: 10px;
            padding: 3px 8px; border-radius: 2px; cursor: pointer; font-family: inherit; }
 .tid-tab.is-active { background: #0E58C8; color: #fff; }
-.tid-logs { font-size: 11px; overflow-y: auto; flex: 1 1 auto; min-height: 60px; }
+.tid-logs { font-size: 12px; overflow-y: auto; flex: 1 1 auto; min-height: 170px; }
+.tid-grow { margin-left: 8px; background: #2B3550; }
+body.tid-dock-tall .tid-grow { background: #0E58C8; color: #fff; }
+
+/* 運転指令の下に折りたたんだ「出区・運転見合わせ・防護無線」 */
+.tid-more { margin-top: 8px; border-top: 1px dashed #B6C0DA; padding-top: 5px; }
+.tid-more > summary {
+    cursor: pointer; font-size: 11px; font-weight: bold; color: var(--tid-sub);
+    padding: 4px 2px; list-style: revert;
+}
+.tid-more[open] > summary { margin-bottom: 4px; }
 .tid-log { display: flex; gap: 5px; padding: 2px 0; border-bottom: 1px dotted #CCD4E6;
            align-items: flex-start; }
 .tid-log-time { color: #8A93A8; flex: 0 0 auto; font-variant-numeric: tabular-nums; }

@@ -144,6 +144,11 @@ class Renderer {
 
         STATIONS.forEach((st, i) => {
             const x = 100 + (i * UNITS_PER_STATION) * BLOCK_WIDTH;
+            // 播州赤穂の位置は赤穂線だけ (本線の駅ではない)
+            if (st.branchOnly) {
+                if (AKO_STATIONS_MAP[i]) addSt(AKO_STATIONS_MAP[i], x, (tY["Ako_Up"] + tY["Ako_Down"]) / 2);
+                return;
+            }
             if (st.name === "向日町操") {
                 addSt(st.name, x, tY["Up_Out"] - 35);
                 addSt(st.name, x, tY["Down_Out"] + 35);
@@ -154,12 +159,13 @@ class Renderer {
                 addSt(FREIGHT_STATION_LABEL[st.name], x, tY["Up_Out"] - 25);
                 addSt(FREIGHT_STATION_LABEL[st.name], x, tY["Down_Out"] + 35);
             }
-            if (i === 39) { addSt("宮原操", x, tY["Up_Hoppo"] - 20); addSt("宮原操", x, tY["Down_Hoppo"] + 30); }
-            if (i === 41) { addSt("吹田タ", x, tY["Up_Hoppo"] - 20); addSt("吹田タ", x, tY["Down_Hoppo"] + 30); }
+            if (i === W(39)) { addSt("宮原操", x, tY["Up_Hoppo"] - 20); addSt("宮原操", x, tY["Down_Hoppo"] + 30); }
+            if (i === W(41)) { addSt("吹田タ", x, tY["Up_Hoppo"] - 20); addSt("吹田タ", x, tY["Down_Hoppo"] + 30); }
 
             if (KOSEI_STATIONS_MAP[i])   addSt(KOSEI_STATIONS_MAP[i],   x, (tY["Kosei_Up"] + tY["Kosei_Down"]) / 2);
             if (FUKUCHI_STATIONS_MAP[i]) addSt(FUKUCHI_STATIONS_MAP[i], x, (tY["Fukuchi_Up"] + tY["Fukuchi_Down"]) / 2);
             if (TOZAI_STATIONS_MAP[i])   addSt(TOZAI_STATIONS_MAP[i],   x, (tY["Tozai_Up"] + tY["Tozai_Down"]) / 2);
+            if (AKO_STATIONS_MAP[i])     addSt(AKO_STATIONS_MAP[i],     x, (tY["Ako_Up"] + tY["Ako_Down"]) / 2);
         });
 
         for (const stName in DEPOTS) {
@@ -175,7 +181,7 @@ class Renderer {
         const dep = DEPOTS[stName];
         if (!dep) return null;
         const tY = this.game.trackMgr.trackY;
-        const idx = (stName === "宮原操") ? 39 : (stName === "向日町操") ? 51 : STATION_MAP[stName];
+        const idx = (stName === "宮原操") ? STATION_MAP["新大阪"] : (stName === "向日町操") ? STATION_MAP["向日町操"] : STATION_MAP[stName];
         if (idx === undefined) return null;
         const baseX = 100 + (idx * UNITS_PER_STATION) * BLOCK_WIDTH;
         const cx = baseX + (dep.drawOffset.x * BLOCK_WIDTH * UNITS_PER_STATION);
@@ -214,20 +220,26 @@ class Renderer {
             ctx.lineWidth = 3;
             let sX = 0, eX = TOTAL_WIDTH;
             if (trk.id.includes("Hoppo")) {
-                sX = 100 + (36 * UNITS_PER_STATION) * BLOCK_WIDTH;
-                eX = 100 + (44 * UNITS_PER_STATION) * BLOCK_WIDTH;
+                sX = 100 + (W(36) * UNITS_PER_STATION) * BLOCK_WIDTH;
+                eX = 100 + (W(44) * UNITS_PER_STATION) * BLOCK_WIDTH;
             } else if (trk.id.includes("Kosei")) {
-                sX = 100 + (56 * UNITS_PER_STATION) * BLOCK_WIDTH;
-                eX = 100 + (83 * UNITS_PER_STATION) * BLOCK_WIDTH;
+                sX = 100 + (W(56) * UNITS_PER_STATION) * BLOCK_WIDTH;
+                eX = 100 + (W(83) * UNITS_PER_STATION) * BLOCK_WIDTH;
             } else if (trk.id.includes("Fukuchi")) {
-                sX = 100 + (23 * UNITS_PER_STATION) * BLOCK_WIDTH;
-                eX = 100 + (36 * UNITS_PER_STATION) * BLOCK_WIDTH;
+                sX = 100 + (W(23) * UNITS_PER_STATION) * BLOCK_WIDTH;
+                eX = 100 + (W(36) * UNITS_PER_STATION) * BLOCK_WIDTH;
             } else if (trk.id.includes("Tozai")) {
-                sX = 100 + (36 * UNITS_PER_STATION) * BLOCK_WIDTH;
+                sX = 100 + (W(36) * UNITS_PER_STATION) * BLOCK_WIDTH;
                 eX = 100 + (TOZAI_EAST_IDX * UNITS_PER_STATION) * BLOCK_WIDTH;
+            } else if (trk.id.includes("Ako")) {
+                sX = 100 + (AKO_WEST_IDX * UNITS_PER_STATION) * BLOCK_WIDTH;
+                eX = 100 + (AKO_JUNCTION_IDX * UNITS_PER_STATION) * BLOCK_WIDTH;
             } else if (trk.id.includes("In")) {
                 sX = 100 + (STATION_MAP["西明石"] * UNITS_PER_STATION) * BLOCK_WIDTH;
                 eX = 100 + (STATION_MAP["草津"] * UNITS_PER_STATION) * BLOCK_WIDTH;
+            } else {
+                // 本線の西の端は上郡 (その西の播州赤穂の位置は赤穂線だけ)
+                sX = 100 + (STATION_MAP["上郡"] * UNITS_PER_STATION) * BLOCK_WIDTH;
             }
             const a = Math.max(sX, xMin), b = Math.min(eX, xMax);
             if (b <= a) return;
@@ -252,6 +264,16 @@ class Renderer {
             ctx.strokeStyle = CONFIG.stationGrid; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_HEIGHT); ctx.stroke();
 
+            // 播州赤穂の位置は赤穂線だけ (本線の線路・駅は描かない)
+            if (st.branchOnly) {
+                const aName = AKO_STATIONS_MAP[i];
+                if (aName) {
+                    this.drawStationBox(ctx, aName, x, (tY["Ako_Up"] + tY["Ako_Down"]) / 2);
+                    this.drawStationTracksStatic(ctx, x, tY["Ako_Up"], tY["Ako_Up"], tY["Ako_Down"], tY["Ako_Down"], aName);
+                }
+                return;
+            }
+
             if (st.name === "向日町操") {
                 ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
                 ctx.font = "bold 12px 'Meiryo UI', 'Yu Gothic', sans-serif";
@@ -266,11 +288,11 @@ class Renderer {
                 this.drawStationBox(ctx, FREIGHT_STATION_LABEL[st.name], x, tY["Up_Out"] - 25);
                 this.drawStationBox(ctx, FREIGHT_STATION_LABEL[st.name], x, tY["Down_Out"] + 35);
             }
-            if (i === 39) {
+            if (i === W(39)) {
                 this.drawStationBox(ctx, "宮原操", x, tY["Up_Hoppo"] - 20);
                 this.drawStationBox(ctx, "宮原操", x, tY["Down_Hoppo"] + 30);
             }
-            if (i === 41) {
+            if (i === W(41)) {
                 this.drawStationBox(ctx, "吹田タ", x, tY["Up_Hoppo"] - 20);
                 this.drawStationBox(ctx, "吹田タ", x, tY["Down_Hoppo"] + 30);
             }
@@ -291,6 +313,11 @@ class Renderer {
                 const tName = TOZAI_STATIONS_MAP[i];
                 this.drawStationBox(ctx, tName, x, (tY["Tozai_Up"] + tY["Tozai_Down"]) / 2);
                 this.drawStationTracksStatic(ctx, x, tY["Tozai_Up"], tY["Tozai_Up"], tY["Tozai_Down"], tY["Tozai_Down"], tName);
+            }
+            if (AKO_STATIONS_MAP[i]) {
+                const aName = AKO_STATIONS_MAP[i];
+                this.drawStationBox(ctx, aName, x, (tY["Ako_Up"] + tY["Ako_Down"]) / 2);
+                this.drawStationTracksStatic(ctx, x, tY["Ako_Up"], tY["Ako_Up"], tY["Ako_Down"], tY["Ako_Down"], aName);
             }
         });
     }

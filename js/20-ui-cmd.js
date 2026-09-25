@@ -287,7 +287,8 @@ UIManager.prototype.fillTrackChangeStations = function (t) {
         else names = STATIONS.map(s => s.name)
             .concat(Object.values(KOSEI_STATIONS_MAP))
             .concat(Object.values(FUKUCHI_STATIONS_MAP))
-            .concat(Object.values(TOZAI_STATIONS_MAP));
+            .concat(Object.values(TOZAI_STATIONS_MAP))
+            .concat(Object.values(AKO_STATIONS_MAP).filter(n => n !== "播州赤穂"));
         sel.innerHTML = '<option value="">駅を選択してください</option>';
         names.forEach(n => {
             const o = document.createElement("option");

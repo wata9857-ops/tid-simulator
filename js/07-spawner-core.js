@@ -147,6 +147,8 @@ Spawner.prototype.update = function (currentTime) {
             this.checkKoseiSpawns(currentTime);
             this.checkFukuchiTozaiSpawns(currentTime);
         }
+        // 姫路より西の普通 (本線の枠で数える)
+        if (mainCount <= maxTrains) this.checkWestSpawns(currentTime);
 };
 
 Spawner.prototype.checkFixedSpawns = function (ct) {

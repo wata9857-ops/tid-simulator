@@ -105,8 +105,11 @@ function probe() {
         if (t.turnbackTrack && !canReverseAt(st)) {
             count(bad.cantReverse, st + ' ' + t.trainNo + '(' + t.type + ') 同一ホーム折返');
         }
+        /* 貨物ターミナル (吹田貨・鷹取・ひめじ別所・西大路) は着発線と機回し線で
+           貨物列車の向きを変える (js/15-train-depot.js の freightTerminalWork)。 */
+        const freightTurn = t.type === '貨物' && freightTerminalAt(st);
         if (prev && prev.st === st && prev.dir !== undefined && prev.dir !== t.dir &&
-            !canReverseAt(st)) {
+            !canReverseAt(st) && !freightTurn) {
             count(bad.cantReverse, st + ' ' + t.trainNo + '(' + t.type + ') 構内折返');
         }
         if (t.turnbackTrack && canReverseAt(st)) count(revSeen, st);

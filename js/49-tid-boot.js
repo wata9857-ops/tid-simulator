@@ -40,7 +40,7 @@ window.onload = function () {
             t.trainNo = "";
             const blks = game.trackMgr.blocks[t.trackId];
             if (blks && blks[t.currBlockIndex] && blks[t.currBlockIndex].lanes[t.lane] === t) {
-                blks[t.currBlockIndex].lanes[t.lane] = null;
+                freeOwnLane(blks[t.currBlockIndex].lanes, t);
             }
             depotAdd(stName, t);
             game.trains.push(t);

@@ -93,7 +93,10 @@ const TID_ROWS = [
     { id: "Fukuchi_Down", label: "宝塚下り", dir: -1, group: "JR宝塚線", gap: 72 },
     { id: "Fukuchi_Up",   label: "宝塚上り", dir: 1,  group: "JR宝塚線", gap: 72 },
     { id: "Tozai_Down", label: "東西下り",   dir: -1, group: "JR東西線", gap: 72 },
-    { id: "Tozai_Up",   label: "東西上り",   dir: 1,  group: "JR東西線", gap: 72 }
+    { id: "Tozai_Up",   label: "東西上り",   dir: 1,  group: "JR東西線", gap: 72 },
+    // 赤穂線 (相生〜播州赤穂)。単線なので区間の中は1本の線で描く (drawTracks)
+    { id: "Ako_Down",   label: "赤穂下り",   dir: -1, group: "赤穂線", gap: 72 },
+    { id: "Ako_Up",     label: "赤穂上り",   dir: 1,  group: "赤穂線", gap: 72 }
 ];
 
 /* 縦の寸法。実物の ref-diagram-3468x632.png を画素で測って合わせた値。
@@ -164,10 +167,11 @@ const TID_AREAS = [
     { id: "main",    label: "本線 (琵琶湖線・JR京都線・JR神戸線)", groups: ["本線"] },
     { id: "kosei",   label: "本線 ＋ 湖西線",       groups: ["本線", "湖西線"] },
     { id: "fukuchi", label: "本線 ＋ JR宝塚線",     groups: ["本線", "JR宝塚線"] },
-    { id: "tozai",   label: "本線 ＋ JR東西線",     groups: ["本線", "JR東西線"] },
+    { id: "tozai",   label: "本線 ＋ JR東西線・学研都市線", groups: ["本線", "JR東西線"] },
+    { id: "ako",     label: "本線 ＋ 赤穂線 (姫路以西)",   groups: ["本線", "赤穂線"] },
     { id: "hoppo",   label: "本線 ＋ 北方貨物線",   groups: ["北方貨物線", "本線"] },
     { id: "all",     label: "全線",
-      groups: ["北方貨物線", "本線", "湖西線", "JR宝塚線", "JR東西線"] }
+      groups: ["北方貨物線", "本線", "湖西線", "JR宝塚線", "JR東西線", "赤穂線"] }
 ];
 
 /* ------------------------------------------------------------------ 線区の帯と駅名札
@@ -198,9 +202,11 @@ const TID_LABEL_RESERVE = 52;    // 駅名札の無い線区 (北方貨物線) �
 function tidGroupStationMap(group) {
     if (group === "本線") {
         const m = {};
-        STATIONS.forEach((s, i) => { m[i] = s.name; });
+        // 播州赤穂の位置は赤穂線だけ (本線の線路はそこに無い)
+        STATIONS.forEach((s, i) => { if (!s.branchOnly) m[i] = s.name; });
         return m;
     }
+    if (group === "赤穂線") return AKO_STATIONS_MAP;
     if (group === "湖西線") return KOSEI_STATIONS_MAP;
     if (group === "JR宝塚線") return FUKUCHI_STATIONS_MAP;
     if (group === "JR東西線") return TOZAI_STATIONS_MAP;
@@ -212,6 +218,7 @@ function tidGroupRange(group) {
     if (group === "湖西線") return tidTrackRange("Kosei_Up");
     if (group === "JR宝塚線") return tidTrackRange("Fukuchi_Up");
     if (group === "JR東西線") return tidTrackRange("Tozai_Up");
+    if (group === "赤穂線") return tidTrackRange("Ako_Up");
     if (group === "北方貨物線") return tidTrackRange("Up_Hoppo");
     return [0, STATIONS.length - 1];
 }
@@ -603,12 +610,14 @@ function tidVirtualToY(v, refUpOutY, branch) {
 
 /** その線路が実体を持つ駅インデックスの範囲 */
 function tidTrackRange(trackId) {
-    if (trackId.indexOf("Hoppo") >= 0)   return [36, 44];
-    if (trackId.indexOf("Kosei") === 0)  return [56, 83];
-    if (trackId.indexOf("Fukuchi") === 0) return [23, 36];
-    if (trackId.indexOf("Tozai") === 0)  return [36, TOZAI_EAST_IDX];
+    if (trackId.indexOf("Hoppo") >= 0)   return [W(36), W(44)];
+    if (trackId.indexOf("Kosei") === 0)  return [W(56), W(83)];
+    if (trackId.indexOf("Fukuchi") === 0) return [W(23), W(36)];
+    if (trackId.indexOf("Tozai") === 0)  return [W(36), TOZAI_EAST_IDX];
+    if (trackId.indexOf("Ako") === 0)    return [AKO_WEST_IDX, AKO_JUNCTION_IDX];
     if (trackId.indexOf("In") >= 0)      return [STATION_MAP["西明石"], STATION_MAP["草津"]];
-    return [0, STATIONS.length - 1];
+    // 本線の西の端は上郡 (播州赤穂の位置は赤穂線だけ)
+    return [STATION_MAP["上郡"], STATIONS.length - 1];
 }
 
 /* 実物の Super-TID は、画面の左が米原・草津方 (上り方)、
@@ -1034,8 +1043,28 @@ const TID_JUNCTIONS = {
        (以前は3本とも「画面左・下向き」で、姫新線と網干が逆側に出ていた) */
     "姫路":   { crossovers: [["Up_Out", "Down_Out", "x"]],
                 stubs: [{ side: "L", from: "Down_Out", up: true,  label: "播但線 京口方" },
-                        { side: "R", from: "Up_Out",   up: false, label: "姫新線 播磨高岡方" },
-                        { side: "R", from: "Up_Out",   up: false, label: "網干総合車両所方" }] },
+                        { side: "R", from: "Up_Out",   up: false, label: "姫新線 播磨高岡方" }] },
+    /* ---------------- 山陽本線 姫路より西・赤穂線
+       スクリーンショット(723)〜(725).png。画面の左が姫路方、右が上郡・播州赤穂方
+       (配線略図の左右と同じ)。上が下り線 (南側)。
+       ★英賀保・相生・上郡は中線が両端で上下本線につながる (2面3線)。
+       ★網干は折返し線 (3番) が両端で上下本線につながり、竜野方の南側に
+         網干総合車両所の出入区線が分かれる。
+       ★竜野は下り側の待避線だけで、上下をつなぐ渡り線は無い。 */
+    "英賀保":   { crossovers: [["Up_Out", "Down_Out", "x", "L"], ["Up_Out", "Down_Out", "x", "R"]],
+                  stubs: [{ side: "L", from: "Up_Out", up: false, label: "英賀保 側線" }] },
+    "網干":     { crossovers: [["Up_Out", "Down_Out", "x", "L"], ["Up_Out", "Down_Out", "x", "R"]],
+                  stubs: [{ side: "L", from: "Down_Out", up: true, label: "網干 電留線" },
+                          { side: "R", from: "Down_Out", up: true, label: "網干総合車両所" }] },
+    "相生":     { crossovers: [["Up_Out", "Down_Out", "x", "L"], ["Up_Out", "Down_Out", "x", "R"]],
+                  junctions: [["Down_Out", "Ako_Down", "out", "R"], ["Up_Out", "Ako_Up", "in", "R"]],
+                  stubs: [{ side: "L", from: "Up_Out", up: false, label: "相生 側線" }] },
+    "上郡":     { crossovers: [["Up_Out", "Down_Out", "x", "L"], ["Up_Out", "Down_Out", "x", "R"]],
+                  stubs: [{ side: "L", from: "Down_Out", up: true,  label: "上郡 側線" },
+                          { side: "R", from: "Up_Out",   up: false, label: "智頭急行線 岩木(信)方" },
+                          { side: "R", from: "Down_Out", up: true,  label: "山陽本線 三石方" }] },
+    "播州赤穂": { crossovers: [["Ako_Up", "Ako_Down", "x", "L"]],
+                  stubs: [{ side: "R", from: "Ako_Down", up: true, label: "赤穂線 天和・日生方" }] },
     /* ひめじ別所 — 図では駅の曽根 (画面左) 側の上に、両渡り2組を持つ
        大きな貨物駅がある (スクリーンショット(706).png)。定義が無かった。 */
     "ひめじ別所": { stubs: [{ side: "L", from: "Down_Out", up: true, label: "姫路貨物駅" }] },
@@ -1300,8 +1329,28 @@ const TID_JUNCTIONS = {
     "鴫野":   { stubs: [{ side: "L", from: "Tozai_Up", up: false, label: "おおさか東線 JR野江方" }] },
     "放出":   { crossovers: [["Tozai_Up", "Tozai_Down", "x"]],
                 stubs: [{ side: "L", from: "Tozai_Down", up: true,  label: "おおさか東線 高井田中央方" },
-                        { side: "L", from: "Tozai_Up",   up: false, label: "片町線 徳庵・四条畷方" },
-                        { side: "L", from: "Tozai_Down", up: true,  label: "放出電留線" }] }
+                        { side: "L", from: "Tozai_Down", up: true,  label: "放出電留線" }] },
+    /* ---------------- 学研都市線 放出〜木津 (スクリーンショット(726)〜(728).png)
+       画面の左が木津方、右が放出・京橋方 (配線略図の左右と同じ)。上が下り線。
+       ★松井山手〜京田辺・京田辺〜木津は単線。交換駅 (大住・京田辺・JR三山木・祝園) は
+         両端で1線にまとまるので、その合流を片渡りの形で描く。
+       ★住道は待避線だけで、上下をつなぐ渡り線は無い。
+       ★同志社前・下狛・西木津・木津 (学研都市線のホーム) は1線。 */
+    "徳庵":     { crossovers: [["Tozai_Up", "Tozai_Down", "l", "R"]],
+                  stubs: [{ side: "L", from: "Tozai_Down", up: true, label: "近畿車輛専用線" },
+                          { side: "R", from: "Tozai_Down", up: true, label: "放出電留線" }] },
+    "四条畷":   { crossovers: [["Tozai_Up", "Tozai_Down", "r", "L"], ["Tozai_Up", "Tozai_Down", "x", "R"]],
+                  stubs: [{ side: "R", from: "Tozai_Up", up: false, label: "四条畷 側線" }] },
+    "津田":     { stubs: [{ side: "L", from: "Tozai_Down", up: true, label: "津田 側線" }] },
+    "長尾":     { crossovers: [["Tozai_Up", "Tozai_Down", "l", "L"], ["Tozai_Up", "Tozai_Down", "x", "R"]] },
+    "松井山手": { crossovers: [["Tozai_Up", "Tozai_Down", "r", "L"], ["Tozai_Up", "Tozai_Down", "x", "R"]],
+                  stubs: [{ side: "L", from: "Tozai_Down", up: true, label: "松井山手 引上線" }] },
+    "大住":     { crossovers: [["Tozai_Up", "Tozai_Down", "r", "L"], ["Tozai_Up", "Tozai_Down", "l", "R"]] },
+    "京田辺":   { crossovers: [["Tozai_Up", "Tozai_Down", "x", "L"], ["Tozai_Up", "Tozai_Down", "x", "R"]] },
+    "JR三山木": { crossovers: [["Tozai_Up", "Tozai_Down", "r", "L"], ["Tozai_Up", "Tozai_Down", "l", "R"]] },
+    "祝園":     { crossovers: [["Tozai_Up", "Tozai_Down", "r", "L"], ["Tozai_Up", "Tozai_Down", "x", "R"]],
+                  stubs: [{ side: "R", from: "Tozai_Up", up: false, label: "祝園 側線" }] },
+    "木津":     { stubs: [{ side: "L", from: "Tozai_Up", up: false, label: "関西本線 加茂方・奈良線" }] }
 };
 
 /**

@@ -215,6 +215,11 @@ head('列車の番線表示');
    レーン配列を4つの線路で共有している (js/05-track-manager.js)。
    線路IDごとに数を比べても意味がないため、上り側・下り側の合計で見る。 */
 function laneCountsOf(stName, tid, m, b) {
+    // 上下すべてで共有する駅 (単線の駅・線区の端の上郡・中線のある相生など) は全部の合計
+    if (STATION_SHARED_LANES[stName] === 'all') {
+        return { def: m.Up_Out.length + m.Up_In.length + m.Down_In.length + m.Down_Out.length,
+                 sim: b.lanes.length };
+    }
     if (STATION_SHARED_LANES[stName]) {
         const up = (tid === 'Up_Out' || tid === 'Up_In');
         return { def: up ? (m.Up_Out.length + m.Up_In.length)

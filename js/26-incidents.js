@@ -881,6 +881,9 @@ class IncidentSystem {
 
     /** 輸送障害を1件起こす */
     trigger(forcedTypeId) {
+        // 大雨・大雪 (区間で起きる大規模な障害) は別の起こし方をする
+        const major = forcedTypeId && MAJOR_INCIDENT_TYPES.find(t => t.id === forcedTypeId);
+        if (major && this.game.recovery) return this.game.recovery.triggerMajor(major.area);
         const type = forcedTypeId
             ? (INCIDENT_TYPES.find(t => t.id === forcedTypeId) || pickIncidentType())
             : pickIncidentType();
@@ -905,7 +908,10 @@ class IncidentSystem {
             suspensions: [],
             faults: [],
             stage: "支障中",
-            trainNo: loc.train ? loc.train.trainNo : ""
+            trainNo: loc.train ? loc.train.trainNo : "",
+            /* 人身事故のうち重いものは、見合わせを解いたあと段階的に開通させる
+               (現場付近の点検・車両の移動に時間がかかる)。 */
+            staged: (type.family === "jinshin") && Math.random() < JINSHIN_STAGED_RATIO
         };
 
         // --- 防護無線の発報 (全線一時停止。既存の仕組みをそのまま使う)
@@ -981,9 +987,9 @@ class IncidentSystem {
             const inc = this.active[i];
             inc.timer -= CONFIG.TICK_SEC;
 
-            // 直接支障の上限 (1時間)
+            // 直接支障の上限 (1時間。大雨・大雪は種類ごとの上限)
             const elapsed = now - inc.startedAt;
-            if (elapsed >= INCIDENT_MAX_BLOCK_SEC && inc.timer > 0) {
+            if (elapsed >= (inc.type.maxBlockSec || INCIDENT_MAX_BLOCK_SEC) && inc.timer > 0) {
                 inc.timer = 0;
                 inc.forced = true;
             }
@@ -1106,6 +1112,13 @@ class IncidentSystem {
         }
         if (this.game.records) this.game.records.incidentFinished(inc, reason, silent);
 
+        /* ★段階的な運転再開。大雨・大雪・重い人身事故は、見合わせを解いても
+           区間ごとの点検が終わるまで抑止を残し、1区間ずつ開通させる。 */
+        if (!silent && this.game.recovery && (inc.type.recovery || inc.staged)) {
+            const plan = this.game.recovery.startPlan(inc, inc.type.recovery || JINSHIN_RECOVERY);
+            if (plan) return;
+        }
+
         if (!silent) {
             this.game.ui.updateBanner(
                 `🟢【運転再開】${inc.place}の${inc.type.name}は${reason}。当該区間の運転を再開します。` +
@@ -1122,3 +1135,406 @@ class IncidentSystem {
         }));
     }
 }
+
+
+/* ==================================================================
+   大規模な輸送障害と、段階的な運転再開 (利用者の指摘 5)
+
+   ■ 何を足したか
+     大雨・大雪・人身事故のような大きな障害のあとは、運転見合わせを
+     「解除」しても、すぐに全線が元どおり走れるわけではない。実際には
+       ・運転見合わせは正式に解除 (運転再開) するが、
+       ・一部の区間は保線区の巡回点検・分岐器の除雪などが終わるまで抑止が残り、
+       ・指令が点検の終わった区間から1区間ずつ手動で開通させ、
+       ・そのあいだは確認のための列車を1本ずつ注意運転で進める
+     という形で、長いときは1時間半以上かけて平常に戻していく。
+
+   ■ ここでの扱い
+     1. 見合わせを解くとき (IncidentSystem.finish)、障害の種類が段階的な
+        再開を要するもの (大雨・大雪・人身事故の重いもの) なら、
+        区間を駅と駅のあいだごとに「開通待ちの区間」として残す
+        (TrackManager.recoveryHolds。isSuspended() が止める)。
+     2. 区間ごとに点検 (巡回) の時間があり、終わると「開通できる」になる。
+     3. Super-TID の指令員は区間を1つずつ「開通」させる。
+        「1本進める」で確認の列車を1本だけ注意運転で通せる。
+        指令員が答えないとき・旅客向け画面だけのときは、
+        別の指令員が点検の終わった区間から開通させる (運転が止まったままにならない)。
+     4. すべての区間が開通したら、しばらく徐行を残して平常に戻る。
+
+   ★起きやすさ: 大雨・大雪はまれにしか起きない (1日あたり CONFIG.majorIncidentChance)。
+     ふだんの輸送障害の種類と割合 (INCIDENT_TYPES) には手を触れていないので、
+     tools/check_incident_mix.js の割合はそのまま。
+     Super-TID の「大規模障害 (訓練)」から、いつでも起こせる。
+   ================================================================== */
+
+CONFIG.majorIncidentChance = 0.10;     // 1日あたり、大雨・大雪が起きる割合
+
+/* 大規模な障害の起きる区間。雨・雪の起きやすい線区から選ぶ。 */
+const MAJOR_AREAS = {
+    rain: [
+        { line: "JR宝塚線", tracks: ["Fukuchi_Up", "Fukuchi_Down"], from: "宝塚", to: "新三田" },
+        { line: "湖西線", tracks: ["Kosei_Up", "Kosei_Down"], from: "堅田", to: "近江今津" },
+        { line: "学研都市線", tracks: ["Tozai_Up", "Tozai_Down"], from: "長尾", to: "木津" },
+        { line: "山陽本線", tracks: ["Up_Out", "Down_Out"], from: "網干", to: "上郡" }
+    ],
+    snow: [
+        { line: "北陸本線", tracks: ["Up_Out", "Down_Out"], from: "米原", to: "近江塩津" },
+        { line: "琵琶湖線", tracks: ["Up_Out", "Down_Out"], from: "能登川", to: "米原" },
+        { line: "湖西線", tracks: ["Kosei_Up", "Kosei_Down"], from: "近江舞子", to: "永原" }
+    ]
+};
+
+/* 大規模な障害の種類。IncidentSystem の種類と同じ形 (報告書もそのまま作れる)。
+     area        … MAJOR_AREAS のどれで起きるか
+     maxBlockSec … 見合わせの上限 (ふつうの障害の1時間より長い)
+     recovery    … 段階的な運転再開 { segSec:[点検にかかる秒数], slow:{sec,factor} } */
+const MAJOR_INCIDENT_TYPES = [
+    {
+        id: "heavy_rain", family: "major", name: "大雨 (雨量計の規制値超過)", weight: 0,
+        area: "rain", needTrain: false, radio: false,
+        cat: "外部要因", depts: ["保線区", "施設指令", "駅"],
+        suspend: [3000, 4800], maxBlockSec: 5400,
+        slow: { sec: 1800, factor: 1.6 },
+        after: null, cause: "大雨",
+        causeText: "沿線の雨量計が運転規制値 (時雨量・連続雨量) を超過。規制値を下回ったあと、" +
+                   "保線区が区間ごとに徒歩・軌道モーターカーで巡回し、のり面・線路の異常の有無を確認する。",
+        first: (loc) => `${loc}で雨量計が運転規制値を超えました。当該区間は上下線とも運転を見合わせます。`,
+        crew: [
+            [0.00, "施設指令", "{loc}の雨量計が規制値を超過しました。運転規制を発令します。"],
+            [0.00, "指令", "了解。規制区間に列車を進入させない。区間内の列車は最寄り駅で抑止。"],
+            [0.60, "施設指令", "雨量が規制値を下回りつつあります。解除後は区間ごとに巡回点検を行います。"],
+            [0.95, "保線区", "巡回の班を各駅に配置しました。点検の終わった区間から順に報告します。"]
+        ],
+        phases: [
+            [0.00, "運転規制中", "雨量計が規制値を超えています。上下線とも運転を見合わせています。"],
+            [0.50, "雨量の推移を監視", "雨は弱まりつつありますが、規制値を下回るまで見合わせを続けます。"],
+            [0.85, "規制解除の準備", "規制解除後に巡回点検を行うため、保線区が出動しています。"]
+        ],
+        recovery: { segSec: [900, 1500], slow: { sec: 1800, factor: 1.6 } }
+    },
+    {
+        id: "heavy_snow", family: "major", name: "大雪 (着雪・分岐器の不転換)", weight: 0,
+        area: "snow", needTrain: false, radio: false,
+        cat: "外部要因", depts: ["保線区", "信号通信区", "電力区", "駅"],
+        suspend: [3000, 5400], maxBlockSec: 5400,
+        slow: { sec: 2400, factor: 1.8 },
+        after: null, cause: "大雪",
+        causeText: "降雪により分岐器に着雪し不転換が多発、架線への着雪も発生。" +
+                   "除雪・融雪器の点検と、区間ごとの確認列車による線路状態の確認が必要。",
+        first: (loc) => `${loc}で大雪のため分岐器の不転換が相次いでいます。当該区間は運転を見合わせます。`,
+        crew: [
+            [0.00, "信号通信区", "{loc}構内の分岐器が着雪で不転換です。融雪器は作動中ですが追いつきません。"],
+            [0.00, "指令", "了解。当該区間は運転見合わせ。除雪の要員を手配してください。"],
+            [0.55, "保線区", "駅構内の分岐器から除雪を進めています。駅間は確認列車で線路状態を見る必要があります。"],
+            [0.95, "保線区", "除雪の終わった区間から順に報告します。確認列車は注意運転でお願いします。"]
+        ],
+        phases: [
+            [0.00, "除雪作業中", "分岐器の除雪と融雪器の点検を行っています。"],
+            [0.45, "除雪作業中 (継続)", "降雪が続いており、除雪を繰り返しています。"],
+            [0.85, "運転再開の準備", "主な分岐器の除雪が終わりました。区間ごとの確認に移ります。"]
+        ],
+        recovery: { segSec: [1500, 2100], slow: { sec: 2400, factor: 1.8 } }
+    }
+];
+
+/* 人身事故の重いもの (現場付近の点検・車両の移動に時間がかかる)。
+   人身事故のうちこの割合が、見合わせ解除後に段階的な開通になる。 */
+const JINSHIN_STAGED_RATIO = 0.35;
+const JINSHIN_RECOVERY = { segSec: [600, 1080], slow: { sec: 900, factor: 1.5 } };
+
+class RecoveryControl {
+    constructor(game) {
+        this.game = game;
+        this.plans = [];
+        this.seq = 0;
+        /* 指令員が画面から操作しているか。Super-TID を開くと true になる
+           (js/42-tid-ui.js)。false のときは別の指令員が自動で開通させる。 */
+        this.manual = false;
+        // 答えが無いときに別の指令員が開通させるまでの待ち [秒]
+        this.fallbackSec = 600;
+        this.scheduleMajor(game.currentTime);
+    }
+
+    /** 次の大規模障害の時刻を決める (その日に起きないこともある) */
+    scheduleMajor(now) {
+        const day = Math.floor(now / 86400);
+        this.majorDay = day;
+        if (Math.random() < (CONFIG.majorIncidentChance || 0)) {
+            this.majorAt = day * 86400 + (7.0 + Math.random() * 10.0) * 3600;
+        } else {
+            this.majorAt = Infinity;
+        }
+    }
+
+    /** 大規模な障害を起こす (kind = "rain" / "snow")。起こせたら障害を返す */
+    triggerMajor(kind) {
+        const type = MAJOR_INCIDENT_TYPES.find(t => t.area === kind) || MAJOR_INCIDENT_TYPES[0];
+        const areas = MAJOR_AREAS[type.area] || [];
+        if (!areas.length) return null;
+        const area = areas[Math.floor(Math.random() * areas.length)];
+        return this.game.incidents.triggerArea(type, area);
+    }
+
+    /** 障害の見合わせを解くときに、段階的な運転再開の計画を作る */
+    startPlan(inc, rec) {
+        const g = this.game;
+        const area = inc.area || this.areaAround(inc);
+        if (!area) return null;
+        const segs = this.segmentsOf(area);
+        if (!segs.length) return null;
+        const plan = {
+            id: "rcv_" + (++this.seq), incId: inc.id, name: inc.type.name,
+            line: area.line || "", place: inc.place, startedAt: g.currentTime,
+            segs: segs, spec: rec, doneAt: null
+        };
+        /* 点検は区間の端から順に進める。保線区の班は区間3つにつき1班
+           (長い区間は複数の班が同時に回る)。班の数だけ最初の区間の点検が
+           終わる時刻を決め、あとは開通するたびに次の区間の点検を始める。 */
+        const rnd = (a) => a[0] + Math.random() * (a[1] - a[0]);
+        const teams = Math.max(1, Math.ceil(segs.length / 3));
+        segs.forEach((s, k) => {
+            s.state = "点検中";
+            s.readyAt = (k < teams) ? g.currentTime + rnd(rec.segSec) * (1 + 0.15 * k) : null;
+            s.passes = 0; s.grant = null; s.grantIn = false;
+            s.holds = [];
+            area.tracks.forEach(tid => {
+                const h = { trackId: tid, start: s.start, end: s.end, plan: plan.id, seg: k, grant: null };
+                g.trackMgr.recoveryHolds.push(h);
+                s.holds.push(h);
+                // 開通までのあいだ、確認列車は注意運転 (15km/h 程度)
+                g.trackMgr.addSpeedRestriction(tid, s.start, s.end, 3.0,
+                    "段階開通 (注意運転)", g.currentTime + 6 * 3600);
+            });
+        });
+        this.plans.push(plan);
+        const first = segs[0];
+        g.ui.updateBanner(
+            `🟠【運転再開・一部抑止】${inc.place}の${inc.type.name}は運転見合わせを解除しましたが、` +
+            `${area.line} ${segs[0].from}〜${segs[segs.length - 1].to} (${segs.length}区間) は` +
+            `点検の終わった区間から指令が順次開通させます。最初は ${first.from}〜${first.to}。`,
+            "banner-red");
+        this.note(plan, "段階開通",
+            `運転見合わせを解除。${area.line} ${segs[0].from}〜${segs[segs.length - 1].to} の${segs.length}区間は ` +
+            `抑止を継続し、点検の終わった区間から1区間ずつ開通させる。`);
+        return plan;
+    }
+
+    /** 人身事故のように場所で起きた障害の、前後の区間 (駅と駅のあいだ2〜3区間) */
+    areaAround(inc) {
+        const tracks = parallelTracks(inc.trackId).filter(t => /Out$|_Up$|_Down$/.test(t));
+        const blks = this.game.trackMgr.blocks[inc.trackId];
+        if (!blks) return null;
+        const stationsNear = (dir) => {
+            const out = [];
+            for (let i = inc.index; i >= 0 && i < blks.length && out.length < 2; i += dir) {
+                const b = blks[i];
+                if (!b || b.x === -1000) break;
+                if (isRealStationBlock(b)) out.push(blockStationName(b));
+            }
+            return out;
+        };
+        const back = stationsNear(-1), fwd = stationsNear(1);
+        const from = back[back.length - 1] || back[0], to = fwd[fwd.length - 1] || fwd[0];
+        if (!from || !to || from === to) return null;
+        return { line: recLineName(inc.trackId, blks[inc.index].stationIdx), tracks: tracks, from: from, to: to };
+    }
+
+    /** 区間を駅と駅のあいだごとに切る。{from, to, start, end} (start〜end は駅間のブロック) */
+    segmentsOf(area) {
+        const tid = area.tracks[0];
+        const blks = this.game.trackMgr.blocks[tid];
+        if (!blks) return [];
+        const a = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.from);
+        const z = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.to);
+        if (!a || !z) return [];
+        const lo = Math.min(a.index, z.index), hi = Math.max(a.index, z.index);
+        const sts = [];
+        for (let i = lo; i <= hi; i++) {
+            const b = blks[i];
+            if (b && b.x !== -1000 && isRealStationBlock(b)) sts.push(b);
+        }
+        const segs = [];
+        for (let k = 0; k + 1 < sts.length; k++) {
+            const p = sts[k], q = sts[k + 1];
+            if (q.index - p.index < 2) continue;
+            // 大阪・京都方 (インデックスの大小どちらでも、線区の入口側) から順に
+            segs.push({ from: blockStationName(p), to: blockStationName(q), start: p.index + 1, end: q.index - 1 });
+        }
+        // 本線・分岐線の付け根に近い側 (列車が多く待っている側) から開ける
+        const rootFirst = (area.tracks[0].indexOf("Fukuchi") === 0 || area.tracks[0].indexOf("Ako") === 0)
+            ? segs.slice().reverse() : segs;
+        return rootFirst;
+    }
+
+    /** 毎Tick */
+    update() {
+        const g = this.game;
+        const now = g.currentTime;
+        // 日が替わったら、その日の大規模障害を決め直す
+        if (Math.floor(now / 86400) !== this.majorDay) this.scheduleMajor(now);
+        if (now >= this.majorAt && g.incidents.active.length < 2) {
+            this.majorAt = Infinity;
+            this.triggerMajor(Math.random() < 0.55 ? "rain" : "snow");
+        }
+
+        for (let pi = this.plans.length - 1; pi >= 0; pi--) {
+            const plan = this.plans[pi];
+            let allOpen = true;
+            plan.segs.forEach((s, k) => {
+                if (s.state === "開通") return;
+                allOpen = false;
+                // 点検が終わった
+                if (s.state === "点検中" && s.readyAt !== null && now >= s.readyAt) {
+                    s.state = "開通可";
+                    s.readySince = now;
+                    g.ui.updateBanner(
+                        `【保線区】${s.from}〜${s.to}間の点検が終わりました。` +
+                        (this.manual ? "指令の開通の指示を待っています。" : "開通させます。"), "banner-blue");
+                    this.note(plan, "点検完了", `${s.from}〜${s.to}間の点検完了`);
+                }
+                // 指令員がいない・答えないときは、別の指令員が開通させる
+                if (s.state === "開通可" && (!this.manual || now - s.readySince >= this.fallbackSec)) {
+                    this.openSeg(plan, k, this.manual ? "他の指令員 (代行)" : "当務の指令員");
+                }
+                // 確認列車の通過を見届けたら、許可を消す
+                if (s.grant) {
+                    const t = g.getTrain(s.grant);
+                    const inside = !!t && t.state !== "finished" && s.holds.some(h =>
+                        h.trackId === t.trackId && t.currBlockIndex >= h.start && t.currBlockIndex <= h.end);
+                    if (inside) s.grantIn = true;
+                    if (!t || t.state === "finished" || (s.grantIn && !inside) ||
+                        (!s.grantIn && now - (s.grantAt || now) > 1200)) {
+                        s.grant = null; s.grantIn = false;
+                        s.holds.forEach(h => { h.grant = null; });
+                    }
+                }
+            });
+            if (allOpen) {
+                plan.doneAt = now;
+                g.ui.updateBanner(
+                    `🟢【平常運転へ】${plan.place}の${plan.name}に伴う段階的な開通が終わり、` +
+                    `全区間で運転を再開しました (${Math.round((now - plan.startedAt) / 60)}分)。` +
+                    `当分の間は徐行運転です。`, "banner-orange");
+                this.note(plan, "全区間開通", `全区間の開通を完了 (段階開通 ${Math.round((now - plan.startedAt) / 60)}分)`);
+                this.plans.splice(pi, 1);
+            }
+        }
+    }
+
+    /** 区間を開通させる */
+    openSeg(plan, k, by) {
+        const g = this.game;
+        const s = plan.segs[k];
+        if (!s || s.state === "開通") return false;
+        s.state = "開通";
+        s.openedAt = g.currentTime;
+        const holds = g.trackMgr.recoveryHolds;
+        s.holds.forEach(h => { const at = holds.indexOf(h); if (at >= 0) holds.splice(at, 1); });
+        // 注意運転を外して、しばらく徐行を残す
+        const sr = g.trackMgr.speedRestrictions;
+        for (let i = sr.length - 1; i >= 0; i--) {
+            const r = sr[i];
+            if (r.reason === "段階開通 (注意運転)" && s.holds.some(h => h.trackId === r.trackId && h.start === r.start && h.end === r.end)) sr.splice(i, 1);
+        }
+        s.holds.forEach(h => g.trackMgr.addSpeedRestriction(h.trackId, h.start, h.end,
+            plan.spec.slow.factor, plan.name + "後の徐行", g.currentTime + plan.spec.slow.sec));
+        // 次の区間の点検を始める
+        const next = plan.segs.find(x => x.state === "点検中" && x.readyAt === null);
+        if (next) {
+            const a = plan.spec.segSec;
+            next.readyAt = g.currentTime + a[0] + Math.random() * (a[1] - a[0]);
+        }
+        g.ui.updateBanner(`【指令】${s.from}〜${s.to}間を開通させました (${by})。`, "banner-orange");
+        this.note(plan, "開通", `${s.from}〜${s.to}間を開通 (${by})`, by);
+        return true;
+    }
+
+    /** 確認列車を1本だけ通す (注意運転) */
+    passOne(plan, k, by) {
+        const s = plan.segs[k];
+        if (!s || s.state === "開通") return false;
+        s.passes++;
+        this.game.ui.updateBanner(`【指令】${s.from}〜${s.to}間に確認の列車を1本、注意運転で進めます (${by})。`, "banner-orange");
+        this.note(plan, "確認列車", `${s.from}〜${s.to}間に確認列車を1本通す (${by})`, by);
+        return true;
+    }
+
+    /**
+     * 列車が開通待ちの区間へ入ろうとするとき、確認列車の許可があれば渡す。
+     * 許可を持つ列車だけが区間を通れる (TrackManager.isSuspended の train 引数)。
+     */
+    tryGrant(train, trackId, idx) {
+        for (const plan of this.plans) {
+            for (const s of plan.segs) {
+                if (s.state === "開通") continue;
+                const h = s.holds.find(x => x.trackId === trackId && idx >= x.start && idx <= x.end);
+                if (!h) continue;
+                if (s.grant === train.id) return true;
+                if (s.grant || s.passes <= 0) return false;
+                s.passes--;
+                s.grant = train.id; s.grantAt = this.game.currentTime; s.grantIn = false;
+                s.holds.forEach(x => { x.grant = train.id; });
+                this.note(plan, "確認列車", `${train.trainNo} が確認列車として ${s.from}〜${s.to}間へ進入`);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 記録簿に残す */
+    note(plan, kind, text, by) {
+        const rec = this.game.records && this.game.records.incidents.find(r => r.id === plan.incId);
+        if (!rec) return;
+        rec.timeline.push({ at: this.game.currentTime, kind: kind, text: text });
+        if (by) rec.actions.push({ at: this.game.currentTime, by: by.indexOf("代行") >= 0 ? "代行" : "指令", text: text });
+        rec.status = (kind === "全区間開通") ? "運転再開 (徐行中)" : "段階的に運転再開中";
+    }
+
+    /** 画面表示用 */
+    list() {
+        const now = this.game.currentTime;
+        return this.plans.map(p => ({
+            id: p.id, name: p.name, place: p.place, line: p.line,
+            minutes: Math.round((now - p.startedAt) / 60),
+            segs: p.segs.map((s, k) => ({
+                k: k, label: s.from + "〜" + s.to, state: s.state, passes: s.passes,
+                grant: !!s.grant,
+                readyIn: (s.state === "点検中" && s.readyAt !== null) ? Math.max(0, Math.ceil((s.readyAt - now) / 60)) : null
+            }))
+        }));
+    }
+}
+
+/* ------------------------------------------------------------------ 輸送障害の側の追加 */
+
+/** 区間で起きる大規模な障害を1件起こす (大雨・大雪) */
+IncidentSystem.prototype.triggerArea = function (type, area) {
+    const g = this.game;
+    const tid0 = area.tracks[0];
+    const blks = g.trackMgr.blocks[tid0];
+    if (!blks) return null;
+    const a = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.from);
+    const z = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.to);
+    if (!a || !z) return null;
+    const lo = Math.min(a.index, z.index), hi = Math.max(a.index, z.index);
+    const rnd = (r) => r[0] + Math.random() * (r[1] - r[0]);
+    const suspendSec = Math.min(type.maxBlockSec || INCIDENT_MAX_BLOCK_SEC, rnd(type.suspend));
+    const mid = Math.round((lo + hi) / 2);
+    const inc = {
+        id: "inc_" + (++INCIDENT_SEQ), type: type, trackId: tid0, index: mid, train: null,
+        place: `${area.line} ${area.from}〜${area.to}間`, area: area,
+        startedAt: g.currentTime, totalSec: suspendSec, timer: suspendSec,
+        phase: -1, suspensions: [], faults: [], stage: "支障中", trainNo: "", staged: true
+    };
+    area.tracks.forEach(tid => {
+        const rec = { trackId: tid, start: lo, end: hi, owner: inc.id };
+        g.trackMgr.manualSuspensions.push(rec);
+        inc.suspensions.push(rec);
+    });
+    this.active.push(inc);
+    this.history.push({ at: g.currentTime, id: inc.id, name: type.name, place: inc.place, family: "major", major: true });
+    if (g.records) g.records.incidentStarted(inc);
+    this.syncEmergencyState();
+    g.ui.updateBanner(`🚨【${type.name}】${type.first(inc.place)}`, "banner-red");
+    return inc;
+};

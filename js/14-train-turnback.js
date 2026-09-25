@@ -269,7 +269,10 @@ Train.prototype.executeTurnBack = function () {
                 //   以前は上り=京都/下り=姫路と決め打ちしていたため、
                 //   草津で上りに折り返した列車に「京都行き」(= 後方) が
                 //   割り当てられ、終点に着けないまま走り続けていた。
-                if (nextDest === this.startName) {
+                /* ★比べる相手は折り返す駅 (新しい始発駅)。以前は前の列車の始発駅と比べていて、
+                   姫路発 相生行きが相生で折り返して姫路行きになると「後方」とみなされ、
+                   京都行きに書き換えられていた。 */
+                if (nextDest === stName) {
                     nextDest = this.game.spawner.fallbackTerminal(newDir, stName, this.trackId);
                 }
                 if (stName === "向日町操" && nextDest === "向日町操") nextDest = (newDir===1) ? "京都" : "大阪";
@@ -288,7 +291,7 @@ Train.prototype.executeTurnBack = function () {
                 this.vehicles = [];
 
                 // 本線から消去して留置場へ
-                blk.lanes[this.lane] = null;
+                freeOwnLane(blk.lanes, this);
                 this.state = "in_depot";
             this.startName = stName || this.startName;
 
@@ -582,16 +585,21 @@ Train.prototype.executeTurnBack = function () {
                                   入れるが上り内側線へは出られない番線がある。
                                   その場合は構内を移動して折り返す (実際の入換)。 */
                                canDepartTo(stName, this.trackId, this.lane, newTrackId);
-        const sameSpot = !!(newB && newTrackId === this.trackId &&
-                            newB.index === this.currBlockIndex);
+        /* 同じ場所にとどまって向きだけ変える場合。
+           ★上下でレーンを共有する駅 (単線の駅・線区の端の上郡・播州赤穂など) では、
+             反対方向の線路のブロックも同じ番線そのもの。別の番線の空きを
+             探すと、自分が占めている番線しか無い駅 (木津) で永久に待っていた。 */
+        const sameSpot = !!(newB && newB.index === this.currBlockIndex &&
+                            (newTrackId === this.trackId || newB.lanes === blk.lanes));
 
         if (canTurnInPlace) {
             // 到着した番線のまま、向きと運用だけを変える
             this.dir = newDir;
             this.turnbackTrack = newTrackId;      // 発車のときに入る線路
+            this.maybeSwitchTozaiType(stName, newTrackId);
             if (!["回送", "貨物", "臨時", "特急"].includes(this.type)) {
                 this.dest = this.game.spawner.getDestination(this.type, this.dir, stName, newTrackId);
-                if (this.dest === this.startName) {
+                if (this.dest === stName) {   // 折り返す駅そのものが行先になったとき
                     this.dest = this.game.spawner.fallbackTerminal(this.dir, stName, newTrackId);
                 }
                 // 近江塩津・敦賀からの下り普通は米原行きとする (琵琶湖線経由)
@@ -616,11 +624,11 @@ Train.prototype.executeTurnBack = function () {
             }
             this.vehicles = newVehicles;
 
-            this.state = "waiting_start"; this.timer = 15; this.stuckTime = 0;
+            this.state = "waiting_start"; this.stuckTime = 0;
             this.turnbackStall = 0;
             this.hasStoppedAtCurrent = false;
             this.hasDeparted = false;
-            this.carryOverDelay(180);
+            this.applyTurnbackDwell(stName);
             this.isFinalStop = false;
 
             if (this.nextAction === "stop_opposite_home") {
@@ -671,13 +679,16 @@ Train.prototype.executeTurnBack = function () {
             if (tl !== -1) {
                 if (!sameSpot) {
                     const at = blk.lanes.indexOf(this);
-                    if (at >= 0) blk.lanes[at] = null; else blk.lanes[this.lane] = null;
+                    if (at >= 0) blk.lanes[at] = null;
+                } else if (newB.lanes === blk.lanes && blk.lanes.indexOf(this) >= 0) {
+                    tl = blk.lanes.indexOf(this);          // 共有の番線: いまの枠のまま
                 }
                 this.trackId = newTrackId; this.dir = newDir; this.currBlockIndex = newB.index; this.lane = tl;
                 newB.lanes[tl] = this;
+                this.maybeSwitchTozaiType(stName, newTrackId);
                 if (!["回送","貨物","臨時","特急"].includes(this.type)) {
                     this.dest = this.game.spawner.getDestination(this.type, this.dir, stName, newTrackId);
-                    if (this.dest === this.startName) {
+                    if (this.dest === stName) {   // 折り返す駅そのものが行先になったとき
                         this.dest = this.game.spawner.fallbackTerminal(this.dir, stName, this.trackId);
                     }
                     
@@ -712,7 +723,7 @@ Train.prototype.executeTurnBack = function () {
                 }
                 this.vehicles = newVehicles;
 
-                this.state = "waiting_start"; this.timer = 15; this.stuckTime = 0; this.hasStoppedAtCurrent = false; 
+                this.state = "waiting_start"; this.stuckTime = 0; this.hasStoppedAtCurrent = false;
                 this.turnbackStall = 0;
                 this.hasDeparted = false;
                 /* ★遅れの引き継ぎ。
@@ -721,7 +732,7 @@ Train.prototype.executeTurnBack = function () {
                    実際には折り返し時間の余裕(3分程度)しか回復できないので、
                    その分だけ差し引いて残りを持ち越す。
                    これで障害の影響がダイヤ全体へ自然に波及する。 */
-                this.carryOverDelay(180);
+                this.applyTurnbackDwell(stName);
                 this.isFinalStop = false; // ★修正: 折り返し発車時のフラグリセット
                 
                 if (this.nextAction === "stop_opposite_home") {
@@ -906,6 +917,88 @@ Train.prototype.canChangeTypeTo = function (newType, atName) {
     const where = atName || this.startName;
     return this.game.fleet.canServe(this.vehicles, where, newType,
         this.trackId, this.dest, this.dutyName);
+};
+
+/* ------------------------------------------------------------------ 折り返しの時間
+
+   ■ 何を直すためのものか (利用者の指摘)
+     折り返しは到着するとほぼすぐ (60秒の客扱い＋15秒) に発車していて、
+     お客様が乗り込む時間も、乗務員が反対側の運転台へ移って
+     折り返しの準備をする時間も無かった。
+
+   ■ 実際の折り返し
+     終着駅では、降車 → 車内点検 → 乗務員が編成の反対の端へ移る
+     (12両で約250m、歩いて3〜4分) → 行先表示の変更・ブレーキ試験 → 乗車、
+     という手順を踏む。ダイヤ上の折り返し時間は、普通で5〜7分、
+     新快速で8〜10分ほどとってあり、遅れているときだけ
+     最低限の時間 (乗務員の移動とブレーキ試験) まで詰めて発車する。
+
+   ■ ここでの扱い
+     layover … ダイヤ上の折り返し時間 (到着から発車まで)
+     min     … 遅れているときに詰められる下限 (編成の長さで決まる)
+     遅れている列車は layover − 遅れ まで詰め (ただし min より短くしない)、
+     詰めたぶんだけ遅れを取り戻す。
+     引上線で折り返す駅 (京橋) は、ホームにいるのは降車のあいだだけなので短い。 */
+const TURNBACK_LAYOVER = { "普通": 330, "快速": 390, "新快速": 480, "特急": 900, "臨時": 300, "回送": 150 };
+
+/** その列車の、その駅での折り返し時間 { layover, min } [秒] */
+function turnbackDwellPlan(train, stName) {
+    const cars = (train.vehicles || []).reduce((s, v) => s + (v.cars || 0), 0) || 6;
+    let layover = TURNBACK_LAYOVER[train.type] || 300;
+    // 乗務員が反対の運転台へ移る時間＋ブレーキ試験 (12両で約4分、7両で約3.5分)
+    let min = 150 + cars * 8;
+    if (train.type === "回送") min = 120;
+    // 朝夕のラッシュは折り返しを詰めたダイヤになっている
+    const h = (train.game.currentTime / 3600) % 24;
+    if (typeof stationUseBand === "function" && stationUseBand(h) !== "normal") layover *= 0.8;
+    // 引上線を使う駅はホームを長くふさがない
+    if (stName === "京橋" && typeof canUseDrawUp === "function" &&
+        canUseDrawUp(stName, train.trackId, train.lane)) {
+        layover = 150; min = 90;
+    }
+    return { layover: Math.round(Math.max(layover, min)), min: min };
+}
+
+/**
+ * 折り返しの発車までの時間を決める (到着時の客扱い60秒を含めた全体で数える)。
+ * 遅れているときは詰めて発車し、詰めたぶんだけ遅れを取り戻す。
+ */
+Train.prototype.applyTurnbackDwell = function (stName) {
+    if (globalThis.__NO_DWELL) { this.timer = 15; this.carryOverDelay(180); return; }
+    const p = turnbackDwellPlan(this, stName);
+    const late = Math.max(0, this.delayTime || 0);
+    const dwell = Math.max(p.min, p.layover - late);
+    const recovered = p.layover - dwell;
+    this.delayTime = Math.max(0, late - recovered);
+    this.turnbackDwellSec = dwell;
+    this.turnbackDepartAt = this.game.currentTime + Math.max(15, dwell - 60);
+    this.timer = Math.max(15, dwell - 60);          // 到着時に60秒の客扱いを済ませている
+};
+
+/**
+ * 学研都市線の終点 (四条畷・松井山手・京田辺・同志社前・木津) で折り返すとき、
+ * 普通 ⇄ 快速 を入れ替える。
+ *
+ * 実際の学研都市線は、同じ編成が普通で着いて快速で折り返す (その逆も) 運用が多い。
+ * 折り返しで種別を変えないと、上りで生成した種別の割合がそのまま下りに残り、
+ * JR東西線の下りの快速が実際の4本/時に対して1本/時ほどしか走らなかった。
+ * 下りの快速が普通より少ないときだけ、普通を快速にして折り返す。
+ */
+const KATAMACHI_TERMINALS = ["四条畷", "松井山手", "京田辺", "同志社前", "木津"];
+Train.prototype.maybeSwitchTozaiType = function (stName, newTrackId) {
+    if (KATAMACHI_TERMINALS.indexOf(stName) < 0) return;
+    if (this.dir !== -1 || (newTrackId || "").indexOf("Tozai") !== 0) return;
+    const h = (this.game.currentTime / 3600) % 24;
+    if (h < 6.0 || h >= 21.5) return;
+    if (this.type !== "普通") return;
+    /* ★添付の同志社前駅の時刻表では、同志社前・木津から京橋方面へ出る列車は
+         すべて快速か区間快速 (普通は深夜の京橋行きだけ)。 */
+    const outer = ["京田辺", "同志社前", "木津"].indexOf(stName) >= 0;
+    const nR = ttActiveCount(this.game, "tozai", "快速", -1);
+    const nL = ttActiveCount(this.game, "tozai", "普通", -1);
+    if (!outer && nR >= nL) return;
+    if (!this.canChangeTypeTo("快速", stName)) return;
+    this.type = "快速";
 };
 
 Train.prototype.carryOverDelay = function (margin) {

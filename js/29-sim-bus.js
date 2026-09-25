@@ -204,6 +204,10 @@ class SimBus {
             faults: g.signals.faults.map(f => ({
                 trackId: f.trackId, start: f.start, end: f.end, reason: f.reason })),
             incidents: g.incidents.list(),
+            // 段階的な運転再開 (区間ごとの開通) と、その抑止区間
+            recovery: g.recovery ? g.recovery.list() : [],
+            recoveryHolds: g.trackMgr.recoveryHolds.map(h => ({
+                trackId: h.trackId, start: h.start, end: h.end, grant: h.grant })),
             /* 指令連絡 (js/31-comms.js)。応答はどちらの画面からでもできるよう、
                本体が抱えている一覧をそのまま流す。 */
             comms: g.comms ? g.comms.list() : [],
@@ -226,6 +230,8 @@ class SimBus {
 
         // --- 線路の状態
         g.trackMgr.manualSuspensions = s.suspensions || [];
+        g.trackMgr.recoveryHolds = s.recoveryHolds || [];
+        this._recovery = s.recovery || [];
         g.trackMgr.speedRestrictions = s.restrictions || [];
         g.signals.faults = s.faults || [];
 
@@ -278,6 +284,7 @@ class SimBus {
 
     /** 従側で輸送障害の一覧を出すための橋渡し */
     incidentList() { return this._incidents || []; }
+    recoveryList() { return this._recovery || []; }
 
     /** 従側で指令連絡の一覧を出すための橋渡し */
     commList() { return this._comms || []; }

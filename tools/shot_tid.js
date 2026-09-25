@@ -5,6 +5,7 @@
      node tools/shot_tid.js                     # 既定 (山科・京都あたり)
      node tools/shot_tid.js 大津 山科 京都      # 駅を指定する
      node tools/shot_tid.js --area kosei 山科   # 表示する線区を変える
+     node tools/shot_tid.js --height 2000 相生  # 画面を縦に長くして下の行まで写す
 
    出力先: tools/.tmp/tidshot/<駅名>.png
 */
@@ -47,6 +48,9 @@ function startServer() {
     let area = 'main';
     const ai = args.indexOf('--area');
     if (ai >= 0) { area = args[ai + 1]; args.splice(ai, 2); }
+    let height = 900;
+    const hi = args.indexOf('--height');
+    if (hi >= 0) { height = parseInt(args[hi + 1], 10); args.splice(hi, 2); }
     let zoom = 1;
     const zi = args.indexOf('--zoom');
     if (zi >= 0) { zoom = parseFloat(args[zi + 1]); args.splice(zi, 2); }
@@ -59,7 +63,7 @@ function startServer() {
     const server = await startServer();
     const base = 'http://127.0.0.1:' + server.address().port;
     const browser = await chromium.launch({ executablePath: exe });
-    const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 1600, height: height } });
     const errs = [];
     page.on('pageerror', e => errs.push(String(e)));
     page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });

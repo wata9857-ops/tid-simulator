@@ -110,11 +110,17 @@ Train.prototype.checkHold = function (isStarting) {
                     if (targetNextBlk && this.findFreeLane(targetNextBlk, targetTrackId) === -1) return true;
                 }
             } else {
-                if (nextBlk.lanes.every(l => l !== null)) return true;
+                // 満線でも、終着列車は反対側の着発線へ入れることがある (move() と同じ判定)
+                if (nextBlk.lanes.every(l => l !== null) && !this.terminalCrossArrival(nextBlk)) return true;
             }
         }
         
-        if (this.game.trackMgr.isSuspended(aheadTrackId, nextIdx)) return true;
+        // 段階開通の区間: 確認列車の許可があれば受け取る (無ければ止まる)
+        if (this.game.recovery) this.game.recovery.tryGrant(this, aheadTrackId, nextIdx);
+        if (this.game.trackMgr.isSuspended(aheadTrackId, nextIdx, this)) return true;
+
+        // 単線区間 (一閉塞一列車)
+        if (this.singleTrackBlocked(nextIdx, aheadTrackId)) return true;
 
         if (isStarting) {
                  if (this.startName === "向日町操") return false;
@@ -718,6 +724,40 @@ Train.prototype.checkHold = function (isStarting) {
 };
 
 /**
+ * 単線区間 (js/03-stations.js の SINGLE_TRACK_UNITS) へ入れないか。
+ *
+ * 区間の外から区間へ入ろうとするときだけ見る (区間の中を進むのは閉塞どおり)。
+ *   1. 区間に自分以外の列車がいれば入らない (一閉塞一列車)
+ *   2. 区間の先の交換駅に、自分の向きで入れる番線の空きが無ければ入らない
+ *      (区間の中で待たされると、交換駅で向かい合う列車と
+ *       互いの空きを待つ形の詰まりになるため)
+ */
+Train.prototype.singleTrackBlocked = function (nextIdx, trackIdAhead) {
+    const tid = trackIdAhead || this.trackId;
+    const u = singleUnitAt(tid, nextIdx);
+    if (!u) return false;
+    if (singleUnitAt(tid, this.currBlockIndex) === u) return false;   // もう区間の中
+    const tm = this.game.trackMgr;
+    const blks = tm.blocks[u.up];
+    const r = singleUnitBlockRange(u);
+    for (let i = r[0]; i <= r[1]; i++) {
+        const b = blks[i];
+        if (b && b.x !== -1000 && b.lanes.some(l => l && l !== this)) return true;
+    }
+    // 区間の先の交換駅 (終点が区間の中にあるときは折り返して戻るので見ない)
+    const farName = (this.dir === 1) ? (STATION_MAP[u.hi] > STATION_MAP[u.lo] ? u.hi : u.lo)
+                                     : (STATION_MAP[u.hi] > STATION_MAP[u.lo] ? u.lo : u.hi);
+    if (u.hiInside && farName === u.hi) return false;
+    // 行先が区間の中の駅 (同志社前など) なら、そこで折り返して戻るので先は見ない
+    const dIdx = STATION_MAP[this.dest];
+    const lo = Math.min(STATION_MAP[u.lo], STATION_MAP[u.hi]), hi = Math.max(STATION_MAP[u.lo], STATION_MAP[u.hi]);
+    if (dIdx !== undefined && dIdx > lo && dIdx < hi) return false;
+    const fb = stationBlockOn(this.game, tid, farName);
+    if (fb && this.findFreeLane(fb) === -1) return true;
+    return false;
+};
+
+/**
  * 進路のつながっている番線から空きを1つ選ぶ (到着・発車の別を指定)。
  *
  * ★番線を直に 0..n や n..0 と走査している所が何か所もあり、
@@ -900,8 +940,9 @@ function trackChangeCheck(game, t, stName, trackId, lane) {
     const text = label ? platformText(label) : ("第" + (lane + 1) + "線");
 
     // 向き (上り列車は上りの線路、下り列車は下りの線路)
+    // ★終着列車は、到着する側に渡り線がある駅なら反対側の着発線にも入れる
     const td = trackDirOf(trackId);
-    if (td && td !== t.dir) {
+    if (td && td !== t.dir && !crossArrivalAllowed(t, stName, trackId)) {
         return { ok: false, msg: `${t.trainNo} は${t.dir === 1 ? "上り" : "下り"}列車です。` +
                                  `${td === 1 ? "上り" : "下り"}線の${text}には入れません。` };
     }
@@ -910,7 +951,7 @@ function trackChangeCheck(game, t, stName, trackId, lane) {
     if (d < 0) return { ok: false, msg: `${t.trainNo} はすでに${stName}駅を通り過ぎています。` };
     const blks = game.trackMgr.blocks[t.trackId];
     if (blks) {
-        const endName = (KATAMACHI_BEYOND.indexOf(t.dest) >= 0) ? "放出" : t.dest;
+        const endName = lineEndForBeyond(t.dest) || t.dest;
         const destB = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
                                      blockStationName(b) === endName);
         if (destB && (destB.index - t.currBlockIndex) * t.dir >= 0 &&
@@ -937,6 +978,16 @@ function trackChangeCheck(game, t, stName, trackId, lane) {
 }
 
 /**
+ * その列車が、その駅の反対方向の着発線へ入ってよいか。
+ * その駅止まりで、到着する側ののどに上下をつなぐ渡り線があるときだけ。
+ */
+function crossArrivalAllowed(t, stName, trackId) {
+    if (!t || t.dest !== stName) return false;
+    if (["普通", "快速", "新快速", "回送"].indexOf(t.type) < 0) return false;
+    return canCrossArriveAt(stName, t.dir);
+}
+
+/**
  * 指令パッドに出す番線の候補。
  *   [{ value: "trackId,lane", text, disabled, note }]
  * 列車を選んでいれば、その列車が入れない番線は理由つきで選べなくする。
@@ -954,7 +1005,8 @@ function trackChangeCandidates(game, t, stName) {
             const lbl = displayPlatformLabel(stName, tid, li);
             const text = lbl ? platformText(lbl) : ("第" + (li + 1) + "線");
             // 尼崎のように番線を共有する駅は、同じ番線を1つにまとめる
-            const key = STATION_SHARED_LANES[stName] ? (trackDirOf(tid) + "|" + lbl) : (tid + "|" + li);
+            const key = (STATION_SHARED_LANES[stName] === "all") ? ("all|" + lbl)
+                      : STATION_SHARED_LANES[stName] ? (trackDirOf(tid) + "|" + lbl) : (tid + "|" + li);
             if (seen[key]) return;
             const ck = t ? trackChangeCheck(game, t, stName, tid, li) : { ok: true };
             // 共有の駅は、その列車が入れる線路の組み合わせを探す
@@ -1022,7 +1074,8 @@ Train.prototype.reservedEntry = function (nextIdx) {
                 this.game.trackMgr.blocks[this.trackId];
     const nb = own ? own[nextIdx] : null;
     if (!nb || nb.x === -1000 || !isRealStationBlock(nb) || blockStationName(nb) !== r.stationName) return null;
-    if (trackDirOf(r.targetTrackId) && trackDirOf(r.targetTrackId) !== this.dir) {
+    if (trackDirOf(r.targetTrackId) && trackDirOf(r.targetTrackId) !== this.dir &&
+        !crossArrivalAllowed(this, r.stationName, r.targetTrackId)) {
         this.failReservation("列車の向きが変わった");
         return null;
     }
@@ -1074,7 +1127,8 @@ Train.prototype.applyTrackReservation = function () {
         this.completeReservation("入っています");
         return;
     }
-    if (trackDirOf(r.targetTrackId) && trackDirOf(r.targetTrackId) !== this.dir) {
+    if (trackDirOf(r.targetTrackId) && trackDirOf(r.targetTrackId) !== this.dir &&
+        !crossArrivalAllowed(this, r.stationName, r.targetTrackId)) {
         this.failReservation("列車の向きが変わった");
         return;
     }

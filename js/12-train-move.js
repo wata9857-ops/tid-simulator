@@ -39,6 +39,140 @@ Train.prototype.endOfLineStop = function () {
     if (!this.nextAction || this.nextAction === "turnback") this.nextAction = "depot";
     return true;
 };
+/**
+ * 線路図の外にある行先について、その手前で運転を打ち切る線区の端の駅。
+ * 線路図の中の駅なら null。
+ */
+const BEYOND_LINE_END = {
+    // 山陽本線 上郡より西 (岡山方面)・智頭急行 (特急スーパーはくと)
+    "三石": "上郡", "岡山": "上郡", "岡山タ": "上郡", "広島タ": "上郡", "福岡タ": "上郡",
+    "高松タ": "上郡", "鳥取": "上郡", "倉吉": "上郡",
+    // 赤穂線 播州赤穂より先
+    "日生": "播州赤穂", "長船": "播州赤穂",
+    // 学研都市線 木津より先
+    "奈良": "木津", "加茂": "木津",
+    // JR宝塚線 新三田より先
+    "篠山口": "新三田", "福知山": "新三田", "豊岡": "新三田", "城崎温泉": "新三田"
+};
+function lineEndForBeyond(dest) {
+    return BEYOND_LINE_END[dest] || null;
+}
+
+/**
+ * 終着列車の「反対側の着発線への到着」。
+ *
+ * 到着する側ののどに上下をつなぐ渡り線がある駅 (js/03-stations.js の
+ * STATION_ARRIVAL_CROSSOVER) では、その駅で折り返す列車は反対方向の
+ * 着発線にも入れる。そうすれば折り返したあと渡り線を通らずに発車できる。
+ *
+ * 反対側に2本以上空きがあるとき (反対方向の列車のぶんを1本残せるとき)、
+ * または自分の側が満線のときに使う。使えないときは null。
+ *   戻り値 { trackId, block, lane }
+ */
+Train.prototype.terminalCrossArrival = function (nextBlock) {
+    if (globalThis.__NO_CROSS) return null;
+    if (!nextBlock || !isRealStationBlock(nextBlock)) return null;
+    if (["普通", "快速", "新快速"].indexOf(this.type) < 0) return null;
+    if (this.serviceChange || this.trackChangeReservation) return null;
+    const st = blockStationName(nextBlock);
+    if (!st || st !== this.dest) return null;
+    if (this.nextAction && ["turnback", "depot"].indexOf(this.nextAction) < 0) return null;
+    if (!canCrossArriveAt(st, this.dir)) return null;
+    // 留置場に入る列車は反対側へ入れる意味が無い
+    const dep = DEPOTS[st];
+    if (dep && !dep.turnbackFirst && dep.trains.length < dep.capacity) return null;
+    const oppId = this.oppositeTrackId(st);
+    if (!oppId || oppId === this.trackId) return null;
+    const ob = this.game.trackMgr.blocks[oppId];
+    const oppB = ob ? ob[nextBlock.index] : null;
+    if (!oppB || oppB.x === -1000 || blockStationName(oppB) !== st) return null;
+    const oppFree = oppB.lanes.filter(l => l === null).length;
+    if (oppFree === 0) return null;
+    const ownFree = nextBlock.lanes.filter(l => l === null).length;
+    if (oppFree < 2 && ownFree > 0) return null;
+    // 反対側の着発線のうち、折り返して出ていける番線 (外側から) を選ぶ
+    let lane = -1;
+    for (let l = oppB.lanes.length - 1; l >= 0; l--) {
+        if (oppB.lanes[l] === null && canDepartTo(st, oppId, l, oppId)) { lane = l; break; }
+    }
+    if (lane < 0) return null;
+    return { trackId: oppId, block: oppB, lane: lane };
+};
+
+/**
+ * 進行方向と同じ向きの、同じ側の線路ID (上り外 ⇔ 下り外 など)。
+ * 内側線の無い所では外側線にする。
+ */
+function sameSideTrackFor(trackId, dir, stIdx) {
+    let tid;
+    if (/^(Kosei|Fukuchi|Tozai|Ako)_/.test(trackId)) {
+        tid = trackId.replace(/_(Up|Down)$/, dir === 1 ? "_Up" : "_Down");
+    } else if (trackId.indexOf("Hoppo") >= 0) {
+        tid = (dir === 1) ? "Up_Hoppo" : "Down_Hoppo";
+    } else {
+        tid = (dir === 1 ? "Up_" : "Down_") + (trackId.indexOf("In") >= 0 ? "In" : "Out");
+        if (tid.indexOf("In") >= 0 && !innerTrackExists(stIdx)) tid = tid.replace("In", "Out");
+    }
+    return tid;
+}
+
+/**
+ * ★線路の向きと列車の向きの食い違いを直す (逆走させないための見張り)。
+ *
+ * 終着列車は反対側の着発線へ入ることがあり (terminalCrossArrival)、
+ * 折り返しは「その場で向きだけ変え、発車のときに渡る」形にしている。
+ * そのあとで運転整理 (回送への変更・内側線から外側線への転線など) が
+ * 線路を付け替えると、たとえば「上り外側線にいる下り列車」ができ、
+ * そのまま走り出すと上り線を逆走して上り列車と向かい合ってしまう
+ * (実測: 西明石で反対側に着いた普通が回送に変わり、大久保まで上り線を逆走した)。
+ *
+ * 駅にいるあいだに食い違いを見つけたら、発車のときに入る線路
+ * (turnbackTrack) を正しい側にしておく。駅の渡り線を通って正しい線路へ出る。
+ */
+Train.prototype.fixDirectionTrack = function () {
+    // 向きの合わない「発車のときに入る線路」は古い印なので捨てる
+    if (this.turnbackTrack && trackDirOf(this.turnbackTrack) &&
+        trackDirOf(this.turnbackTrack) !== this.dir) this.turnbackTrack = null;
+    const td = trackDirOf(this.trackId);
+    if (!td || td === this.dir) return;
+    if (this.turnbackTrack && trackDirOf(this.turnbackTrack) === this.dir) return;
+    /* 終着駅で折り返しを待っているあいだは直さない
+       (反対側の着発線に着いた列車は、折り返すと向きが線路と合う) */
+    if (this.isFinalStop || this.state === "turning_back") return;
+    const blks = this.game.trackMgr.blocks[this.trackId];
+    const b = blks ? blks[this.currBlockIndex] : null;
+    if (!b || !isRealStationBlock(b)) return;
+    const want = sameSideTrackFor(this.trackId, this.dir, b.stationIdx);
+    const wb = this.game.trackMgr.blocks[want];
+    if (!wb || !wb[this.currBlockIndex] || wb[this.currBlockIndex].x === -1000) return;
+    this.turnbackTrack = want;
+};
+
+/**
+ * 番線を共有する分岐駅 (相生) で、これから進む線路の名前に付け替える。
+ * レーンの配列そのものを共有している (js/05-track-manager.js) ので、
+ * 付け替えても在線の位置は変わらない。
+ *   相生 … 赤穂線から来た上り列車は本線 (上り外) へ、
+ *           赤穂線へ向かう下り列車は赤穂線 (赤穂線下り) へ。
+ */
+Train.prototype.relabelAtSharedJunction = function () {
+    const blks = this.game.trackMgr.blocks[this.trackId];
+    const cb = blks ? blks[this.currBlockIndex] : null;
+    if (!cb || cb.stationIdx !== AKO_JUNCTION_IDX || !isRealStationBlock(cb)) return;
+    let want = null;
+    const toAko = AKO_THROUGH_DESTS.indexOf(this.dest) >= 0;
+    if (this.dir === 1 && this.trackId === "Ako_Up") want = "Up_Out";
+    else if (this.dir === -1 && this.trackId === "Down_Out" && toAko) want = "Ako_Down";
+    else if (this.dir === -1 && this.trackId === "Ako_Down" && !toAko) want = "Down_Out";
+    if (!want) return;
+    const tb = this.game.trackMgr.blocks[want];
+    const nb = tb ? tb[this.currBlockIndex] : null;
+    if (!nb || nb.lanes !== cb.lanes) return;          // 共有していない (念のため)
+    if (this.turnbackTrack === this.trackId) this.turnbackTrack = null;
+    this.trackId = want;
+    if (this.turnbackTrack === want) this.turnbackTrack = null;
+};
+
 Train.prototype.move = function () {
         const blks = this.game.trackMgr.blocks[this.trackId];
         const nextIdx = this.currBlockIndex + this.dir;
@@ -147,6 +281,33 @@ Train.prototype.move = function () {
             targetTrackId = this.turnbackTrack;
         }
 
+        /* ★最後の関門: 進む線路の向きが列車の向きと食い違っていたら、
+           同じ側の正しい向きの線路へ直す (逆走させない)。 */
+        if (trackDirOf(targetTrackId) && trackDirOf(targetTrackId) !== this.dir) {
+            if (this.turnbackTrack === targetTrackId) this.turnbackTrack = null;
+            const fixed = sameSideTrackFor(targetTrackId, this.dir, nextBlock.stationIdx);
+            const fb = this.game.trackMgr.blocks[fixed];
+            if (fb && fb[nextIdx] && fb[nextIdx].x !== -1000) targetTrackId = fixed;
+            else { this.state = "holding"; this.timer = 15; return; }
+        }
+
+        /* ★運転見合わせ・段階開通の区間へは、強制発車でも入らない
+           (確認列車の許可を持つ列車だけ通す)。 */
+        if (this.game.trackMgr.isSuspended(targetTrackId, nextIdx, this)) {
+            this.state = "holding";
+            this.timer = 15;
+            return;
+        }
+
+        /* ★単線区間 (一閉塞一列車)。対向列車がいる区間へは入らない。
+           強制発車 (指令扱い) でもここは破らない。破ると単線の上で
+           向かい合った2本がどちらも動けなくなる。 */
+        if (this.singleTrackBlocked(nextIdx, targetTrackId)) {
+            this.state = "holding";
+            this.timer = 15;
+            return;
+        }
+
         let targetLane = -1;
         let actualNextBlock = nextBlock;
         /* ★指令の着発番線変更 (js/13-train-hold.js の reservedEntry)。
@@ -177,14 +338,24 @@ Train.prototype.move = function () {
                 }
             }
         } else {
-            // 通常移動の場合
-            targetLane = this.findFreeLane(nextBlock);
-            actualNextBlock = nextBlock;
+            /* ★終着列車は、到着する側ののどに上下をつなぐ渡り線がある駅なら
+               反対側 (折り返して発車する側) の着発線にも入れる (近江今津など)。 */
+            const cross = this.terminalCrossArrival(nextBlock);
+            if (cross) {
+                if (globalThis.__CROSS_LOG) globalThis.__CROSS_LOG.push({ t: this, at: this.game.currentTime, st: blockStationName(nextBlock), from: this.trackId, to: cross.trackId });
+                targetTrackId = cross.trackId;
+                targetLane = cross.lane;
+                actualNextBlock = cross.block;
+            } else {
+                // 通常移動の場合
+                targetLane = this.findFreeLane(nextBlock);
+                actualNextBlock = nextBlock;
+            }
         }
 
         // 移動の確定（ブロックとレーンが確実に確保できた場合のみ実行）
         if (targetLane !== -1) {
-            blks[this.currBlockIndex].lanes[this.lane] = null;
+            freeOwnLane(blks[this.currBlockIndex].lanes, this);
             // 折り返し後の転線が済んだので、印を消す
             if (this.turnbackTrack && targetTrackId === this.turnbackTrack) this.turnbackTrack = null;
             this.trackId = targetTrackId;
@@ -248,12 +419,20 @@ Train.prototype.move = function () {
                 this.isFinalStop = true; 
                 return;
             }
-            if (st.name === "姫路" && ["網干", "播州赤穂", "上郡"].includes(this.dest)) {
+            /* 線路図の外へ向かう列車の終点処理。
+               姫路より西・学研都市線を線路図に入れたので、線区の端は
+                 山陽本線 … 上郡 (その先 三石・岡山方面、智頭急行)
+                 赤穂線   … 播州赤穂 (その先 日生・長船・岡山方面)
+                 学研都市線 … 木津 (その先 関西本線・奈良線)
+               になった。そこから先へ行く列車は端の駅で運転を打ち切る。 */
+            const beyondEnd = lineEndForBeyond(this.dest);
+            if (beyondEnd && st.name === beyondEnd && this.dest !== st.name) {
                 this.state = "stopped";
-                this.timer = 60; // 客扱いのため60秒停車
-                this.nextAction = "depot";
-                this.isFinalStop = true; 
                 this.hasStoppedAtCurrent = true;
+                this.isFinalStop = true;
+                // 貨物・特急は線区の外へ抜けていく (編成・機関車は在庫へ戻す)
+                if (["貨物", "特急"].indexOf(this.type) >= 0) { this.timer = 30; this.nextAction = "remove"; }
+                else { this.timer = 60; this.nextAction = "depot"; }
                 return;
             }
             
@@ -266,21 +445,31 @@ Train.prototype.move = function () {
             // 描画範囲の東端である放出まで走らせてから運転を打ち切る。
             // ★以前は京橋で打ち切っていたが、実際には京橋から放出まで走るため
             //   放出まで延ばした (JR東西線の放出延伸)。
-            if (st.name === "放出" && (KATAMACHI_BEYOND.includes(this.dest) || this.dest === "放出") && this.dir === 1) {
-                this.state = "stopped";
-                this.timer = 60; this.nextAction = "depot"; this.isFinalStop = true; this.hasStoppedAtCurrent = true; return;
-            }
+            // (学研都市線の線路図の外への列車は、上の lineEndForBeyond で木津止まりにする)
             if (st.name === "塚口" && this.dest === "塚口") {
                 this.state = "stopped";
                 this.timer = 60; this.nextAction = "depot"; this.isFinalStop = true; this.hasStoppedAtCurrent = true; return;
             }
 
-            // 貨物列車の特定行き先における吹田貨での途中消滅
-            if (this.type === "貨物" && (st.name === "吹田貨" || st.name === "吹田") && ["大阪タ", "吹田タ", "百済タ", "安治川タ"].includes(this.dest)) {
+            /* ★貨物ターミナル (吹田タ・神戸タ・姫路タ・京都タ) に着いた貨物列車は、
+               着発線に入って荷役・機回しをし、次の貨物列車になる
+               (js/15-train-depot.js の freightTerminalWork)。 */
+            if (this.type === "貨物" && freightTerminalStation(this.dest) === st.name) {
                 this.state = "stopped";
                 this.hasStoppedAtCurrent = true;
                 this.isFinalStop = true;
-                this.timer = 15;
+                this.timer = 60;
+                this.nextAction = "freight_turn";
+                return;
+            }
+            /* 大阪タ (城東貨物線)・百済タ・安治川口 (梅田貨物線) 行きは
+               吹田貨物ターミナルで機関車の付け替えと乗務員の交代をしてから
+               線路図の外へ出ていく。 */
+            if (this.type === "貨物" && (st.name === "吹田貨" || st.name === "吹田") && ["大阪タ", "百済タ", "安治川タ"].includes(this.dest)) {
+                this.state = "stopped";
+                this.hasStoppedAtCurrent = true;
+                this.isFinalStop = true;
+                this.timer = (st.name === "吹田貨") ? 900 : 60;
                 this.nextAction = "remove";
                 return;
             }
@@ -373,9 +562,24 @@ Train.prototype.shouldStop = function (st) {
             return false;
         }
 
+        // 赤穂線 (相生〜播州赤穂) は新快速も含めて各駅に停まる
+        if (this.trackId.indexOf("Ako") === 0) {
+            if (["貨物", "回送", "臨時", "特急"].includes(this.type)) return false;
+            return true;
+        }
+
         if (this.trackId.includes("Fukuchi") || this.trackId.includes("Tozai")) {
             if (["貨物", "回送", "臨時"].includes(this.type)) return false;
             if (this.type === "特急") return ["宝塚", "三田"].includes(st.name);
+            /* 学研都市線の快速は、京橋〜四条畷で 放出・住道 だけに停まり、
+               四条畷から先 (木津方) は各駅に停まる。JR東西線の中は各駅に停まる。 */
+            if (this.type === "快速" && this.trackId.includes("Tozai")) {
+                const si = STATION_MAP[st.name];
+                if (si !== undefined && si > STATION_MAP["京橋"] && si < STATION_MAP["四条畷"]) {
+                    return ["放出", "住道"].includes(st.name);
+                }
+                return true;
+            }
             if (this.type === "快速" && this.trackId.includes("Fukuchi")) {
                 const fukuchiRapidStops = ["尼崎", "塚口", "伊丹", "川西池田", "中山寺", "宝塚", "生瀬", "西宮名塩", "武田尾", "道場", "三田", "新三田"];
                 return fukuchiRapidStops.includes(st.name);
@@ -403,8 +607,8 @@ Train.prototype.shouldStop = function (st) {
         
         if (this.type === "快速") {
             const stIdx = STATION_MAP[st.name];
-            if (stIdx >= 0 && stIdx <= 11) return true;
-            if (stIdx >= 47) return true;
+            if (stIdx >= 0 && stIdx <= STATION_MAP["西明石"]) return true;
+            if (stIdx >= STATION_MAP["高槻"]) return true;
             if (isFreight) return false;
             return (stType >= 1);
         }

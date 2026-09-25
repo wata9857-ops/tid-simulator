@@ -54,8 +54,8 @@ function destReachable(t) {
        いるので、宝塚止まりの上り (新三田→宝塚) や、放出から京橋への下りの回送を
        「たどり着けない」と見ていた (js/27-operations.js の canReach と同じ直し)。 */
     {
-        const endName = (KATAMACHI_BEYOND.indexOf(t.dest) >= 0) ? '放出'
-            : (['篠山口', '福知山', '豊岡', '城崎温泉'].indexOf(t.dest) >= 0) ? '新三田' : t.dest;
+        // 線路図の外の行先は、線区の端の駅 (木津・上郡・播州赤穂・新三田) に読み替える
+        const endName = lineEndForBeyond(t.dest) || t.dest;
         const destBlk = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
                                        blockStationName(b) === endName);
         if (destBlk && t.trackId.indexOf('Hoppo') < 0) {
@@ -110,7 +110,7 @@ for (let i = 0; i < TICKS; i++) {
         const b = blks[t.currBlockIndex];
         if (!b) { flag('ブロックが存在しない', t); continue; }
         if (b.x === -1000) flag('線路の無い区間にいる', t);
-        if (b.lanes[t.lane] !== t && b.stationIdx !== STATION_MAP['尼崎']) {
+        if (b.lanes[t.lane] !== t) {
             flag('在線の登録がずれている', t,
                  '在線=' + blockStationName(b) + ' lane=' + t.lane + '/' + b.lanes.length +
                  ' state=' + t.state);
@@ -131,18 +131,21 @@ for (let i = 0; i < TICKS; i++) {
     }
 
     /* 在線の登録と列車の位置が合っているか。
-       尼崎は本線・JR東西線・JR宝塚線で番線(配列)を共有しているので、
-       同じ列車が複数の線路の下に見える。ここでは対象外にする。 */
+       番線や単線区間のブロックは、いくつかの線路でレーンの配列を共有している
+       (尼崎・大阪・相生・上郡・単線区間など。js/05-track-manager.js)。
+       そこでは同じ列車が複数の線路の下に見えるので、
+       「列車の線路のそのブロックが同じ配列を持っているか」で見る。 */
     for (const tid in game.trackMgr.blocks) {
         const blks = game.trackMgr.blocks[tid];
         for (let k = 0; k < blks.length; k++) {
-            if (blks[k].stationIdx === STATION_MAP['尼崎']) continue;
             const lanes = blks[k].lanes;
             for (let l = 0; l < lanes.length; l++) {
                 const t = lanes[l];
                 if (!t) continue;
                 if (t.state === 'finished') { ghost++; lanes[l] = null; continue; }
-                if (t.trackId !== tid || t.currBlockIndex !== k || t.lane !== l) laneDupSet.add(t.id);
+                const own = game.trackMgr.blocks[t.trackId];
+                const sameArr = own && own[k] && own[k].lanes === lanes;
+                if (!sameArr || t.currBlockIndex !== k || t.lane !== l) laneDupSet.add(t.id);
             }
         }
     }

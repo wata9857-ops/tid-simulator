@@ -109,6 +109,20 @@ function commStationIdx(game, t) {
     return undefined;
 }
 
+/**
+ * 行先までの駅数を、列車の走っている線路の上で数える。
+ * 行先がその線路の上に無い (線区をまたぐ・線路図の外) ときは null。
+ * ★駅のインデックスの差で数えると、分岐線の駅 (学研都市線など) と
+ *   本線の駅を取り違える。
+ */
+function commStationsAway(game, t) {
+    const blks = game.trackMgr.blocks[t.trackId];
+    if (!blks) return null;
+    const db = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === t.dest);
+    if (!db) return null;
+    return Math.round((db.index - t.currBlockIndex) * t.dir / UNITS_PER_STATION);
+}
+
 /** 進行方向の前方でいちばん近い、指定の一覧に入っている駅 */
 function commAheadStation(game, t, list) {
     const blks = game.trackMgr.blocks[t.trackId];
@@ -699,12 +713,9 @@ const COMM_SCENES = [
             game.trains.forEach(t => {
                 if (t.state === "finished" || t.state === "in_depot") return;
                 if (["普通", "快速", "新快速", "特急"].indexOf(t.type) < 0) return;
-                const idx = STATION_MAP[t.dest];
-                if (idx === undefined) return;
-                const here = commStationIdx(game, t);
-                if (here === undefined) return;
-                const away = (idx - here) * t.dir;
-                if (away < 1 || away > 3) return;          // 1〜3駅手前
+                // 行先までの駅数は、列車の走っている線路の上で数える (線区をまたがない)
+                const away = commStationsAway(game, t);
+                if (away === null || away < 1 || away > 3) return;          // 1〜3駅手前
                 let free = 0; const busy = [];
                 STATION_TRACK_ORDER.forEach(tid => {
                     if ((tid.indexOf("Up") === 0) !== (t.dir === 1)) return;
@@ -962,11 +973,8 @@ const COMM_SCENES = [
             game.trains.forEach(t => {
                 if (t.state === "finished" || t.state === "in_depot") return;
                 if ((t.delayTime || 0) < 240) return;
-                const idx = STATION_MAP[t.dest];
-                const here = commStationIdx(game, t);
-                if (idx === undefined || here === undefined) return;
-                const away = (idx - here) * t.dir;
-                if (away < 1 || away > 5) return;
+                const away = commStationsAway(game, t);
+                if (away === null || away < 1 || away > 5) return;
                 (byStation[t.dest] = byStation[t.dest] || []).push(t);
             });
             const hot = Object.keys(byStation).filter(k => byStation[k].length >= 3);

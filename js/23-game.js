@@ -25,6 +25,8 @@ class GameSystem {
         this.records = (typeof OpsRecords === "function") ? new OpsRecords(this) : null;
         // 輸送障害 (js/26-incidents.js)。事故・故障を線路と信号の状態として起こす。
         this.incidents = new IncidentSystem(this);
+        // 大規模な障害と段階的な運転再開 (js/26-incidents.js の RecoveryControl)
+        this.recovery = new RecoveryControl(this);
         // 運用計画 (js/27-operations.js)。出区・送り込み・増発・復旧回送。
         this.ops = new OperationsManager(this);
         /* 編成ごとの行路の記録 (js/30-duty-log.js)。
@@ -87,7 +89,7 @@ class GameSystem {
                     // 初期化で本線に置かれた場合を想定して消去
                     let blks = this.trackMgr.blocks[t.trackId];
                     if (blks && blks[t.currBlockIndex] && blks[t.currBlockIndex].lanes[t.lane] === t) {
-                        blks[t.currBlockIndex].lanes[t.lane] = null;
+                        freeOwnLane(blks[t.currBlockIndex].lanes, t);
                     }
                     
                     depotAdd(stName, t);
@@ -105,7 +107,7 @@ class GameSystem {
         // 初回タイムスタンプを0と見なしてループ開始
         requestAnimationFrame((ts) => { this.lastTime = ts; this.loop(ts); });
         document.getElementById("loading-msg").style.display = "none";
-        document.getElementById("scroll-container").scrollLeft = 100 + (38 * UNITS_PER_STATION) * BLOCK_WIDTH - window.innerWidth/2;
+        document.getElementById("scroll-container").scrollLeft = 100 + (STATION_MAP["大阪"] * UNITS_PER_STATION) * BLOCK_WIDTH - window.innerWidth/2;
     }
 
     initUI() {
@@ -120,8 +122,7 @@ class GameSystem {
 
     addTrain(config) {
         let actualStart = config.startName;
-        if (["松井山手", "四条畷"].includes(actualStart)) actualStart = "尼崎";
-        else if (["網干", "播州赤穂", "上郡"].includes(actualStart)) actualStart = "姫路";
+        // (姫路より西・学研都市線は線路図の中の駅になったので読み替えない)
 
         // 車両選定に使う運用名 (送り込み回送などで列車番号と運用が食い違う場合の対策)
         const dutyName = config.dutyName ||
@@ -254,6 +255,7 @@ class GameSystem {
         this.trackMgr.pruneSpeedRestrictions(this.currentTime);
         this.checkEmergency();
         this.incidents.update();          // 輸送障害の発生・進行・復旧
+        this.recovery.update();           // 段階的な運転再開 (区間ごとの開通)
         this.spawner.update(this.currentTime);
         this.ops.update(this.currentTime); // 出区計画・間隔の穴埋め
         this.comms.update();               // 指令と現場のやりとり

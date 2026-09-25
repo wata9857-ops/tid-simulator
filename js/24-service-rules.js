@@ -255,11 +255,15 @@ const SERVICE_RULES = [
     },
     {
         id: "tozai",
-        label: "JR東西線 (207系/321系のみ)",
+        label: "JR東西線・学研都市線 (207系/321系の7両のみ)",
+        /* ★学研都市線・JR東西線を走る列車は必ず7両。
+           321系の7両固定か、207系の 4両＋3両 (7両固定の編成もある)。
+           以前は「6両以上」だったので、207系の 3両＋3両 (6両) や
+           4両＋4両 (8両) が学研都市線に入っていた。 */
         when: (c) => c.isTozai,
         profile: () => ({ groups: ["AKASHI"],
                           pred: (v) => VEH.is207(v) || VEH.is321(v),
-                          minCars: 6, label: "東西線" })
+                          minCars: 7, formations: [[7], [4, 3]], label: "東西線・学研都市線" })
     },
     {
         id: "kosei-local",
@@ -345,6 +349,16 @@ const SERVICE_RULES = [
                           minCars: 6, label: "普通" })
     }
 ];
+
+/**
+ * 編成の組み合わせが、決められた組成のどれかに当てはまるか。
+ *   formations … [[7], [4, 3]] のような両数の組み合わせの一覧
+ */
+function formationMatches(formations, vehicles) {
+    if (!vehicles || !vehicles.length) return false;
+    const have = vehicles.map(v => v.cars).sort((a, b) => a - b).join(",");
+    return formations.some(f => f.slice().sort((a, b) => a - b).join(",") === have);
+}
 
 /** 列車名(運用名)に特急名が含まれていればそのキーを返す。無ければ null。 */
 function expressKeyFromName(trainNo) {
@@ -577,6 +591,10 @@ const ServiceRules = {
 
         // --- 両数
         const cars = vehicles.reduce((s, v) => s + v.cars, 0);
+        if (prof.formations && !formationMatches(prof.formations, vehicles)) {
+            return { ok: false, reason: `${prof.label}は ${prof.formations.map(f => f.join("+")).join(" か ")}両で組む必要がある ` +
+                                        `(現在 ${vehicles.map(v => v.cars).join("+")}両)` };
+        }
         if (prof.pair) {
             const want = prof.pair.slice().sort();
             const have = vehicles.map(v => v.cars).sort();

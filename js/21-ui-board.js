@@ -20,9 +20,9 @@ UIManager.prototype.showDepartureBoard = function (stName) {
             // 分岐する列車が、経路外となる本線の駅に誤って表示されるのを防ぐ
             const stIdx = STATION_MAP[actualStName];
             if (stIdx !== undefined) {
-                if (t.dir === 1 && TOZAI_THROUGH_DESTS.includes(t.dest) && stIdx > 36) return;
-                if (t.dir === -1 && FUKUCHI_THROUGH_DESTS.includes(t.dest) && stIdx < 36) return;
-                if (t.isKoseiRoute && stIdx > 56 && stIdx < 83) return;
+                if (t.dir === 1 && TOZAI_THROUGH_DESTS.includes(t.dest) && stIdx > STATION_MAP["尼崎"]) return;
+                if (t.dir === -1 && FUKUCHI_THROUGH_DESTS.includes(t.dest) && stIdx < STATION_MAP["尼崎"]) return;
+                if (t.isKoseiRoute && stIdx > STATION_MAP["山科"] && stIdx < STATION_MAP["近江塩津"]) return;
             }
 
             let blks = this.game.trackMgr.blocks[t.trackId];

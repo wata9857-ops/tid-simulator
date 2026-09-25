@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JR West Super TID</title>
-<link rel="stylesheet" href="css/style.css?v=321b513a">
-<link rel="stylesheet" href="css/header-log.css?v=321b513a">
-<link rel="stylesheet" href="css/depot-view.css?v=321b513a">
+<link rel="stylesheet" href="css/style.css?v=0d1f835e">
+<link rel="stylesheet" href="css/header-log.css?v=0d1f835e">
+<link rel="stylesheet" href="css/depot-view.css?v=0d1f835e">
 </head>
 <body>
 
@@ -111,6 +111,9 @@
                 <option value="四条畷">四条畷</option><option value="松井山手">松井山手</option>
                 <option value="長尾">長尾</option><option value="放出">放出</option>
                 <option value="塚口">塚口</option>
+                <option value="相生">相生</option><option value="上郡">上郡</option>
+                <option value="播州赤穂">播州赤穂</option><option value="竜野">竜野</option>
+                <option value="住道">住道</option><option value="祝園">祝園</option>
             </select>
         </div>
         <div class="cmd-row">
@@ -212,6 +215,9 @@
                 <option value="近江今津">近江今津</option><option value="長浜">長浜</option>
                 <option value="宮原操">宮原操</option><option value="向日町操">向日町操</option>
                 <option value="吹田貨">吹田貨</option>
+                <option value="上郡">上郡</option><option value="播州赤穂">播州赤穂</option>
+                <option value="放出">放出</option><option value="松井山手">松井山手</option>
+                <option value="木津">木津</option>
             </select>
         </div>
         <div class="cmd-row">
@@ -228,6 +234,10 @@
                 <option value="Up_In">上り内側</option><option value="Up_Out">上り外側</option>
                 <option value="Down_In">下り内側</option><option value="Down_Out">下り外側</option>
                 <option value="Up_Hoppo">北方貨物上</option><option value="Down_Hoppo">北方貨物下</option>
+                <option value="Kosei_Up">湖西線上り</option><option value="Kosei_Down">湖西線下り</option>
+                <option value="Fukuchi_Up">JR宝塚線上り</option><option value="Fukuchi_Down">JR宝塚線下り</option>
+                <option value="Tozai_Up">JR東西線・学研都市線上り</option><option value="Tozai_Down">JR東西線・学研都市線下り</option>
+                <option value="Ako_Up">赤穂線上り</option><option value="Ako_Down">赤穂線下り</option>
             </select>
         </div>
         <div class="cmd-row" style="display:flex; gap:5px;">
@@ -321,39 +331,39 @@
 
 
 <!-- 読み込み順に意味があります。データ定義 -> クラス本体 -> prototype への追加 -> 起動 -->
-<script src="js/01-config.js?v=321b513a"></script>
-<script src="js/02-fleet-data.js?v=321b513a"></script>
-<script src="js/03-stations.js?v=321b513a"></script>
-<script src="js/04-depots.js?v=321b513a"></script>
-<script src="js/05-track-manager.js?v=321b513a"></script>
-<script src="js/06-fleet.js?v=321b513a"></script>
-<script src="js/07-spawner-core.js?v=321b513a"></script>
-<script src="js/08-spawner-mainline.js?v=321b513a"></script>
-<script src="js/09-spawner-branch.js?v=321b513a"></script>
-<script src="js/10-timetable.js?v=321b513a"></script>
-<script src="js/11-train-core.js?v=321b513a"></script>
-<script src="js/12-train-move.js?v=321b513a"></script>
-<script src="js/13-train-hold.js?v=321b513a"></script>
-<script src="js/14-train-turnback.js?v=321b513a"></script>
-<script src="js/15-train-depot.js?v=321b513a"></script>
-<script src="js/16-train-adjust.js?v=321b513a"></script>
-<script src="js/17-renderer.js?v=321b513a"></script>
-<script src="js/18-ui-core.js?v=321b513a"></script>
-<script src="js/19-ui-log.js?v=321b513a"></script>
-<script src="js/20-ui-cmd.js?v=321b513a"></script>
-<script src="js/21-ui-board.js?v=321b513a"></script>
-<script src="js/22-depot-view.js?v=321b513a"></script>
-<script src="js/23-game.js?v=321b513a"></script>
-<script src="js/24-service-rules.js?v=321b513a"></script>
-<script src="js/25-signals.js?v=321b513a"></script>
-<script src="js/26-incidents.js?v=321b513a"></script>
-<script src="js/27-operations.js?v=321b513a"></script>
-<script src="js/28-dispatch.js?v=321b513a"></script>
-<script src="js/29-sim-bus.js?v=321b513a"></script>
-<script src="js/30-duty-log.js?v=321b513a"></script>
-<script src="js/31-comms.js?v=321b513a"></script>
-<script src="js/32-records.js?v=321b513a"></script>
-<script src="js/39-boot.js?v=321b513a"></script>
+<script src="js/01-config.js?v=0d1f835e"></script>
+<script src="js/02-fleet-data.js?v=0d1f835e"></script>
+<script src="js/03-stations.js?v=0d1f835e"></script>
+<script src="js/04-depots.js?v=0d1f835e"></script>
+<script src="js/05-track-manager.js?v=0d1f835e"></script>
+<script src="js/06-fleet.js?v=0d1f835e"></script>
+<script src="js/07-spawner-core.js?v=0d1f835e"></script>
+<script src="js/08-spawner-mainline.js?v=0d1f835e"></script>
+<script src="js/09-spawner-branch.js?v=0d1f835e"></script>
+<script src="js/10-timetable.js?v=0d1f835e"></script>
+<script src="js/11-train-core.js?v=0d1f835e"></script>
+<script src="js/12-train-move.js?v=0d1f835e"></script>
+<script src="js/13-train-hold.js?v=0d1f835e"></script>
+<script src="js/14-train-turnback.js?v=0d1f835e"></script>
+<script src="js/15-train-depot.js?v=0d1f835e"></script>
+<script src="js/16-train-adjust.js?v=0d1f835e"></script>
+<script src="js/17-renderer.js?v=0d1f835e"></script>
+<script src="js/18-ui-core.js?v=0d1f835e"></script>
+<script src="js/19-ui-log.js?v=0d1f835e"></script>
+<script src="js/20-ui-cmd.js?v=0d1f835e"></script>
+<script src="js/21-ui-board.js?v=0d1f835e"></script>
+<script src="js/22-depot-view.js?v=0d1f835e"></script>
+<script src="js/23-game.js?v=0d1f835e"></script>
+<script src="js/24-service-rules.js?v=0d1f835e"></script>
+<script src="js/25-signals.js?v=0d1f835e"></script>
+<script src="js/26-incidents.js?v=0d1f835e"></script>
+<script src="js/27-operations.js?v=0d1f835e"></script>
+<script src="js/28-dispatch.js?v=0d1f835e"></script>
+<script src="js/29-sim-bus.js?v=0d1f835e"></script>
+<script src="js/30-duty-log.js?v=0d1f835e"></script>
+<script src="js/31-comms.js?v=0d1f835e"></script>
+<script src="js/32-records.js?v=0d1f835e"></script>
+<script src="js/39-boot.js?v=0d1f835e"></script>
 
 <!-- ===================================================== 版の食い違いの見張り
      詳しくは tid.html の同じ部分を参照。古い js がキャッシュから使われている

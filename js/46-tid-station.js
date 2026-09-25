@@ -42,8 +42,9 @@ function tidDirectionLabel(trackId) {
     const up = trackDirOf(trackId) === 1;
     if (trackId.indexOf("Kosei") === 0) return up ? "近江今津・敦賀方面" : "山科・京都方面";
     if (trackId.indexOf("Fukuchi") === 0) return up ? "尼崎・大阪方面" : "宝塚・新三田方面";
-    if (trackId.indexOf("Tozai") === 0) return up ? "京橋・放出方面" : "北新地・尼崎方面";
-    return up ? "京都・米原方面" : "大阪・神戸・姫路方面";
+    if (trackId.indexOf("Tozai") === 0) return up ? "放出・四条畷・木津方面" : "京橋・北新地・尼崎方面";
+    if (trackId.indexOf("Ako") === 0) return up ? "相生・姫路方面" : "播州赤穂方面";
+    return up ? "京都・米原方面" : "大阪・神戸・姫路・上郡方面";
 }
 
 /**
@@ -59,6 +60,8 @@ function stationPlatformPlan(game, stName, opts) {
     const byKey = {};
     const keyOf = (tid, lane) => {
         if (!shared) return tid + "|" + lane;
+        // 上下すべてで共有する駅 (単線の駅) は番線名だけで1つにまとめる
+        if (STATION_SHARED_LANES[stName] === "all") return "all|" + platformLabelOf(stName, tid, lane);
         return trackDirOf(tid) + "|" + platformLabelOf(stName, tid, lane);
     };
 
@@ -109,7 +112,7 @@ function stationPlatformPlan(game, stName, opts) {
         if (d < 0 || d > horizon) return;
 
         // 行先がその駅より手前なら、その駅には来ない
-        const endName = (KATAMACHI_BEYOND.indexOf(t.dest) >= 0) ? "放出" : t.dest;
+        const endName = lineEndForBeyond(t.dest) || t.dest;
         const destB = blks.find(b => b.x !== -1000 && (b.isStation || b.hoppoStationName) &&
                                      blockStationName(b) === endName);
         if (destB && (destB.index - t.currBlockIndex) * t.dir >= 0 &&

@@ -143,11 +143,8 @@ class Train {
 
     initPosition() {
         let actualStart = this.startName;
-        if (["松井山手", "四条畷"].includes(this.startName)) { // 新三田と宝塚を削除
-            actualStart = "尼崎";
-        } else if (["網干", "播州赤穂", "上郡"].includes(this.startName)) {
-            actualStart = "姫路";
-        }
+        /* ★以前は 松井山手・四条畷 → 尼崎、網干・播州赤穂・上郡 → 姫路 と
+           読み替えていた (線路図の外だったため)。いまはどれも線路図の中の駅。 */
 
         const startStIdx = STATION_MAP[actualStart] !== undefined ?
             STATION_MAP[actualStart] : (this.dir===1?0:(STATIONS.length-1));
@@ -169,13 +166,13 @@ class Train {
 
         if (!startBlock && ["向日町操", "宮原操", "吹田貨"].includes(actualStart)) {
             if (this.trackId.includes("Hoppo")) {
-                if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === 39);
-                if (actualStart === "吹田貨") startBlock = blks.find(b => b.stationIdx === 41);
+                if (actualStart === "宮原操") startBlock = blks.find(b => b.stationIdx === STATION_MAP["新大阪"]);
+                if (actualStart === "吹田貨") startBlock = blks.find(b => b.stationIdx === STATION_MAP["吹田"]);
             } else if (actualStart === "向日町操") {
                 startBlock = blks.find(b => b.hoppoStationName === "向日町操");
             } else if (actualStart === "宮原操") {
                 // 旅客の出区は本線経由。新大阪の位置から本線へ出る。
-                startBlock = blks.find(b => b.stationIdx === 39);
+                startBlock = blks.find(b => b.stationIdx === STATION_MAP["新大阪"]);
             }
         }
 
@@ -358,6 +355,11 @@ class Train {
         // 指令の着発番線変更: すでにその駅に居るなら、その場で構内の転線をする
         if (this.trackChangeReservation) this.applyTrackReservation();
 
+        // 相生のように番線を共有する分岐駅では、進む線路の名前をその場で付け替える
+        this.relabelAtSharedJunction();
+        // 線路の向きと列車の向きが食い違っていたら、発車のときに正しい側へ渡る
+        this.fixDirectionTrack();
+
         /* ★複々線 (西明石〜草津) の外に内側線は無い。
            線路データには全線ぶんの内側線ブロックがあるが、実際の線路は
            草津から東・西明石から西は複線なので、何かの経路で内側線に
@@ -522,6 +524,11 @@ class Train {
                                 }
                                 return;
                             }
+                            // 貨物ターミナルでの荷役・機回し → 次の貨物列車
+                            if (this.nextAction === "freight_turn") {
+                                this.freightTerminalWork(currentStName);
+                                return;
+                            }
                             if (this.nextAction === "stop_same_home") {
                                 this.isManuallySuspended = true;
                                 this.manualSuspendTimer = 0;
@@ -537,17 +544,21 @@ class Train {
                                 let currentIdx = STATION_MAP[currentStName];
                                 let destIdx = STATION_MAP[this.dest];
                                 if (currentIdx === undefined) {
-                                    if (currentStName === "宮原操") currentIdx = 39;
-                                    else if (currentStName === "向日町操") currentIdx = 51;
+                                    if (currentStName === "宮原操") currentIdx = STATION_MAP["新大阪"];
+                                    else if (currentStName === "向日町操") currentIdx = STATION_MAP["向日町操"];
                                 }
                                 if (destIdx === undefined) {
-                                    if (this.dest === "宮原操") destIdx = 39;
-                                    else if (this.dest === "向日町操") destIdx = 51;
-                                    else if (this.dest === "吹田貨") destIdx = 41;
+                                    if (this.dest === "宮原操") destIdx = STATION_MAP["新大阪"];
+                                    else if (this.dest === "向日町操") destIdx = STATION_MAP["向日町操"];
+                                    else if (this.dest === "吹田貨") destIdx = STATION_MAP["吹田"];
                                 }
 
                                 let expectedDir = this.dir;
-                                if (currentIdx !== undefined && destIdx !== undefined && currentIdx !== destIdx) {
+                                // 線区をまたぐ行先は、線区のつながりで向きを決める (js/06-fleet.js)
+                                const rd = routeDirection(currentStName, this.dest);
+                                if (rd) expectedDir = rd;
+                                else if (currentIdx !== undefined && destIdx !== undefined && currentIdx !== destIdx &&
+                                         routeLineOf(currentStName) === routeLineOf(this.dest)) {
                                     expectedDir = destIdx > currentIdx ? 1 : -1;
                                 }
 
@@ -757,7 +768,7 @@ class Train {
                     break;
             }
         } else if (this.state === "running") {
-            if (this.game.trackMgr.isSuspended(this.trackId, this.currBlockIndex + this.dir)) {
+            if (this.game.trackMgr.isSuspended(this.trackId, this.currBlockIndex + this.dir, this)) {
                 this.state = "holding";
                 this.timer = 15;
                 this.addHoldDelay();
@@ -824,13 +835,13 @@ class Train {
         if (["貨物","回送","臨時"].includes(this.type) && this.type !== "特急") {
             // 本線から北方貨物線への進入は「貨物」に限定し、特急間合いの回送が大阪・新大阪をスルーするバグを防止
             if (this.type === "貨物") {
-                if (this.dir===1 && this.trackId==="Up_Out" && blk.stationIdx>=36 && blk.stationIdx<=37) this.attemptTrackSwitch("Up_Hoppo", 200);
-                if (this.dir===-1 && this.trackId==="Down_Out" && blk.stationIdx>=41 && blk.stationIdx<=45) this.attemptTrackSwitch("Down_Hoppo", 200);
+                if (this.dir===1 && this.trackId==="Up_Out" && blk.stationIdx>=W(36) && blk.stationIdx<=W(37)) this.attemptTrackSwitch("Up_Hoppo", 200);
+                if (this.dir===-1 && this.trackId==="Down_Out" && blk.stationIdx>=W(41) && blk.stationIdx<=W(45)) this.attemptTrackSwitch("Down_Hoppo", 200);
             }
             // 北方貨物線は idx36-44 のみ実体ブロックを持ち、その先はプレースホルダ(x:-1000)。
             // 端で本線へ復帰させないと不可視区間へ進入し、列車が消滅していた。両端で本線へ戻す。（既に北方貨物線にいる列車が対象）
-            if (this.dir===1 && this.trackId==="Up_Hoppo" && blk.stationIdx>=43 && blk.stationIdx<=44) this.attemptTrackSwitch("Up_Out", 200);
-            if (this.dir===-1 && this.trackId==="Down_Hoppo" && blk.stationIdx>=36 && blk.stationIdx<=37) this.attemptTrackSwitch("Down_Out", 200);
+            if (this.dir===1 && this.trackId==="Up_Hoppo" && blk.stationIdx>=W(43) && blk.stationIdx<=W(44)) this.attemptTrackSwitch("Up_Out", 200);
+            if (this.dir===-1 && this.trackId==="Down_Hoppo" && blk.stationIdx>=W(36) && blk.stationIdx<=W(37)) this.attemptTrackSwitch("Down_Out", 200);
         }
 
         // ★湖西線の分岐・合流ロジック
@@ -992,9 +1003,7 @@ class Train {
              いない番線に入っていた (tools/check_routes.js で検出)。 */
         let freeLane = this.findFreeLane(targetB, targetId);
         if (freeLane !== -1) {
-            const at = curB.lanes.indexOf(this);
-            if (at >= 0) curB.lanes[at] = null;
-            else curB.lanes[this.lane] = null;
+            freeOwnLane(curB.lanes, this);
             this.trackId = targetId; this.currBlockIndex = targetB.index; this.lane = freeLane;
             targetB.lanes[freeLane] = this; this.rerouteToOuter = false;
             return true;

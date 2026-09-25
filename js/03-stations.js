@@ -1,6 +1,31 @@
 /* このファイルは index.html から分割されたものです。
    駅一覧・番線ルール・STATION_MAP・線路(TRACKS)・臨時列車の定義 */
+/* 姫路より西 (山陽本線 上郡方・赤穂線) の駅のぶんだけ、本線・分岐線の
+   インデックスをずらす値。インデックスを数字で書く所は
+   すべて W(姫路を0としたときの番号) で書く (js/05-track-manager.js なども同じ)。
+
+   姫路より西の並び (配線略図 スクリーンショット(723)〜(725).png)
+     0 播州赤穂 (赤穂線だけの位置。本線の線路はここに無い)
+     1 上郡 (本線) / 坂越 (赤穂線)
+     2 有年 (本線) / 西相生 (赤穂線)
+     3 相生 … 赤穂線が分かれる
+     4 竜野  5 網干  6 はりま勝原  7 英賀保  8 手柄山平和公園  9 姫路
+   赤穂線は相生の先で本線 (上郡方) と同じ横位置を別の線路で走るので、
+   JR宝塚線・湖西線と同じく「分岐線」として持つ。 */
+const WEST_SHIFT = 9;
+/** 姫路を 0 としたときのインデックスを、実際のインデックスに直す */
+function W(n) { return n + WEST_SHIFT; }
+/** 数字のキーを持つ表のキーを WEST_SHIFT だけずらす */
+function _shiftKeys(obj) { const o = {}; for (const k in obj) o[Number(k) + WEST_SHIFT] = obj[k]; return o; }
+
 const STATIONS = [
+    /* 姫路より西。播州赤穂は赤穂線の終点で、本線の線路はここに無い
+       (branchOnly)。本線の西の端は上郡。 */
+    {name:"播州赤穂", type:2, cap:3, stopTime: STOP_TIME.MEDIUM, branchOnly: "ako"},
+    {name:"上郡", type:2, cap:3, stopTime: STOP_TIME.MEDIUM}, {name:"有年", type:2, cap:2, stopTime: STOP_TIME.SHORT},
+    {name:"相生", type:2, cap:3, stopTime: STOP_TIME.SHORT}, {name:"竜野", type:2, cap:3, stopTime: STOP_TIME.SHORT},
+    {name:"網干", type:2, cap:3, stopTime: STOP_TIME.SHORT}, {name:"はりま勝原", type:2, cap:2, stopTime: STOP_TIME.SHORT},
+    {name:"英賀保", type:2, cap:3, stopTime: STOP_TIME.SHORT}, {name:"手柄山平和公園", type:2, cap:2, stopTime: STOP_TIME.SHORT},
     {name:"姫路", type:2, cap:4, stopTime: STOP_TIME.MEDIUM}, {name:"東姫路", type:0, cap:2, stopTime: STOP_TIME.SHORT}, {name:"御着", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"ひめじ別所", type:0, cap:2, stopTime: STOP_TIME.SHORT, isFreightTerm: true}, {name:"曽根", type:0, cap:2, stopTime: STOP_TIME.SHORT},
     {name:"宝殿", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"加古川", type:2, cap:4, stopTime: STOP_TIME.SHORT}, {name:"東加古川", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"土山", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"魚住", type:0, cap:2, stopTime: STOP_TIME.SHORT}, {name:"大久保", type:0, cap:5, stopTime: STOP_TIME.SHORT}, 
     {name:"西明石", type:2, cap:6, stopTime: STOP_TIME.LONG}, {name:"明石", type:2, cap:4, stopTime: STOP_TIME.SHORT}, {name:"朝霧", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"舞子", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"垂水", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"塩屋", type:0, cap:4, stopTime: STOP_TIME.SHORT}, 
@@ -21,6 +46,21 @@ const STATIONS = [
 ];
 
 const STATION_PLATFORM_RULES = {
+    /* ---- 姫路より西 (配線略図 スクリーンショット(724)/(725).png)
+       上郡 … 下り本線(島式)・中線(島式)・上り本線(単式)。線区の西の端で、
+              どの番線からも折り返せる (上下で番線を共有する)。
+       相生 … 下り本線(単式 1番)・中線(島式 2番)・上り本線(島式 3番)。
+              赤穂線は下り本線と中線から出入りする。
+       竜野 … 下り本線と上り本線の島式＋下り側の待避線(単式)。上下をつなぐ渡り線は無い。
+       網干 … 上り本線(単式 1番)・下り本線(島式 2番)・折返し線(島式 3番)。
+              網干総合車両所は下り側から出入りする。
+       英賀保 … 下り本線(単式)・中線(島式)・上り本線(島式)。中線は両端で上下本線につながる。 */
+    "播州赤穂": { labels:["1","2","3"], lanes:[true,true,true] },
+    "坂越": { labels:["1"], lanes:[true] }, "西相生": { labels:["1"], lanes:[true] },
+    "上郡": { labels:["1","2","3"], lanes:[true,true,true] }, "有年": { labels:["2","1"], lanes:[true,true] },
+    "相生": { labels:["3","2","1"], lanes:[true,true,true] }, "竜野": { labels:["3","2","1"], lanes:[true,true,true] },
+    "網干": { labels:["1","2","3"], lanes:[true,true,true] }, "はりま勝原": { labels:["2","1"], lanes:[true,true] },
+    "英賀保": { labels:["3","2","1"], lanes:[true,true,true] }, "手柄山平和公園": { labels:["2","1"], lanes:[true,true] },
     "姫路": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "東姫路": { labels:["2","1"], lanes:[true,true] }, "御着": { labels:["3","2","1"], lanes:[true,true,true] }, "ひめじ別所": { labels:["2","1","貨","貨"], lanes:[true,true,true,true] }, "曽根": { labels:["2","1"], lanes:[true,true] },
     "宝殿": { labels:["上通","3","2","1"], lanes:[false,true,true,true] }, "加古川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "東加古川": { labels:["3","2","1"], lanes:[true,true,true] }, "土山": { labels:["3","2","1"], lanes:[true,true,true] }, "魚住": { labels:["2","1"], lanes:[true,true] },
     "大久保": { labels:["4","3","2","1","下通"], lanes:[true,true,true,true,false] }, "西明石": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "明石": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "朝霧": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
@@ -29,7 +69,7 @@ const STATION_PLATFORM_RULES = {
     "神戸": { labels:["5","4","3","2","1"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] },
     "灘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "六甲道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "住吉": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摂津本山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "甲南山手": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","2","1","下外"], lanes:[true,true,true,true,false] },
-    "立花": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "尼崎": { labels:["9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true] }, "塚本": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "大阪": { labels:["8","10","11","7","9","6","4","5","3"], lanes:[true,true,true,true,true,true,true,true,true] },
+    "立花": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "尼崎": { labels:["9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true] }, "塚本": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "大阪": { labels:["8","9","10","11","7","6","5","4","3"], lanes:[true,true,true,true,true,true,true,true,true] },
     "新大阪": { labels:["上通","10","9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true,true,true] }, "東淀川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "吹田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "岸辺": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "千里丘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "茨木": { labels:["上待","4","3","2","1","下待"], lanes:[false,true,true,true,true,false] }, "JR総持寺": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "摂津富田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "高槻": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "島本": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "山崎": { labels:["4","3","2","1","下待"], lanes:[true,true,true,true,false] }, "長岡京": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
@@ -60,21 +100,44 @@ Object.assign(STATION_PLATFORM_RULES, {
     "川西池田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "北伊丹": { labels:["2","1"], lanes:[true,true] }, "伊丹": { labels:["2","1"], lanes:[true,true] },
     "猪名寺": { labels:["2","1"], lanes:[true,true] }, "塚口": { labels:["3","2","1"], lanes:[true,true,true] }, "加島": { labels:["2","1"], lanes:[true,true] },
     "御幣島": { labels:["2","1"], lanes:[true,true] }, "海老江": { labels:["2","1"], lanes:[true,true] }, "新福島": { labels:["2","1"], lanes:[true,true] }, "北新地": { labels:["2","1"], lanes:[true,true] }, "大阪天満宮": { labels:["2","1"], lanes:[true,true] }, "大阪城北詰": { labels:["2","1"], lanes:[true,true] },
-    // JR東西線 京橋(地下1面2線) と、片町線 鴫野・放出
-    "京橋": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    /* JR東西線・学研都市線の京橋。1・2番のりばは大阪環状線 (この線路図の範囲外)。
+       学研都市線・JR東西線は 3番 (木津方面) / 4番 (北新地・尼崎方面) の2面2線
+       (配線略図 スクリーンショット(712).png)。大阪城北詰方に引上線がある。
+       ★以前は4本の番線を持たせていて、実在しない番線が2本あった。 */
+    "京橋": { labels:["3","4"], lanes:[true,true] },
     "鴫野": { labels:["4","1"], lanes:[true,true] },
-    "放出": { labels:["4","3","2","1"], lanes:[true,true,true,true] }
+    "放出": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    /* 学研都市線 放出〜木津 (配線略図 スクリーンショット(726)〜(728).png)
+       松井山手〜京田辺・京田辺〜木津は単線。交換できるのは
+       大住・京田辺・JR三山木・祝園だけで、同志社前・下狛・西木津・木津 (学研都市線ホーム) は
+       1線しかない。単線の駅は上下で番線を共有する (STATION_SHARED_LANES)。 */
+    "徳庵": { labels:["1","2","3"], lanes:[true,true,true] }, "鴻池新田": { labels:["2","1"], lanes:[true,true] },
+    "住道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "野崎": { labels:["2","1"], lanes:[true,true] },
+    "四条畷": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "忍ケ丘": { labels:["2","1"], lanes:[true,true] },
+    "寝屋川公園": { labels:["2","1"], lanes:[true,true] }, "星田": { labels:["2","1"], lanes:[true,true] },
+    "河内磐船": { labels:["2","1"], lanes:[true,true] }, "津田": { labels:["2","1"], lanes:[true,true] },
+    "藤阪": { labels:["2","1"], lanes:[true,true] }, "長尾": { labels:["2","1"], lanes:[true,true] },
+    "松井山手": { labels:["2","1"], lanes:[true,true] }, "大住": { labels:["2","1"], lanes:[true,true] },
+    "京田辺": { labels:["3","4","2","1"], lanes:[true,true,true,true] }, "同志社前": { labels:["1"], lanes:[true] },
+    "JR三山木": { labels:["2","1"], lanes:[true,true] }, "下狛": { labels:["1"], lanes:[true] },
+    "祝園": { labels:["2","1"], lanes:[true,true] }, "西木津": { labels:["1"], lanes:[true] },
+    "木津": { labels:["1"], lanes:[true] }
 });
 
 /* JR東西線ブロックの東端。京橋の先、片町線の鴫野・放出まで作る。
    ここを伸ばすと線路・駅・留置場もそこまで描かれる。 */
-const TOZAI_EAST_IDX = 46;
+const TOZAI_EAST_IDX = W(67);
 
 /* 尼崎から JR東西線へ入る (= 本線ではなく東西線を走る) 行先。
    以前は同じ配列が5つのファイルに重複して書かれていて、
    駅を足すたびに全部直さないと経路がずれていた。ここ1か所にまとめる。 */
 const TOZAI_THROUGH_DESTS = ["同志社前", "松井山手", "四条畷", "木津", "京田辺",
-                             "奈良", "長尾", "放出", "鴫野", "京橋"];
+                             "奈良", "長尾", "放出", "鴫野", "京橋",
+                             "徳庵", "鴻池新田", "住道", "野崎", "忍ケ丘", "寝屋川公園", "星田",
+                             "河内磐船", "津田", "藤阪", "大住", "JR三山木", "下狛", "祝園", "西木津"];
+
+/* 相生から赤穂線へ入る行先 (相生より西で赤穂線の上にある駅) */
+const AKO_THROUGH_DESTS = ["播州赤穂", "坂越", "西相生", "長船", "岡山"];
 
 /* 尼崎より東 (大阪・京都方面) の本線の主要駅。
    JR宝塚線からここへ直通する列車は丹波路快速などで、
@@ -93,33 +156,47 @@ const FUKUCHI_THROUGH_DESTS = ["塚口", "新三田", "三田", "道場", "宝�
      同じ向きどうしの渡り線しか無い駅も入っている。 */
 const SWITCHABLE_STATIONS = ["新三田", "宝塚", "川西池田", "塚口", "放出", "京橋",
     "京都", "向日町", "長岡京", "高槻", "茨木", "新大阪", "大阪", "尼崎", "芦屋", "西宮", "須磨", "大久保", "加古川", "宝殿", "御着", "姫路", "西明石", "草津", "野洲", "米原", "長浜", "近江塩津", "敦賀",
-    "堅田", "近江舞子", "近江今津" // ★追加
+    "堅田", "近江舞子", "近江今津", // ★追加
+    // 姫路より西・学研都市線 (配線略図 (723)〜(728))
+    "上郡", "相生", "網干", "英賀保", "播州赤穂",
+    "徳庵", "四条畷", "長尾", "松井山手", "大住", "京田辺", "JR三山木", "祝園",
+    "同志社前", "木津"          // 単線上の1線の駅。そのまま向きを変える
 ];
 /* 待避 (追い抜き) ができる駅。これも方転できるかとは別。 */
-const OVERTAKE_STATIONS = ["新三田", "道場", "宝塚", "川西池田", "塚口", "放出","高槻","大阪","尼崎","芦屋","須磨","大久保","西明石","加古川", "宝殿", "草津", "野洲", "河瀬", "安土", "近江八幡", "能登川", "米原", "長浜", "近江塩津", "敦賀", "大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原"]; STATION_MAP = {};
+const OVERTAKE_STATIONS = ["新三田", "道場", "宝塚", "川西池田", "塚口", "放出","高槻","大阪","尼崎","芦屋","須磨","大久保","西明石","加古川", "宝殿", "草津", "野洲", "河瀬", "安土", "近江八幡", "能登川", "米原", "長浜", "近江塩津", "敦賀", "大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原",
+    "上郡", "相生", "竜野", "網干", "英賀保", "播州赤穂",
+    "徳庵", "住道", "四条畷", "松井山手", "大住", "京田辺", "JR三山木", "祝園"]; STATION_MAP = {};
 STATIONS.forEach((s,i) => {
     STATION_MAP[s.name] = i;
 });
 
 // ★追加: 湖西線・福知山線・東西線の駅をSTATION_MAPにマッピング
-Object.assign(STATION_MAP, {
+(function () {
+const BRANCH_IDX = {
     "新三田": 23, "三田": 24, "道場": 25, "武田尾": 26, "西宮名塩": 27, "生瀬": 28, "宝塚": 29, "中山寺": 30, "川西池田": 31, "北伊丹": 32, "伊丹": 33, "猪名寺": 34, "塚口": 35,
     "加島": 37, "御幣島": 38, "海老江": 39, "新福島": 40, "北新地": 41, "大阪天満宮": 42, "大阪城北詰": 43, "京橋": 44,
     "鴫野": 45, "放出": 46,
+    "徳庵": 47, "鴻池新田": 48, "住道": 49, "野崎": 50, "四条畷": 51, "忍ケ丘": 52, "寝屋川公園": 53,
+    "星田": 54, "河内磐船": 55, "津田": 56, "藤阪": 57, "長尾": 58, "松井山手": 59, "大住": 60,
+    "京田辺": 61, "同志社前": 62, "JR三山木": 63, "下狛": 64, "祝園": 65, "西木津": 66, "木津": 67,
+    "坂越": -8, "西相生": -7,
     "大津京": 57, "唐崎": 58, "比叡山坂本": 60, "おごと温泉": 61, "堅田": 63, "小野": 64, "和邇": 65, "蓬莱": 67, "志賀": 68, "比良": 70, "近江舞子": 71, "北小松": 72, "近江高島": 74, "安曇川": 75, "新旭": 77, "近江今津": 78, "近江中庄": 79, "マキノ": 81, "永原": 82,
     "宮原操": 39, "吹田貨": 41
-});
-// 注: 松井山手・四条畷・網干・篠山口などの「線内に描画していない駅」は
+};
+for (const k in BRANCH_IDX) STATION_MAP[k] = W(BRANCH_IDX[k]);
+})();
+// 注: 篠山口・奈良などの「線内に描画していない駅」は
 //     意図的に STATION_MAP へ入れていない (進行方向の判定に使われるため)。
 //     編成の配置・返却先を求めるときの読み替えは js/06-fleet.js の
 //     fleetHomeOf() / fleetIndexOf() が受け持つ。
 
 const STARTERS = {
-    "姫路":0, "西明石":11, "甲子園口":34, "尼崎":36, "大阪":38, "高槻":47, 
+    "姫路": STATION_MAP["姫路"], "西明石": STATION_MAP["西明石"], "甲子園口": STATION_MAP["甲子園口"],
+    "尼崎": STATION_MAP["尼崎"], "大阪": STATION_MAP["大阪"], "高槻": STATION_MAP["高槻"],
     "向日町操": STATION_MAP["向日町操"], "京都": STATION_MAP["京都"], 
-    "神戸": 22, "三ノ宮": STATION_MAP["三ノ宮"], 
-    "網干": 0, "播州赤穂": 0, "上郡": 0, "近江今津": STATION_MAP["敦賀"], 
-    "吹田貨": 41, "宮原操": 39, "野洲": STATION_MAP["野洲"], 
+    "神戸": STATION_MAP["神戸"], "三ノ宮": STATION_MAP["三ノ宮"], 
+    "網干": STATION_MAP["網干"], "播州赤穂": STATION_MAP["播州赤穂"], "上郡": STATION_MAP["上郡"], "近江今津": STATION_MAP["敦賀"], 
+    "吹田貨": STATION_MAP["吹田"], "宮原操": STATION_MAP["新大阪"], "野洲": STATION_MAP["野洲"], 
     "米原": STATION_MAP["米原"], "敦賀": STATION_MAP["敦賀"] 
 };
 
@@ -127,8 +204,49 @@ const TRACKS = [
     { id: "Up_Hoppo", label: "北方貨物上", dir: 1, type: "freight_line" }, { id: "Up_Out", label: "上り外", dir: 1 }, { id: "Up_In", label: "上り内", dir: 1 }, 
     { id: "Down_In", label: "下り内", dir: -1 }, { id: "Down_Out", label: "下り外", dir: -1 }, { id: "Down_Hoppo", label: "北方貨物下", dir: -1, type: "freight_line" },{ id: "Kosei_Up", label: "湖西線上り", dir: 1 }, { id: "Kosei_Down", label: "湖西線下り", dir: -1 },
     { id: "Fukuchi_Up", label: "福知山線上り", dir: 1 }, { id: "Fukuchi_Down", label: "福知山線下り", dir: -1 },
-    { id: "Tozai_Up", label: "東西線上り", dir: 1 }, { id: "Tozai_Down", label: "東西線下り", dir: -1 }
+    { id: "Tozai_Up", label: "東西線上り", dir: 1 }, { id: "Tozai_Down", label: "東西線下り", dir: -1 },
+    { id: "Ako_Up", label: "赤穂線上り", dir: 1 }, { id: "Ako_Down", label: "赤穂線下り", dir: -1 }
 ];
+
+/* ------------------------------------------------------------------ 単線区間
+
+   赤穂線 (相生〜播州赤穂) と学研都市線の松井山手〜木津は単線。
+   線路データは上下2本の線路 (Ako_Up/Ako_Down・Tozai_Up/Tozai_Down) のままだが、
+   区間の中のブロックは上下でレーンを共有する (js/05-track-manager.js)。
+   区間に入れるのは1本だけ (一閉塞一列車。js/13-train-hold.js の singleTrackBlocked)。
+   区間の両端は交換のできる駅 (上下の線が分かれている駅・3線以上ある駅)。
+
+     lo / hi   … 区間の両端の駅
+     hiInside  … hi の駅も区間に含める (1線しかない終点の木津)
+   交換駅 (配線略図 スクリーンショット(723)/(726)〜(728).png)
+     赤穂線     … 相生・播州赤穂 (西相生・坂越は1線)
+     学研都市線 … 松井山手 (ここから放出方は複線)・大住・京田辺・JR三山木・祝園
+                  (同志社前・下狛・西木津・木津は1線) */
+const SINGLE_TRACK_UNITS = [
+    { id: "赤穂線 相生〜播州赤穂",       up: "Ako_Up",   down: "Ako_Down",   lo: "播州赤穂", hi: "相生" },
+    { id: "学研都市線 松井山手〜大住",   up: "Tozai_Up", down: "Tozai_Down", lo: "松井山手", hi: "大住" },
+    { id: "学研都市線 大住〜京田辺",     up: "Tozai_Up", down: "Tozai_Down", lo: "大住",     hi: "京田辺" },
+    { id: "学研都市線 京田辺〜JR三山木", up: "Tozai_Up", down: "Tozai_Down", lo: "京田辺",   hi: "JR三山木" },
+    { id: "学研都市線 JR三山木〜祝園",   up: "Tozai_Up", down: "Tozai_Down", lo: "JR三山木", hi: "祝園" },
+    { id: "学研都市線 祝園〜木津",       up: "Tozai_Up", down: "Tozai_Down", lo: "祝園",     hi: "木津", hiInside: true }
+];
+
+/** 単線区間のブロック番号の範囲 [from, to] (両端を含む) */
+function singleUnitBlockRange(u) {
+    const lo = STATION_MAP[u.lo], hi = STATION_MAP[u.hi];
+    const a = Math.min(lo, hi) * UNITS_PER_STATION, b = Math.max(lo, hi) * UNITS_PER_STATION;
+    return [a + 1, u.hiInside ? b : b - 1];
+}
+
+/** そのブロックが属する単線区間 (無ければ null) */
+function singleUnitAt(trackId, blockIndex) {
+    for (const u of SINGLE_TRACK_UNITS) {
+        if (trackId !== u.up && trackId !== u.down) continue;
+        const r = singleUnitBlockRange(u);
+        if (blockIndex >= r[0] && blockIndex <= r[1]) return u;
+    }
+    return null;
+}
 const TOTAL_WIDTH = (STATIONS.length * UNITS_PER_STATION * BLOCK_WIDTH) + 200;
 const CANVAS_HEIGHT = 1300;
 const INTERVALS = { "普通": 650, "快速": 1250, "新快速": 1100, "特急": 5400, "貨物": 1600, "回送": 7200 };
@@ -162,23 +280,60 @@ function isRealStationBlock(blk) {
 /* 分岐線の駅を「本線のインデックス → 駅名」で持つ表。
    線路図の描画と当たり判定の両方で使う。
    (以前は js/17-renderer.js の中に同じ表が2つあった) */
-const KOSEI_STATIONS_MAP = {
+const KOSEI_STATIONS_MAP = _shiftKeys({
     57: "大津京", 58: "唐崎", 60: "比叡山坂本", 61: "おごと温泉", 63: "堅田", 64: "小野",
     65: "和邇", 67: "蓬莱", 68: "志賀", 70: "比良", 71: "近江舞子", 72: "北小松",
     74: "近江高島", 75: "安曇川", 77: "新旭", 78: "近江今津", 79: "近江中庄", 81: "マキノ", 82: "永原"
-};
-const FUKUCHI_STATIONS_MAP = {
+});
+const FUKUCHI_STATIONS_MAP = _shiftKeys({
     23: "新三田", 24: "三田", 25: "道場", 26: "武田尾",
     27: "西宮名塩", 28: "生瀬", 29: "宝塚", 30: "中山寺",
     31: "川西池田", 32: "北伊丹", 33: "伊丹", 34: "猪名寺", 35: "塚口"
-};
-const TOZAI_STATIONS_MAP = {
+});
+const TOZAI_STATIONS_MAP = _shiftKeys({
     37: "加島", 38: "御幣島", 39: "海老江", 40: "新福島", 41: "北新地",
-    42: "大阪天満宮", 43: "大阪城北詰", 44: "京橋", 45: "鴫野", 46: "放出"
-};
+    42: "大阪天満宮", 43: "大阪城北詰", 44: "京橋", 45: "鴫野", 46: "放出",
+    // 学研都市線 (片町線) 放出〜木津
+    47: "徳庵", 48: "鴻池新田", 49: "住道", 50: "野崎", 51: "四条畷", 52: "忍ケ丘", 53: "寝屋川公園",
+    54: "星田", 55: "河内磐船", 56: "津田", 57: "藤阪", 58: "長尾", 59: "松井山手", 60: "大住",
+    61: "京田辺", 62: "同志社前", 63: "JR三山木", 64: "下狛", 65: "祝園", 66: "西木津", 67: "木津"
+});
+/* 赤穂線 (相生〜播州赤穂)。相生[3] は本線と共用の駅。 */
+const AKO_STATIONS_MAP = _shiftKeys({ "-9": "播州赤穂", "-8": "坂越", "-7": "西相生" });
+/* 赤穂線ブロックの範囲 (播州赤穂 〜 相生) */
+const AKO_WEST_IDX = W(-9), AKO_JUNCTION_IDX = W(-6);
 
 /* 貨物駅としての別名 (線路図の上下に出す) */
 const FREIGHT_STATION_LABEL = { "ひめじ別所": "姫路タ", "鷹取": "神戸タ", "西大路": "京都タ" };
+
+/* ------------------------------------------------------------------ 貨物ターミナル (利用者の指摘 6)
+
+   貨物列車の行先になる、線路図の中の貨物駅。
+     station … 線路図の上で着発線を持つ駅 (貨物列車は外側の着発線に入る)
+     dwell   … 着いてから次に出るまで [秒] (荷役・機関車の付け替え (機回し)・入換)
+   ★吹田貨物ターミナルは北方貨物線の上 (岸辺〜吹田の北側) にあり、
+     本線から来る貨物列車は塚本・茨木方で北方貨物線に入って着発線へ着く。
+     以前は吹田タ行きの貨物列車が吹田に着いたとたんに消え、
+     吹田貨物ターミナル発の列車はどこからともなく現れていた。
+   ★神戸タ (鷹取)・姫路タ (ひめじ別所)・京都タ (西大路・梅小路) も同じ扱いにする。
+     着いた列車は着発線で荷役と機回しをして、次の貨物列車として発車する
+     (向きを変えることもある)。 */
+const FREIGHT_TERMINALS = {
+    "吹田タ": { station: "吹田貨",     name: "吹田貨物ターミナル", dwell: [2400, 4800] },
+    "神戸タ": { station: "鷹取",       name: "神戸貨物ターミナル", dwell: [1800, 3600] },
+    "姫路タ": { station: "ひめじ別所", name: "姫路貨物駅",         dwell: [1800, 3600] },
+    "京都タ": { station: "西大路",     name: "京都貨物駅",         dwell: [1800, 3600] }
+};
+/** 貨物列車の行先が線路図の中の貨物駅なら、その駅名 (着発線のある駅) */
+function freightTerminalStation(dest) {
+    const t = FREIGHT_TERMINALS[dest];
+    return t ? t.station : null;
+}
+/** その駅が貨物ターミナルなら、その行先名 (吹田貨 → 吹田タ) */
+function freightTerminalAt(stName) {
+    for (const k in FREIGHT_TERMINALS) if (FREIGHT_TERMINALS[k].station === stName) return k;
+    return null;
+}
 
 const timeToSec = (h, m, s) => h*3600 + m*60 + s;
 const EXTRA_TRAINS = [
@@ -217,7 +372,33 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
     if (!rule) return [];
     let yPositions = [];
 
-    if (stationName === "ひめじ別所") {
+    /* ---- 姫路より西 (スクリーンショット(725).png)
+       竜野・網干は3本目の線が下り側 (南) にある。既定の並べ方 (中線を上り側) では
+       線路と番線が食い違うので、ここで書く。 */
+    if (stationName === "竜野" || stationName === "網干") {
+        yPositions = [upOutY, downOutY, downOutY + 30];
+    }
+    /* ---- 単線区間の駅・線区の端の駅 (上下で番線を共有する駅)
+       1線しかない駅は、上り線の位置に1本だけ置く。 */
+    else if (["同志社前", "下狛", "西木津", "木津", "坂越", "西相生"].includes(stationName)) {
+        yPositions = [upOutY];
+    }
+    else if (stationName === "播州赤穂") {
+        /* 上 (下り側) から 1番 (単式)・2番・3番 (島式)。
+           分岐線の駅は上り線・下り線の2本の目印しか持たないので、
+           2番 (真ん中の線) は上り線の側に寄せて置く (線路図で上下に広げて描く)。 */
+        yPositions = [downOutY, upOutY + (downOutY - upOutY) * 0.15, upOutY];
+    }
+    else if (stationName === "京田辺") {
+        /* 画面の上 (下り側) から 1番 (待避線)・2番 (本線)・3番・4番 (木津方が行き止まり)。
+           ラベルの並びは ["3","4","2","1"]。 */
+        yPositions = [upOutY + 15, upOutY - 15, downOutY - 15, downOutY + 15];
+    }
+    else if (stationName === "徳庵") {
+        // 上り (木津方面) 1番 / 下り本線 2番 / 下りの待避線 3番 (島式)
+        yPositions = [upOutY, downOutY, downOutY + 30];
+    }
+    else if (stationName === "ひめじ別所") {
         /* 姫路口は複線。ホーム2面と貨物待避線2本を上下線に割り当てる。
            (以前は内側線の座標を使っていて、存在しない線路に番線が付いていた) */
         yPositions = [upOutY, downOutY, upOutY - 30, downOutY + 30];
@@ -243,26 +424,25 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
     }
     else if (stationName === "大阪") {
-        /* 3〜11番のりば。番線と線路の対応 (配線略図 スクリーンショット(697).png)
-             8番  … 上り外側線 (列車線)。新快速・快速
-             10・11番 … 8番の北側。JR宝塚線(上り)・特急・朝夕の優等
-             7番  … 上り内側線 (電車線)。普通
-             9番  … 7番から渡り線で入れる予備の上りホーム
-             6番  … 下り内側線 (電車線)。普通
-             4番  … 6番から渡り線で入れる予備の下りホーム
-             5番  … 下り外側線 (列車線)。新快速・快速
-             3番  … 5番の南側。JR宝塚線(下り)・特急・朝夕の優等
-
-           ★9・10番と3・4番は、列車線からも電車線からも入れる。
-             電車線に1本ずつしか番線を与えないと、大阪の下り電車線
-             (6番) に普通と快速が集まって捌けなくなる
-             (実測: 大阪の下り快速が 4本/時 → 0.8本/時)。
-             実物にも渡り線があるので、電車線側にも予備のホームを持たせる。
-           ★以前は 7番が下り内側に付いていた (実際は上り)。 */
-        yPositions = [upOutY, upOutY - 26, upOutY - 52,
-                      upInY, upInY - 26,
-                      downInY, downInY + 26,
-                      downOutY, downOutY + 26];
+        /* 3〜11番のりば (配線略図 スクリーンショット(697).png)。
+           南 (画面の上) から 3・4 | 5・6 | 7・8 | 9・10 | 11 の順に並ぶ。
+             5番 … 下り外側線 (列車線)。新快速・快速
+             6番 … 下り内側線 (電車線)。普通
+             7番 … 上り内側線 (電車線)。普通
+             8番 … 上り外側線 (列車線)。新快速・快速
+             3・4番 … 5番のさらに南。JR宝塚線(下り)・特急・朝夕の優等。
+                       4番は電車線 (6番の線) からも渡り線で入れる
+             9・10・11番 … 8番のさらに北。JR宝塚線(上り)・特急・朝夕の優等。
+                       9番は電車線 (7番の線) からも渡り線で入れる
+           ★以前は 9番を7番と8番のあいだ、4番を5番と6番のあいだに描いていた
+             (電車線の2本目のレーンとして持っていたため)。実物の並びと違い、
+             番線の表示が食い違っていた。いまは実物どおりの位置に置き、
+             どの線路からどの番線へ入れるかは進路の表 (STATION_ROUTES) で決める
+             (上り側・下り側でレーンを共有する。尼崎と同じ形)。 */
+        yPositions = [upOutY, upOutY - 18, upOutY - 36, upOutY - 54,
+                      upInY,
+                      downInY,
+                      downOutY, downOutY + 18, downOutY + 36];
     }
     else if (stationName === "尼崎") {
         /* 上から 9番 (ホームの無い通過線) / 8番 … 1番。
@@ -316,7 +496,7 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
          if (rule.lanes.length > 2) yPositions.push(upOutY - 28);
         }
     } 
-    else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田", "京橋", "放出"].includes(stationName)) {
+    else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田", "放出", "住道", "四条畷"].includes(stationName)) {
         // ★湖西線・福知山線の待避可能駅 (2面4線)
         yPositions = [upOutY - 15, upOutY + 15, downOutY - 15, downOutY + 15];
     }
@@ -324,7 +504,9 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         // ★福知山線の待避可能駅 (2面3線)
         yPositions = [upOutY - 15, upOutY + 15, downOutY];
     }
-    else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "鴫野"].includes(stationName)) {
+    else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "鴫野", "京橋",
+              "鴻池新田", "野崎", "忍ケ丘", "寝屋川公園", "星田", "河内磐船", "津田", "藤阪", "長尾",
+              "松井山手", "大住", "JR三山木", "祝園"].includes(stationName)) {
         // ★湖西線・福知山線・東西線の待避なし駅 (2面2線)
         yPositions = [upOutY, downOutY];
     }
@@ -431,9 +613,10 @@ const BRANCH_LINE_OF = {};
     add(KOSEI_STATIONS_MAP, "kosei");
     add(FUKUCHI_STATIONS_MAP, "fukuchi");
     add(TOZAI_STATIONS_MAP, "tozai");
+    add(AKO_STATIONS_MAP, "ako");
 })();
 
-/** その駅が属する分岐線 ("kosei"/"fukuchi"/"tozai")。本線の駅なら null。 */
+/** その駅が属する分岐線 ("kosei"/"fukuchi"/"tozai"/"ako")。本線の駅なら null。 */
 function stationBranchLine(name) { return BRANCH_LINE_OF[name] || null; }
 
 /**
@@ -456,6 +639,9 @@ function stationBranchLanes(name) {
             if (_trackOfVirtual(base[i]) <= 1) u++; else d++;
         }
         if (u + d > 0) { up = Math.max(1, u); down = Math.max(1, d); }
+        /* 上下で番線を共有する駅 (単線区間の駅) は、実際の本数だけ持つ。
+           共有しない駅は上下1本ずつが最低。 */
+        if (STATION_SHARED_LANES[name] === "all" && u + d > 0) { up = u; down = d; }
     }
     const out = { up: up, down: down };
     _branchLaneCache[name] = out;
@@ -487,12 +673,12 @@ function stationMainLaneCount(stName, trackId) {
              上り内 (電車線) … 7番
              下り内 (電車線) … 6番
              下り外 (列車線) … 5・4・3番
-           ★以前は 上り外2 / 上り内2 / 下り内3 / 下り外2 で、
-             7番が下り線に付いていた (実際は上り)。 */
-        if (trackId === "Up_Out") return 3;     // 8・10・11番
-        if (trackId === "Up_In") return 2;      // 7・9番
-        if (trackId === "Down_In") return 2;    // 6・4番
-        return 2;                               // Down_Out 5・3番
+           ★上り側・下り側でレーンを共有する (STATION_SHARED_LANES)。
+             電車線の列車も 9番・4番へ渡り線で入れる (STATION_ROUTES)。 */
+        if (trackId === "Up_Out") return 4;     // 8・9・10・11番
+        if (trackId === "Up_In") return 1;      // 7番
+        if (trackId === "Down_In") return 1;    // 6番
+        return 3;                               // Down_Out 5・4・3番
     }
     if (stName === "尼崎") {
         /* 島式4面8線 ＋ 北側の通過線 (9番)。
@@ -842,6 +1028,53 @@ const STATION_ROUTES = {
         noReverseTo: ["Fukuchi_Down", "Fukuchi_Up"]
     },
 
+    /* 相生 (配線略図 スクリーンショット(723)/(725).png)
+         1番 … 下り本線 (単式)。赤穂線 播州赤穂方面・山陽本線 上郡方面
+         2番 … 中線 (島式)。赤穂線からの上り (姫路方面) はここに入る
+         3番 … 上り本線 (島式)。上郡方面からの上り
+       赤穂線は1番の線 (下り本線) から竜野方の外で分かれ、上りは中線へ入る。
+       赤穂線の上りが3番へ入る進路は無い。 */
+    /* 相生の渡り線 (竜野方・有年方の両方)
+         竜野方 … 1番↔2番、2番↔3番 がつながる (1番→3番は2番の線を経由)
+         有年方 … 2番→1番の線、3番→2番、3番↔1番の線 (赤穂線の分岐より有年寄り)
+       赤穂線は1番の線から分かれ、2番からも入れる。3番から赤穂線へは出られない。 */
+    "相生": {
+        arrive: { Up_Out: ["3", "2"], Ako_Up: ["2", "1"], Down_Out: ["1", "2", "3"], Ako_Down: ["1", "2"] },
+        depart: { Up_Out: ["3", "2", "1"], Down_Out: ["1", "2", "3"], Ako_Down: ["1", "2"] }
+    },
+    /* 網干 (配線略図 スクリーンショット(725).png)
+         1番 … 上り本線 (単式)
+         2番 … 下り本線 (島式)
+         3番 … 折返し線 (島式)。竜野方・姫路方の両方で上下本線につながり、
+                網干総合車両所への出入区線もここから分かれる。
+       網干止まりの列車・網干始発の列車は主に3番を使う。 */
+    "網干": {
+        arrive: { Up_Out: ["1", "3", "2"], Down_Out: ["2", "3", "1"] },
+        depart: { Up_Out: ["1", "3", "2"], Down_Out: ["2", "3", "1"] }
+    },
+    /* 英賀保 … 中線 (2番) は両端で上下本線につながる。待避に使う。 */
+    "英賀保": {
+        arrive: { Up_Out: ["3", "2", "1"], Down_Out: ["1", "2", "3"] },
+        depart: { Up_Out: ["3", "2", "1"], Down_Out: ["1", "2", "3"] }
+    },
+    /* 上郡 … 中線 (2番) が両端で上下本線につながる。山陽本線の西の端 (線路図の範囲)。 */
+    "上郡": {
+        arrive: { Up_Out: ["1", "2"], Down_Out: ["3", "2", "1"] },
+        depart: { Up_Out: ["1", "2", "3"], Down_Out: ["3", "2"] }
+    },
+    /* 京田辺 (配線略図 スクリーンショット(728).png)
+         1番 … 待避線 / 2番 … 本線 / 3番 / 4番 … 4番は木津方が行き止まり
+       京田辺〜同志社前・京田辺〜大住はどちらも単線で、上下で番線を共有する。
+       木津方 (同志社前) からは 1〜3番にしか入れず、4番から木津方へは出られない。 */
+    "京田辺": {
+        arrive: { Tozai_Down: ["2", "1", "3"] },
+        depart: { Tozai_Up: ["2", "1", "3"] }
+    },
+    /* 京橋。大阪城北詰方の引上線は 3番・4番のどちらからも入れる。 */
+    "京橋": {
+        drawUp: [{ label: "京橋 引上線", from: ["3", "4"], side: "W" }]
+    },
+
     /* 京都。0番と2〜7番 (8〜10番は奈良線・特急で、この線路図の範囲外)。
          2・3番 … 琵琶湖線 上り (米原・草津方面)
          4・5番 … JR京都線 下り 内側線 (普通は4番、それ以外は5番)
@@ -895,6 +1128,11 @@ const STATION_PLATFORM_USE = {
         "快速":   { normal: ["5", "3"] },
         "新快速": { normal: ["6", "7", "0"] }
     },
+    /* 網干 … 網干止まり・網干始発は3番 (折返し線)、通過する列車は本線 */
+    "網干": {
+        "新快速": { normal: ["3", "2", "1"] },
+        "快速":   { normal: ["3", "2", "1"] }
+    },
     "尼崎": {
         "新快速": { normal: ["8", "1"] },
         "快速":   { normal: ["8", "1", "7", "2", "5", "4"] },
@@ -931,13 +1169,7 @@ function stationRouteLanes(stName, trackId, mode) {
 function stationLaneIndexOf(stName, trackId, label) {
     const map = stationLaneMap(stName);
     const key = _laneKeyOf(trackId);
-    let arr;
-    if (STATION_SHARED_LANES[stName]) {
-        const up = (key === "Up_Out" || key === "Up_In");
-        arr = up ? map.Up_Out.concat(map.Up_In) : map.Down_In.concat(map.Down_Out);
-    } else {
-        arr = map[key] || [];
-    }
+    const arr = _laneArrOf(stName, map, key) || [];
     for (let i = 0; i < arr.length; i++) if (arr[i].label === label) return i;
     return -1;
 }
@@ -1101,6 +1333,12 @@ function trackDirOf(trackId) {
      それでは向きを変えられないので、長岡京・向日町・茨木・兵庫・膳所などは
      この表に無い。 */
 const STATION_REVERSE_BY_CROSSOVER = {
+    // ---- 山陽本線 姫路より西・赤穂線 (スクリーンショット(723)〜(725).png)
+    "上郡":     [["Up_Out", "Down_Out"], ["Up_Out", "Down_Out"]],   // 中線が両端で上下本線につながる
+    "相生":     [["Up_Out", "Down_Out"], ["Up_Out", "Down_Out"]],   // 竜野方・有年方の両方に渡り線
+    "網干":     [["Up_Out", "Down_Out"], ["Up_Out", "Down_Out"]],   // 両端に渡り線。折返し線(3番)がある
+    "英賀保":   [["Up_Out", "Down_Out"], ["Up_Out", "Down_Out"]],   // 中線が両端で上下本線につながる
+    "播州赤穂": [["Ako_Up", "Ako_Down"]],        // 赤穂線の終点 (単線)。3線とも相生方につながる
     // ---- 山陽本線 (複線区間) … 上下本線をつなぐ渡り線
     "姫路":     [["Up_Out", "Down_Out"]],
     "御着":     [["Up_Out", "Down_Out"]],
@@ -1150,8 +1388,89 @@ const STATION_REVERSE_BY_CROSSOVER = {
     "新三田":   [["Fukuchi_Up", "Fukuchi_Down"]],
     // ---- JR東西線・片町線
     "京橋":     [["Tozai_Up", "Tozai_Down"]],
-    "放出":     [["Tozai_Up", "Tozai_Down"]]
+    "放出":     [["Tozai_Up", "Tozai_Down"]],
+    // ---- 学研都市線 放出〜木津 (スクリーンショット(726)〜(728).png)
+    "徳庵":     [["Tozai_Up", "Tozai_Down"]],    // 放出方に片渡り
+    "四条畷":   [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]],   // 木津方に片渡り・放出方に両渡り
+    "長尾":     [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]],   // 木津方に片渡り・放出方に両渡り
+    "松井山手": [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]],   // 放出方に両渡り。木津方は単線への分岐
+    "大住":     [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]],   // 単線の交換駅 (両端で1線にまとまる)
+    "京田辺":   [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]],   // 単線の交換駅 (4線)
+    "JR三山木": [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]],   // 単線の交換駅
+    "祝園":     [["Tozai_Up", "Tozai_Down"], ["Tozai_Up", "Tozai_Down"]]    // 単線の交換駅。放出方に両渡り
 };
+
+/* 単線上の1線しかない駅で、そのまま向きを変えて折り返す駅。
+   線路が1本なので渡り線は要らない (上下で同じ番線を使う)。 */
+const STATION_REVERSE_SINGLE_LINE = {
+    "同志社前": "単線上の1線の駅。着いた線路のまま向きを変えて京田辺方へ折り返す (画像728)",
+    "木津":     "学研都市線の終点。学研都市線のホームは1線で、そのまま折り返す (画像728)"
+};
+
+/* ------------------------------------------------------------------ 終着列車の着発番線
+
+   ■ 何を直すためのものか (利用者の指摘)
+     近江今津止まりの列車は上り列車なので、上りの着発線 (3・4番) にしか
+     入れなかった。実物は駅の手前 (山科方のど) に両渡りがあるので、
+     下りの着発線 (1・2番) にも入れて、そこからそのまま折り返せる。
+
+   ■ どう決めるか
+     上り線と下り線をつなぐ渡り線が「到着する側ののど」にある駅では、
+     その駅止まりの列車は反対側の着発線にも入れる。
+       up   … 上り列車 (インデックスの大きい方へ進む列車) が入ってくる側
+              (画面の右 = 姫路・尼崎・山科方) に渡り線がある
+       down … 下り列車が入ってくる側 (画面の左) に渡り線がある
+     渡り線の場所は配線略図の書き起こし (js/40-tid-theme.js の TID_JUNCTIONS) と同じで、
+     tools/check_turnouts.js が食い違いを見張る。
+     番線の共有 (STATION_SHARED_LANES) や進路の表 (STATION_ROUTES) を持つ駅は
+     そちらで決めるので、ここには書かない。 */
+const STATION_ARRIVAL_CROSSOVER = {
+    "姫路": { up: true, down: true },   "御着": { up: true, down: false },
+    "宝殿": { up: true, down: true },   "加古川": { up: true, down: true },
+    "東加古川": { up: true, down: false }, "土山": { up: false, down: true },
+    "大久保": { up: true, down: true }, "西明石": { up: false, down: true },
+    "須磨": { up: false, down: true },  "摩耶": { up: true, down: false },
+    "灘": { up: true, down: true },     "神戸": { up: false, down: true },
+    "芦屋": { up: false, down: true },  "吹田": { up: true, down: false },
+    "草津": { up: false, down: true },  "野洲": { up: true, down: true },
+    "篠原": { up: true, down: false },  "近江八幡": { up: false, down: true },
+    "安土": { up: true, down: true },   "能登川": { up: false, down: true },
+    "河瀬": { up: true, down: true },   "彦根": { up: true, down: true },
+    "米原": { up: true, down: true },   "長浜": { up: true, down: true },
+    "虎姫": { up: false, down: true },  "高月": { up: true, down: true },
+    "木ノ本": { up: true, down: true }, "新疋田": { up: true, down: true },
+    "近江塩津": { up: true, down: true }, "敦賀": { up: true, down: true },
+    "大津京": { up: true, down: false }, "堅田": { up: true, down: true },
+    "和邇": { up: true, down: false },  "近江舞子": { up: true, down: false },
+    "安曇川": { up: true, down: false }, "近江今津": { up: true, down: true },
+    "永原": { up: true, down: false },
+    "塚口": { up: true, down: true },   "宝塚": { up: true, down: true },
+    "道場": { up: false, down: true },  "新三田": { up: false, down: true },
+    "放出": { up: true, down: true },
+    // 姫路より西・学研都市線 (配線略図 (723)〜(728))
+    "網干": { up: true, down: true },   "英賀保": { up: true, down: true },
+    "徳庵": { up: true, down: false },  "四条畷": { up: true, down: true },
+    "長尾": { up: true, down: true },   "松井山手": { up: true, down: false },
+    "祝園": { up: true, down: false }
+};
+
+/**
+ * その駅止まりの列車が、反対方向の着発線にも入れるか。
+ *   dir … 到着する列車の向き (1 = 上り / -1 = 下り)
+ */
+function canCrossArriveAt(stName, dir) {
+    const c = STATION_ARRIVAL_CROSSOVER[stName];
+    if (!c) return false;
+    /* 複々線 (西明石〜草津) の駅は対象外。
+       電車線 (内側線) で折り返す普通は、到着した側のホームで折り返し、
+       発車のときに電車線どうしの渡り線を通る (実物もそう)。
+       ここで反対側へ入れると、上り線のホームを長くふさいで
+       JR神戸線・JR京都線の本数が落ちた (実測)。 */
+    if (!stationBranchLine(stName) && innerTrackExists(STATION_MAP[stName])) return false;
+    if (STATION_SHARED_LANES[stName] || STATION_ROUTES[stName]) return false;
+    if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
+    return dir === 1 ? !!c.up : !!c.down;
+}
 
 /* 引上線・車両基地で方転できる駅。
    渡り線では上下がつながっていないが、引き上げれば向きを変えられる。 */
@@ -1176,7 +1495,9 @@ const STATION_NO_REVERSE_NOTE = {
     "川西池田":   "相対式2面2線。渡り線が無い (画像709)",
     "おごと温泉": "相対式2面2線。渡り線も待避線も無い (画像703)",
     "向日町":     "島式2面4線。同じ向きどうしの渡り線だけ。折り返しは向日町操へ入る (画像694)",
-    "茨木":       "島式2面4線＋上下の待避線。上下をつなぐ渡り線が無い (画像695)"
+    "茨木":       "島式2面4線＋上下の待避線。上下をつなぐ渡り線が無い (画像695)",
+    "竜野":       "島式1面2線＋下りの待避線。上下をつなぐ渡り線が無い (画像725)",
+    "住道":       "島式2面4線。待避線だけで上下をつなぐ渡り線が無い (画像727)"
 };
 
 /**
@@ -1187,6 +1508,8 @@ function canReverseAt(stName) {
     if (!stName) return false;
     // 上り側と下り側をつなぐ渡り線があるか
     if (STATION_REVERSE_BY_CROSSOVER[stName]) return true;
+    // 単線上の1線の駅 (線路が1本なので、そのまま向きを変えられる)
+    if (typeof STATION_REVERSE_SINGLE_LINE !== "undefined" && STATION_REVERSE_SINGLE_LINE[stName]) return true;
     // 引上線・車両基地で方転できるか
     if (STATION_REVERSE_BY_DRAWUP[stName]) return true;
     // 進路の表 (STATION_ROUTES) に引上線があるか
@@ -1207,6 +1530,7 @@ function nextReversibleAhead(stName, dir) {
     for (let i = here + dir; i >= 0 && i < STATIONS.length; i += dir) {
         const n = STATIONS[i].name;
         if (STATIONS[i].isSeparateLine) continue;   // 向日町操などは本線の駅ではない
+        if (STATIONS[i].branchOnly) continue;       // 播州赤穂は赤穂線だけの位置
         if (canReverseAt(n)) return n;
     }
     return null;
@@ -1233,7 +1557,35 @@ function canUseDrawUp(stName, trackId, lane) {
    ★ここを線路IDごとに引いていたため、レーン2・3の列車がどちらも
      「その線路の最後のレーン」に丸められ、まったく同じ高さに
      2本の列車が描かれていた (実測 1872px² の重なり)。 */
-const STATION_SHARED_LANES = { "尼崎": true };
+/* 番線を共有する駅。
+     "side" … 上り側どうし・下り側どうしで共有する (尼崎・相生)。
+              尼崎は本線・JR宝塚線・JR東西線、相生は本線 (上郡方) と赤穂線。
+     "all"  … 上下すべての番線を共有する。単線区間の駅と線区の端の駅。
+              どちら向きの列車も、配線でつながっている番線ならどれにでも入れる。
+                上郡 … 山陽本線の西の端。中線をはさんで上下本線が両端でつながる
+                播州赤穂 … 赤穂線 (相生〜播州赤穂は単線)
+                坂越・西相生 … 赤穂線の単線の駅
+                京田辺・同志社前・下狛・西木津・木津 … 学研都市線の単線区間の駅
+   ★大住・JR三山木・祝園 (交換駅) は上下の線が分かれているので共有しない。 */
+const STATION_SHARED_LANES = {
+    "尼崎": "side", "大阪": "side",
+    /* 相生・網干・英賀保 … 中線 (網干は折返し線) が両端で上下本線につながり、
+       上下どちらの列車も使う。どの線路からどの番線へ入れるかは STATION_ROUTES で決める。 */
+    "相生": "all", "網干": "all", "英賀保": "all",
+    "上郡": "all", "播州赤穂": "all", "坂越": "all", "西相生": "all",
+    "京田辺": "all", "同志社前": "all", "下狛": "all", "西木津": "all", "木津": "all"
+};
+
+/** 番線の対応表から、その線路の列車が使うレーンの並びを返す (共有の駅は共有のぶん) */
+function _laneArrOf(stName, map, key) {
+    const mode = STATION_SHARED_LANES[stName];
+    if (mode === "all") return map.Up_Out.concat(map.Up_In, map.Down_In, map.Down_Out);
+    if (mode) {
+        const up = (key === "Up_Out" || key === "Up_In");
+        return up ? map.Up_Out.concat(map.Up_In) : map.Down_In.concat(map.Down_Out);
+    }
+    return map[key];
+}
 
 /**
  * (駅, 線路ID, レーン番号) が指す番線のレーン情報を返す。無ければ null。
@@ -1242,21 +1594,29 @@ const STATION_SHARED_LANES = { "尼崎": true };
 function stationLaneEntry(stationName, trackId, lane) {
     const map = stationLaneMap(stationName);
     const key = _laneKeyOf(trackId);
-    let arr;
-    if (STATION_SHARED_LANES[stationName]) {
-        const up = (key === "Up_Out" || key === "Up_In");
-        arr = up ? map.Up_Out.concat(map.Up_In) : map.Down_In.concat(map.Down_Out);
-    } else {
-        arr = map[key];
-    }
+    const arr = _laneArrOf(stationName, map, key);
     if (!arr || !arr.length) return null;
     return arr[Math.min(Math.max(lane, 0), arr.length - 1)] || null;
 }
 
+/**
+ * レーンの配列から、その列車が入っている枠だけを空ける。
+ * ★lanes[train.lane] を決め打ちで空けてはいけない。入区した列車や
+ *   番線を移った列車は train.lane が古いままのことがあり、
+ *   そこに入っている別の列車の在線を消してしまう (番線を共有する駅で目立った)。
+ */
+function freeOwnLane(lanes, train) {
+    if (!lanes) return false;
+    const at = lanes.indexOf(train);
+    if (at < 0) return false;
+    lanes[at] = null;
+    return true;
+}
+
 /** 分岐線・北方貨物線の線路IDを、駅の配線での線路IDに読み替える */
 function _laneKeyOf(trackId) {
-    if (/^(Kosei|Fukuchi|Tozai)_Up$/.test(trackId)) return "Up_Out";
-    if (/^(Kosei|Fukuchi|Tozai)_Down$/.test(trackId)) return "Down_Out";
+    if (/^(Kosei|Fukuchi|Tozai|Ako)_Up$/.test(trackId)) return "Up_Out";
+    if (/^(Kosei|Fukuchi|Tozai|Ako)_Down$/.test(trackId)) return "Down_Out";
     if (trackId === "Up_Hoppo") return "Up_Out";
     if (trackId === "Down_Hoppo") return "Down_Out";
     return trackId;
@@ -1311,10 +1671,11 @@ const JUNCTION_BRANCH_PLATFORMS = {
 function displayPlatformLabel(stName, trackId, lane) {
     const j = JUNCTION_BRANCH_PLATFORMS[stName];
     if (j && j[trackId]) return j[trackId];
-    if (/^(Kosei|Fukuchi|Tozai)_/.test(trackId) && !stationBranchLine(stName) &&
+    if (/^(Kosei|Fukuchi|Tozai|Ako)_/.test(trackId) && !stationBranchLine(stName) &&
         !STATION_SHARED_LANES[stName]) {
         const line = trackId.indexOf("Kosei") === 0 ? "湖西線"
-                   : trackId.indexOf("Fukuchi") === 0 ? "宝塚線" : "東西線";
+                   : trackId.indexOf("Fukuchi") === 0 ? "宝塚線"
+                   : trackId.indexOf("Ako") === 0 ? "赤穂線" : "東西線";
         return line + (trackDirOf(trackId) === 1 ? "上り" : "下り") + "着発線";
     }
     return platformLabelOf(stName, trackId, lane);

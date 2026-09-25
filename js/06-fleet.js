@@ -56,8 +56,11 @@ const FLEET_BASES = [
        散らばり、昼には姫路の8両在庫が0本になって
        新快速が 4本/時 → 1.2本/時 まで落ちていた。
        (足りないときは送り込み回送で運ぶが、間に合わない) */
-    { name: "姫路",     groups: ["ABOSHI", "AKASHI"],               weight: 34,
-      weightBy: { AKASHI: 12 } },
+    /* ★網干総合車両所 (網干) を線路図に入れたので、網干の編成は網干に置く。
+       姫路の電留線には一部だけ滞泊させる。 */
+    { name: "網干",     groups: ["ABOSHI"],                         weight: 30 },
+    { name: "姫路",     groups: ["ABOSHI", "AKASHI"],               weight: 6,
+      weightBy: { AKASHI: 6 } },
     { name: "西明石",   groups: ["ABOSHI", "AKASHI"],               weight: 14 },
     /* ★尼崎・大阪は明石の207系・321系の滞泊地。
        網干の223系・225系をここに置くと、新快速に必要な8両編成が
@@ -120,11 +123,17 @@ const FLEET_RESERVE = {
 // JR東西線の駅・行先 (ここを走る列車は 207系/321系 に限る)
 const TOZAI_PLACES = ["京橋", "大阪城北詰", "大阪天満宮", "北新地", "新福島", "海老江",
     "御幣島", "加島", "鴫野", "放出",
-    "松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "奈良"];
+    "徳庵", "鴻池新田", "住道", "野崎", "四条畷", "忍ケ丘", "寝屋川公園", "星田", "河内磐船",
+    "津田", "藤阪", "長尾", "松井山手", "大住", "京田辺", "同志社前", "JR三山木", "下狛",
+    "祝園", "西木津", "木津", "奈良", "加茂"];
 
-/* 片町線(学研都市線)の、放出より東でシミュレーターの描画範囲外にある駅。
-   ここを行先にする列車は放出まで走らせ、放出で運転を打ち切る。 */
-const KATAMACHI_BEYOND = ["松井山手", "四条畷", "同志社前", "木津", "京田辺", "長尾", "奈良"];
+/* 片町線(学研都市線)の、木津より先でシミュレーターの描画範囲外にある駅。
+   ここを行先にする列車は木津まで走らせ、木津で運転を打ち切る
+   (js/12-train-move.js の lineEndForBeyond)。
+   ★以前は放出より先がすべて範囲外で、松井山手・四条畷行きも放出で打ち切っていた。 */
+const KATAMACHI_BEYOND = ["奈良", "加茂"];
+// 赤穂線の駅・行先 (相生で本線から分かれる)
+const AKO_PLACES = ["西相生", "坂越", "播州赤穂", "日生", "長船"];
 // 湖西線の駅・行先
 const KOSEI_PLACES = ["大津京", "唐崎", "比叡山坂本", "おごと温泉", "堅田", "小野", "和邇",
     "蓬莱", "志賀", "比良", "近江舞子", "北小松", "近江高島", "安曇川", "新旭", "近江今津",
@@ -135,8 +144,11 @@ const FUKUCHI_PLACES = ["塚口", "猪名寺", "伊丹", "北伊丹", "川西池
 
 /** 始発駅名から、車両を出す留置場の名前を求める */
 function fleetHomeOf(startName) {
-    if (startName === "網干" || startName === "播州赤穂" || startName === "上郡") return "姫路";
-    // 学研都市線の放出以東から来る列車は放出の電留線が受け持つ
+    // 姫路より西は網干総合車両所が受け持つ
+    if (["播州赤穂", "坂越", "西相生", "上郡", "有年", "相生", "竜野", "はりま勝原", "英賀保"].indexOf(startName) >= 0) return "網干";
+    // 学研都市線の駅から来る列車は放出の電留線が受け持つ
+    if (TOZAI_STATIONS_MAP && Object.values(TOZAI_STATIONS_MAP).indexOf(startName) >= 0 &&
+        STATION_MAP[startName] > STATION_MAP["放出"]) return "放出";
     if (KATAMACHI_BEYOND.indexOf(startName) >= 0 || startName === "鴫野") return "放出";
     if (startName === "篠山口" || startName === "福知山") return "新三田";
     if (startName === "永原" || startName === "堅田" || startName === "大津京") return "近江今津";
@@ -160,9 +172,9 @@ function fleetHomeOf(startName) {
 
 /** 駅インデックス(位置の代用)。操車場や線内に描画していない駅も解決する */
 function fleetIndexOf(name) {
-    if (name === "宮原操") return 39;
-    if (name === "向日町操") return 51;
-    if (name === "吹田貨") return 41;
+    if (name === "宮原操") return STATION_MAP["新大阪"];
+    if (name === "向日町操") return STATION_MAP["向日町操"];
+    if (name === "吹田貨") return STATION_MAP["吹田"];
     const idx = STATION_MAP[name];
     if (idx !== undefined) return idx;
     // STATION_MAP に無い駅 (松井山手・網干・篠山口など) は留置場名へ読み替える
@@ -198,6 +210,7 @@ function fleetIndexOf(name) {
 function routeLineOf(name) {
     if (!name) return "main";
     if (TOZAI_PLACES.indexOf(name) >= 0) return "tozai";
+    if (AKO_PLACES.indexOf(name) >= 0) return "ako";
     if (FUKUCHI_PLACES.indexOf(name) >= 0 || ["豊岡", "城崎温泉"].indexOf(name) >= 0) return "fukuchi";
     if (KOSEI_PLACES.indexOf(name) >= 0) return "kosei";
     return "main";
@@ -205,9 +218,10 @@ function routeLineOf(name) {
 
 /** 線区の中での位置。線路図の外の駅は、線区の端のさらに外に置く */
 function routePosOf(name) {
-    if (KATAMACHI_BEYOND.indexOf(name) >= 0) return TOZAI_EAST_IDX + 1;    // 放出より四条畷方
-    if (["篠山口", "福知山", "豊岡", "城崎温泉"].indexOf(name) >= 0) return 22;   // 新三田より先
-    if (["網干", "播州赤穂", "上郡"].indexOf(name) >= 0) return -1;            // 姫路より西
+    if (KATAMACHI_BEYOND.indexOf(name) >= 0) return TOZAI_EAST_IDX + 1;    // 木津より先
+    if (["篠山口", "福知山", "豊岡", "城崎温泉"].indexOf(name) >= 0) return W(22);   // 新三田より先
+    if (["日生", "長船"].indexOf(name) >= 0) return AKO_WEST_IDX - 1;           // 播州赤穂より先
+    if (["三石", "岡山", "鳥取"].indexOf(name) >= 0) return STATION_MAP["上郡"] - 1; // 上郡より先
     const i = fleetIndexOf(name);
     return (i === null || i === undefined) ? null : i;
 }
@@ -222,8 +236,18 @@ function routeDirection(a, b) {
     if (ia === null || ib === null) return 0;
     const la = routeLineOf(a), lb = routeLineOf(b);
     const AMA = STATION_MAP["尼崎"], YAMA = STATION_MAP["山科"], SHIO = STATION_MAP["近江塩津"];
+    const AIOI = STATION_MAP["相生"];
     const sgn = (d) => (d > 0 ? 1 : d < 0 ? -1 : 0);
     if (la === lb) return sgn(ib - ia);
+    /* --- 赤穂線 (相生で本線とつながる。赤穂線は相生より西 = 下り方向)
+           本線から赤穂線へは下り、赤穂線から本線 (相生以東) へは上り。
+           ほかの分岐線へは本線を上ってそのまま入れる (尼崎・山科で方向を変えない) か、
+           JR宝塚線のように方向転換が要るかで決まる。 */
+    if (la === "main" && lb === "ako")  return (ia >= AIOI) ? -1 : 0;
+    if (la === "ako" && lb === "main")  return (ib >= AIOI) ? 1 : 0;
+    if (la === "ako" && (lb === "tozai" || lb === "kosei")) return 1;
+    if ((la === "tozai" || la === "kosei") && lb === "ako") return -1;
+    if (la === "ako" || lb === "ako") return 0;          // JR宝塚線とは尼崎で方向転換が要る
     // --- 本線 → 分岐線
     if (la === "main" && lb === "tozai")   return (ia <= AMA) ? 1 : 0;
     if (la === "main" && lb === "fukuchi") return (ia >= AMA) ? -1 : 0;
@@ -323,6 +347,58 @@ class FleetManager {
                 }
             });
         }
+        this.balanceSevenCarBases();
+    }
+
+    /**
+     * 学研都市線・JR東西線の車両を受け持つ留置場で、7両が組めるように
+     * 207系の4両と3両の数をそろえる (起動時に1回)。
+     *
+     * ★学研都市線は7両 (321系の7両固定か207系の4両＋3両) しか入れない。
+     *   起動時の配置はランダムなので、放出に3両ばかりが集まると
+     *   7両が1本も組めず、JR東西線の下りの始発がまったく出せなかった。
+     *   ほかの明石支所の留置場と4両・3両を入れ替えて、組める形にしておく。
+     */
+    balanceSevenCarBases() {
+        const bases = ["放出", "尼崎", "京橋"];
+        const others = FLEET_BASES.filter(b => bases.indexOf(b.name) < 0 &&
+                                               b.groups.indexOf("AKASHI") >= 0).map(b => b.name);
+        const is207 = (v, cars) => v.group === "AKASHI" && VEH.is207(v) && v.cars === cars;
+        for (const name of bases) {
+            const pool = this.pools[name];
+            if (!pool) continue;
+            let guard = 0;
+            while (guard++ < 60) {
+                const n3 = pool.filter(v => is207(v, 3)).length;
+                const n4 = pool.filter(v => is207(v, 4)).length;
+                if (n3 <= n4) break;
+                // 3両を1本出して、ほかの留置場の4両を1本持ってくる
+                let swapped = false;
+                for (const o of others) {
+                    const op = this.pools[o];
+                    if (!op) continue;
+                    const j = op.findIndex(v => is207(v, 4));
+                    if (j < 0) continue;
+                    const i = pool.findIndex(v => is207(v, 3));
+                    const v3 = pool.splice(i, 1)[0], v4 = op.splice(j, 1)[0];
+                    v3.at = o; v4.at = name;
+                    op.push(v3); pool.push(v4);
+                    swapped = true;
+                    break;
+                }
+                if (!swapped) break;
+            }
+        }
+    }
+
+    /** その留置場で、学研都市線・JR東西線の7両が何本組めるか */
+    sevenCarSets(name) {
+        const pool = this.pools[name] || [];
+        const ok = (v) => v.group === "AKASHI" && (VEH.is207(v) || VEH.is321(v));
+        const n7 = pool.filter(v => ok(v) && v.cars === 7).length;
+        const n4 = pool.filter(v => ok(v) && v.cars === 4).length;
+        const n3 = pool.filter(v => ok(v) && v.cars === 3).length;
+        return n7 + Math.min(n4, n3);
     }
 
     /** 指定留置場の待機編成 (表示用) */
@@ -539,6 +615,34 @@ class FleetManager {
             return vehicles;
         }
 
+        /* --- 組成が決まっている運用 (学研都市線・JR東西線の7両 など)
+               決められた組み合わせを順に試す。7両固定が無ければ 4両＋3両。 */
+        if (prof.formations) {
+            for (const form of prof.formations) {
+                const got = [];
+                let ok = true;
+                for (const cars of form) {
+                    const hit = this.findOne(home, prof, cars, got, true, noBorrow);
+                    if (!hit) { ok = false; break; }
+                    got.push(hit[0]);
+                }
+                if (ok) {
+                    const check = ServiceRules.validate(startName, type, trackId, dest, got, trainNo);
+                    if (check.ok) return got;
+                    this.rejected++;
+                    this.lastReject = check.reason;
+                }
+                this.release(home, got);
+            }
+            // 手持ちで組めないときは増備 (321系7両) を1本だけ試す
+            const extra = this.makeReserve(prof.groups[0], 7);
+            if (extra && formationMatches(prof.formations, [extra])) return [extra];
+            if (extra) this.release(home, [extra]);
+            this.shortCars = (this.shortCars || 0) + 1;
+            this.lastShort = type + " 7両が組めない at " + startName;
+            return null;
+        }
+
         // --- 通常運用: まず1本取り、両数が足りなければ増結する
         const first = this.findOne(home, prof, undefined, vehicles, false, noBorrow);
         if (first) {
@@ -556,7 +660,11 @@ class FleetManager {
             //   207系: 4両 + 3両 = 7両
             //   223系/225系/221系: 4両 + 4両 = 8両
             // 最低両数は必須条件なので、増結相手は全留置場から探す
-            const want = VEH.is207(vehicles[0]) ? (vehicles[0].cars === 4 ? 3 : 4) : vehicles[0].cars;
+            /* ★207系の3両は、3両＋3両でも最低両数 (6両) を満たすなら3両どうしで組む。
+               4両は学研都市線・JR東西線の7両 (4両＋3両) に要るので残しておく
+               (学研都市線は7両しか入れない。js/24-service-rules.js)。 */
+            let want = VEH.is207(vehicles[0]) ? (vehicles[0].cars === 4 ? 3 : 4) : vehicles[0].cars;
+            if (VEH.is207(vehicles[0]) && vehicles[0].cars === 3 && prof.minCars <= 6) want = 3;
             const pair = this.findOne(home, prof, want, vehicles, true, noBorrow) ||
                          this.findOne(home, prof, undefined, vehicles, true, noBorrow);
             if (!pair) break;
@@ -627,6 +735,7 @@ class FleetManager {
             if (!prof.pred(v)) return false;
             cars += v.cars;
         }
+        if (prof.formations && !formationMatches(prof.formations, vehicles)) return false;
         if (prof.pair) {
             if (vehicles.length !== prof.pair.length) return false;
             const want = prof.pair.slice().sort();

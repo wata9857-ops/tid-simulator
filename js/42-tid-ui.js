@@ -92,6 +92,9 @@ class TidUI {
     init() {
         this.fillSelectors();
         this.bindButtons();
+        /* Super-TID を開いているあいだは、段階的な運転再開の開通を
+           この画面の指令員が受け持つ (答えないときは別の指令員が代行する)。 */
+        this.game.dispatch({ name: "recoveryManual", value: true });
         this.render();
     }
 
@@ -104,14 +107,17 @@ class TidUI {
         const jump = this.el("tid-jump");
         if (jump) {
             const areas = [
-                ["姫路", "姫路・網干"], ["加古川", "加古川"], ["西明石", "西明石"],
+                ["上郡", "上郡 (山陽本線の西端)"], ["相生", "相生・赤穂線"], ["網干", "網干"],
+                ["姫路", "姫路"], ["加古川", "加古川"], ["西明石", "西明石"],
                 ["三ノ宮", "三ノ宮・神戸"], ["芦屋", "芦屋"], ["尼崎", "尼崎(分岐)"],
                 ["大阪", "大阪"], ["新大阪", "新大阪・宮原"], ["高槻", "高槻"],
                 ["向日町操", "向日町操"], ["京都", "京都"], ["山科", "山科(分岐)"],
                 ["草津", "草津"], ["野洲", "野洲"], ["米原", "米原"], ["敦賀", "敦賀"],
                 ["近江今津", "湖西線 近江今津"], ["宝塚", "JR宝塚線 宝塚"],
                 ["新三田", "JR宝塚線 新三田"], ["北新地", "JR東西線 北新地"],
-                ["放出", "JR東西線・学研都市線 放出"]
+                ["放出", "JR東西線・学研都市線 放出"], ["四条畷", "学研都市線 四条畷"],
+                ["松井山手", "学研都市線 松井山手"], ["京田辺", "学研都市線 京田辺"],
+                ["木津", "学研都市線 木津"]
             ];
             jump.innerHTML = areas.map(a => opt(a[0], a[1])).join("");
             jump.value = "大阪";
@@ -129,8 +135,9 @@ class TidUI {
         const branch = []
             .concat(Object.values(KOSEI_STATIONS_MAP))
             .concat(Object.values(FUKUCHI_STATIONS_MAP))
-            .concat(Object.values(TOZAI_STATIONS_MAP));
-        const all = stNames.concat(branch);
+            .concat(Object.values(TOZAI_STATIONS_MAP))
+            .concat(Object.values(AKO_STATIONS_MAP));
+        const all = stNames.concat(branch.filter(n => stNames.indexOf(n) < 0));
         const stOpts = all.map(n => opt(n)).join("");
         ["tid-hold-at"].forEach(id => {
             const e = this.el(id);
@@ -144,11 +151,11 @@ class TidUI {
         // 行先
         const destE = this.el("tid-dest");
         if (destE) {
-            const dests = ["姫路", "網干", "加古川", "西明石", "須磨", "神戸", "三ノ宮", "芦屋",
+            const dests = ["播州赤穂", "上郡", "相生", "網干", "姫路", "加古川", "西明石", "須磨", "神戸", "三ノ宮", "芦屋",
                 "尼崎", "大阪", "新大阪", "高槻", "京都", "草津", "野洲", "米原", "長浜",
                 "近江塩津", "敦賀", "近江今津", "永原", "堅田",
                 "塚口", "宝塚", "新三田", "篠山口", "福知山",
-                "放出", "京橋", "四条畷", "松井山手", "同志社前", "木津",
+                "放出", "京橋", "四条畷", "長尾", "松井山手", "京田辺", "同志社前", "木津",
                 "宮原操", "向日町操", "吹田貨"];
             destE.innerHTML = '<option value="">変更なし</option>' + dests.map(n => opt(n)).join("");
         }
@@ -228,6 +235,57 @@ class TidUI {
         this.writeSelect("tid-depot-train", html, sel.value);
     }
 
+    /**
+     * 画面の配置の切り替え。
+     *   ・表示・時間・表示倍率の欄をたたむ (線路図＝在線モニタを縦に広げる)
+     *   ・指令卓 (輸送障害・記録) を縦に広げる
+     * どちらも前回の状態を覚えておく。線路図は大きさが変わると次の描画で
+     * キャンバスを作り直す (js/41-tid-render.js の resize)。
+     */
+    bindLayout(on) {
+        const store = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) { /* 使えなくても続ける */ } };
+        const load = (k) => { try { return localStorage.getItem(k) === "1"; } catch (e) { return false; } };
+        const bar = this.el("tid-toolbar");
+        const btn = this.el("tid-toolbar-toggle");
+        const setBar = (collapsed) => {
+            if (!bar) return;
+            bar.classList.toggle("is-collapsed", collapsed);
+            if (btn) {
+                btn.textContent = collapsed ? "▼ 表示・時間・表示倍率" : "▲ たたむ";
+                btn.title = collapsed ? "表示・時間・表示倍率の欄を開きます"
+                                      : "表示・時間・表示倍率の欄をたたんで、線路図を広くします";
+            }
+            store("tid-toolbar-collapsed", collapsed);
+            this.relayout();
+        };
+        const setTall = (tall) => {
+            document.body.classList.toggle("tid-dock-tall", tall);
+            const g = this.el("tid-dock-grow");
+            if (g) g.textContent = tall ? "⤡ 戻す" : "⤢ 広げる";
+            store("tid-dock-tall", tall);
+            this.relayout();
+        };
+        this.layoutState = { collapsed: load("tid-toolbar-collapsed"), tall: load("tid-dock-tall") };
+        setBar(this.layoutState.collapsed);
+        setTall(this.layoutState.tall);
+        on("tid-toolbar-toggle", () => {
+            this.layoutState.collapsed = !this.layoutState.collapsed;
+            setBar(this.layoutState.collapsed);
+        });
+        on("tid-dock-grow", () => {
+            this.layoutState.tall = !this.layoutState.tall;
+            setTall(this.layoutState.tall);
+        });
+    }
+
+    /** 配置が変わったあと、線路図の大きさを合わせて描き直す */
+    relayout() {
+        const r = this.game && this.game.renderer;
+        if (r && typeof r.resize === "function") {
+            try { r.resize(); if (typeof r.draw === "function") r.draw(); } catch (e) { /* 起動前は描かない */ }
+        }
+    }
+
     bindButtons() {
         const on = (id, fn) => { const e = this.el(id); if (e) e.addEventListener("click", fn); };
         const onCh = (id, fn) => { const e = this.el(id); if (e) e.addEventListener("change", fn); };
@@ -242,8 +300,24 @@ class TidUI {
         const incBox = this.el("tid-incidents");
         if (incBox) incBox.addEventListener("click", (e) => {
             const b = e.target.closest ? e.target.closest("[data-rec='report']") : null;
-            if (b) this.openReport(b.getAttribute("data-id"));
+            if (b) { this.openReport(b.getAttribute("data-id")); return; }
+            // 段階的な運転再開の操作 (開通 / 確認列車を1本 / 点検済みをまとめて開通)
+            const r = e.target.closest ? e.target.closest("[data-rcv]") : null;
+            if (!r) return;
+            const plan = r.getAttribute("data-plan");
+            const seg = parseInt(r.getAttribute("data-seg"), 10);
+            const act = r.getAttribute("data-rcv");
+            if (act === "open") this.run({ name: "recoveryOpen", plan: plan, seg: seg });
+            if (act === "force") {
+                if (confirm("点検が終わっていない区間を開通させます。よろしいですか？")) {
+                    this.run({ name: "recoveryOpen", plan: plan, seg: seg, force: true });
+                }
+            }
+            if (act === "pass") this.run({ name: "recoveryPass", plan: plan, seg: seg });
+            if (act === "ready") this.run({ name: "recoveryOpenReady", plan: plan });
         });
+        on("tid-btn-major-rain", () => this.run({ name: "majorIncident", kind: "rain" }));
+        on("tid-btn-major-snow", () => this.run({ name: "majorIncident", kind: "snow" }));
         onCh("tid-speed", () => {
             const v = Number(this.el("tid-speed").value);
             setTimeScale(v);                       // 手元にもすぐ反映する
@@ -277,6 +351,7 @@ class TidUI {
         on("tid-btn-sus-clear", () => this.cmdClearSuspend());
         on("tid-btn-radio",     () => this.cmdRadio());
         on("tid-btn-radio-off", () => this.cmdClearRadio());
+        this.bindLayout(on);
         on("tid-log-cmd",       () => { this.logTab = "cmd"; this.renderLogs(); });
         on("tid-log-staff",     () => { this.logTab = "staff"; this.renderLogs(); });
         on("tid-log-comm",      () => { this.logTab = "comm"; this.renderLogs(); });
@@ -426,7 +501,8 @@ class TidUI {
             names = STATIONS.map(s => s.name)
                 .concat(Object.values(KOSEI_STATIONS_MAP))
                 .concat(Object.values(FUKUCHI_STATIONS_MAP))
-                .concat(Object.values(TOZAI_STATIONS_MAP));
+                .concat(Object.values(TOZAI_STATIONS_MAP))
+            .concat(Object.values(AKO_STATIONS_MAP).filter(n => n !== "播州赤穂"));
         }
         const html = '<option value="">駅を選択</option>' + names.map(n => opt(n)).join("");
         if (this.writeSelect("tid-chg-station", html, sel.value)) this.refreshTrackCandidates();
@@ -588,13 +664,36 @@ class TidUI {
     renderIncidents() {
         const e = this.el("tid-incidents");
         if (!e) return;
-        const list = (this.game.bus && !this.game.bus.isHost)
-            ? this.game.bus.incidentList() : this.game.incidents.list();
-        if (!list.length) {
+        const follower = !!(this.game.bus && !this.game.bus.isHost);
+        const list = follower ? this.game.bus.incidentList() : this.game.incidents.list();
+        const plans = follower ? this.game.bus.recoveryList()
+                               : (this.game.recovery ? this.game.recovery.list() : []);
+        if (!list.length && !plans.length) {
             e.innerHTML = '<p class="tid-empty">輸送障害はありません。</p>';
             return;
         }
-        e.innerHTML = list.map(i =>
+        /* 段階的な運転再開 (見合わせは解除したが、区間ごとに抑止が残っている)。
+           区間ごとに 点検中 → 開通可 → 開通 と進む。開通は指令の操作で行う。 */
+        const planHtml = plans.map(p =>
+            `<div class="tid-rcv">` +
+            `<div class="tid-rcv-head"><b>段階的な運転再開</b> ${escapeLogHtml(p.line)} ` +
+            `<span class="tid-inc-place">${escapeLogHtml(p.place)} ${escapeLogHtml(p.name)}</span>` +
+            `<span class="tid-inc-rem">開始から${p.minutes}分</span>` +
+            `<button class="tid-btn tid-rcv-btn" data-rcv="ready" data-plan="${escapeLogHtml(p.id)}">点検済みを開通</button></div>` +
+            p.segs.map(s =>
+                `<div class="tid-rcv-seg is-${s.state === "開通" ? "open" : (s.state === "開通可" ? "ready" : "hold")}">` +
+                `<span class="tid-rcv-label">${escapeLogHtml(s.label)}</span>` +
+                `<span class="tid-rcv-state">${escapeLogHtml(s.state)}` +
+                (s.readyIn !== null ? ` (点検 あと約${s.readyIn}分)` : "") +
+                (s.grant ? " / 確認列車 進行中" : (s.passes ? ` / 確認列車 ${s.passes}本 待ち` : "")) + `</span>` +
+                (s.state === "開通" ? "" :
+                    `<button class="tid-btn tid-rcv-btn" data-rcv="pass" data-plan="${escapeLogHtml(p.id)}" data-seg="${s.k}">1本進める</button>` +
+                    (s.state === "開通可"
+                        ? `<button class="tid-btn tid-btn-go tid-rcv-btn" data-rcv="open" data-plan="${escapeLogHtml(p.id)}" data-seg="${s.k}">開通</button>`
+                        : `<button class="tid-btn tid-rcv-btn" data-rcv="force" data-plan="${escapeLogHtml(p.id)}" data-seg="${s.k}" title="点検の完了を待たずに開通">開通 (点検前)</button>`)) +
+                `</div>`).join("") +
+            `</div>`).join("");
+        e.innerHTML = planHtml + list.map(i =>
             `<div class="tid-inc">` +
             `<span class="tid-inc-name">${escapeLogHtml(i.name)}</span>` +
             `<span class="tid-inc-place">${escapeLogHtml(i.place)}</span>` +
