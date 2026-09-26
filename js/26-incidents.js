@@ -60,7 +60,7 @@ const INCIDENT_MAX_BLOCK_SEC = 3600;
 const INCIDENT_TYPES = [
     // ================================================================ 人身事故 (7)
     {
-        id: "jinshin", family: "jinshin", name: "人身事故", weight: 5, needTrain: true, radio: true,
+        id: "jinshin", family: "jinshin", name: "人身事故", weight: 4, needTrain: true, radio: true,
         cat: "事故", depts: ["警察", "消防", "保線区", "車両所"],
         block: { tracks: "parallel", radius: 5 },
         hold: [1500, 2700], suspend: [1500, 2700],
@@ -113,7 +113,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 架線・電力 (4)
     {
-        id: "kasen", family: "kasen", name: "架線障害", weight: 2, needTrain: false, radio: false,
+        id: "kasen", family: "kasen", name: "架線障害", weight: 1.5, needTrain: false, radio: false,
         cat: "設備故障", depts: ["電力区"],
         block: { tracks: "parallel", radius: 4 },
         hold: null, suspend: [1200, 2700],
@@ -211,7 +211,7 @@ const INCIDENT_TYPES = [
         ]
     },
     {
-        id: "kidokairo", family: "shingo", name: "軌道回路故障", weight: 2, needTrain: false, radio: false,
+        id: "kidokairo", family: "shingo", name: "軌道回路故障", weight: 1.5, needTrain: false, radio: false,
         cat: "設備故障", depts: ["信号通信区", "保線区"],
         block: { tracks: "same", radius: 2 }, fault: true,
         hold: null, suspend: [900, 1800],
@@ -258,7 +258,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 転てつ器 (4)
     {
-        id: "tentetsu", family: "tentetsu", name: "転てつ器故障", weight: 3, needTrain: false, radio: false,
+        id: "tentetsu", family: "tentetsu", name: "転てつ器故障", weight: 2.5, needTrain: false, radio: false,
         cat: "設備故障", depts: ["施設区", "信号通信区"],
         block: { tracks: "same", radius: 1 }, fault: true, atStation: true,
         hold: null, suspend: [600, 1800],
@@ -304,7 +304,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 線路支障 (5)
     {
-        id: "shishobutsu", family: "shishobutsu", name: "線路支障", weight: 2, needTrain: false, radio: true,
+        id: "shishobutsu", family: "shishobutsu", name: "線路支障", weight: 1.5, needTrain: false, radio: true,
         cat: "外部要因", depts: ["保線区"],
         block: { tracks: "parallel", radius: 3 },
         hold: null, suspend: [600, 1500],
@@ -392,7 +392,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 車両故障 (8)
     {
-        id: "syaryo", family: "syaryo", name: "車両故障", weight: 3, needTrain: true, radio: false,
+        id: "syaryo", family: "syaryo", name: "車両故障", weight: 2.5, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所"],
         block: null,
         hold: [600, 1500], suspend: null,
@@ -416,7 +416,7 @@ const INCIDENT_TYPES = [
         ]
     },
     {
-        id: "brake", family: "syaryo", name: "ブレーキ装置故障", weight: 2, needTrain: true, radio: false,
+        id: "brake", family: "syaryo", name: "ブレーキ装置故障", weight: 1.5, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所"],
         block: null,
         hold: [600, 1500], suspend: null,
@@ -486,7 +486,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ ドア (7)
     {
-        id: "door", family: "door", name: "ドア故障", weight: 4, needTrain: true, radio: false,
+        id: "door", family: "door", name: "ドア故障", weight: 3.5, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所", "駅"],
         block: null, atStation: true,
         hold: [300, 780], suspend: null,
@@ -550,7 +550,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 踏切 (7)
     {
-        id: "fumikiri", family: "fumikiri", name: "踏切障害", weight: 3, needTrain: true, radio: true,
+        id: "fumikiri", family: "fumikiri", name: "踏切障害", weight: 2.5, needTrain: true, radio: true,
         cat: "外部要因", depts: ["保線区", "警察"],
         block: { tracks: "same", radius: 1 },
         hold: [300, 900], suspend: [300, 900],
@@ -636,7 +636,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 旅客対応 (8)
     {
-        id: "kyubyonin", family: "kyubyonin", name: "急病人救護", weight: 5, needTrain: true, radio: false,
+        id: "kyubyonin", family: "kyubyonin", name: "急病人救護", weight: 4.5, needTrain: true, radio: false,
         cat: "旅客対応", depts: ["駅", "消防"],
         block: null, atStation: true,
         hold: [240, 720], suspend: null,
@@ -701,7 +701,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 車内設備 (5)
     {
-        id: "kikikosho", family: "kikikosho", name: "車内設備故障", weight: 2, needTrain: true, radio: false,
+        id: "kikikosho", family: "kikikosho", name: "車内設備故障", weight: 1.5, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所"],
         block: null,
         hold: [240, 600], suspend: null,
@@ -808,7 +808,8 @@ class IncidentSystem {
     /** 条件に合う場所と当該列車を選ぶ */
     pickLocation(type) {
         const running = this.game.trains.filter(t =>
-            t.state !== "finished" && t.state !== "in_depot" && t.currBlockIndex >= 0);
+            t.state !== "finished" && t.state !== "in_depot" && t.currBlockIndex >= 0 &&
+            !isFreightTerminalTrack(t.trackId));          // 貨物ターミナルの構内は本線の輸送障害の対象外
         if (type.needTrain) {
             let pool = running;
             if (type.atStation) {
@@ -884,11 +885,17 @@ class IncidentSystem {
         // 大雨・大雪 (区間で起きる大規模な障害) は別の起こし方をする
         const major = forcedTypeId && MAJOR_INCIDENT_TYPES.find(t => t.id === forcedTypeId);
         if (major && this.game.recovery) return this.game.recovery.triggerMajor(major.area);
-        const type = forcedTypeId
+        const baseType = forcedTypeId
             ? (INCIDENT_TYPES.find(t => t.id === forcedTypeId) || pickIncidentType())
             : pickIncidentType();
-        const loc = this.pickLocation(type);
+        const loc = this.pickLocation(baseType);
         if (!loc) return null;
+        /* 場面 (js/33-incident-scenarios.js)。種類が決まったあと、起きた場所と時刻に
+           合う場面を選んで、原因・交信・時間・止める範囲を書き分ける。
+           種類の抽選とは別なので、起きやすさの割合は変わらない。 */
+        const scen = (typeof pickIncidentScenario === "function")
+            ? pickIncidentScenario(baseType, incidentScenarioCtx(this.game, loc.trackId, loc.index)) : null;
+        const type = (typeof applyIncidentScenario === "function") ? applyIncidentScenario(baseType, scen) : baseType;
 
         const rnd = (a) => a[0] + Math.random() * (a[1] - a[0]);
         const suspendSec = type.suspend ? Math.min(INCIDENT_MAX_BLOCK_SEC, rnd(type.suspend)) : 0;
@@ -909,6 +916,7 @@ class IncidentSystem {
             faults: [],
             stage: "支障中",
             trainNo: loc.train ? loc.train.trainNo : "",
+            scenario: type.scenario || "",
             /* 人身事故のうち重いものは、見合わせを解いたあと段階的に開通させる
                (現場付近の点検・車両の移動に時間がかかる)。 */
             staged: (type.family === "jinshin") && Math.random() < JINSHIN_STAGED_RATIO
@@ -960,12 +968,15 @@ class IncidentSystem {
         this.active.push(inc);
         this.history.push({ at: this.game.currentTime, id: inc.id, name: type.name, place: inc.place,
                             family: type.family || type.id });
+        /* 長引く見合わせ (重い人身事故) は、まず区間の列車をすべて抑止する。
+           見合わせを解いても、この抑止は指令が順次解除するまで残る (RecoveryControl)。 */
+        if (inc.staged && this.game.recovery) this.game.recovery.onSuspend(inc);
         // 輸送障害の記録 (js/32-records.js)。報告書の元になる
         if (this.game.records) this.game.records.incidentStarted(inc);
         this.syncEmergencyState();
 
         const msg = type.first(inc.place, inc.trainNo || "当該列車");
-        this.game.ui.updateBanner(`🚨【${type.name}】${msg}`, "banner-red");
+        this.game.ui.updateBanner(`🚨【${type.name}${inc.scenario ? "・" + inc.scenario : ""}】${msg}`, "banner-red");
         return inc;
     }
 
@@ -1118,6 +1129,13 @@ class IncidentSystem {
             const plan = this.game.recovery.startPlan(inc, inc.type.recovery || JINSHIN_RECOVERY);
             if (plan) return;
         }
+        // 計画にしなかった (指令の全解除など) ときは、見合わせ中に掛けた抑止を残さない
+        this.game.trains.forEach(t => {
+            if (t.recoveryHold !== "inc:" + inc.id) return;
+            t.recoveryHold = null;
+            t.isManuallySuspended = false;
+            if (t.state === "holding") { t.state = "running"; t.timer = 15; }
+        });
 
         if (!silent) {
             this.game.ui.updateBanner(
@@ -1130,7 +1148,7 @@ class IncidentSystem {
     /** 画面表示用: いま起きている輸送障害の一覧 */
     list() {
         return this.active.map(inc => ({
-            id: inc.id, name: inc.type.name, place: inc.place, stage: inc.stage,
+            id: inc.id, name: inc.type.name, scenario: inc.scenario || "", place: inc.place, stage: inc.stage,
             remain: Math.max(0, Math.ceil(inc.timer / 60)), trainNo: inc.trainNo
         }));
     }
@@ -1142,24 +1160,32 @@ class IncidentSystem {
 
    ■ 何を足したか
      大雨・大雪・人身事故のような大きな障害のあとは、運転見合わせを
-     「解除」しても、すぐに全線が元どおり走れるわけではない。実際には
-       ・運転見合わせは正式に解除 (運転再開) するが、
-       ・一部の区間は保線区の巡回点検・分岐器の除雪などが終わるまで抑止が残り、
-       ・指令が点検の終わった区間から1区間ずつ手動で開通させ、
-       ・そのあいだは確認のための列車を1本ずつ注意運転で進める
-     という形で、長いときは1時間半以上かけて平常に戻していく。
+     「解除」しても、区間の列車がいっせいに走り出すわけではない。実際には
+       ・見合わせが長引くと分かった時点で、区間の中の列車をすべて抑止し、
+       ・点検が済んだら運転見合わせを正式に解除 (運転再開) するが、
+       ・区間の列車は1本ずつの抑止として残り、指令が乗務員に通告しながら
+         1本ずつ・何本かずつ順に発車させ、
+       ・しばらくすると応援の指令員が引き継いで、残りを間隔をあけて出していく
+     という形で平常に戻していく。
 
-   ■ ここでの扱い
-     1. 見合わせを解くとき (IncidentSystem.finish)、障害の種類が段階的な
-        再開を要するもの (大雨・大雪・人身事故の重いもの) なら、
-        区間を駅と駅のあいだごとに「開通待ちの区間」として残す
-        (TrackManager.recoveryHolds。isSuspended() が止める)。
-     2. 区間ごとに点検 (巡回) の時間があり、終わると「開通できる」になる。
-     3. Super-TID の指令員は区間を1つずつ「開通」させる。
-        「1本進める」で確認の列車を1本だけ注意運転で通せる。
-        指令員が答えないとき・旅客向け画面だけのときは、
-        別の指令員が点検の終わった区間から開通させる (運転が止まったままにならない)。
-     4. すべての区間が開通したら、しばらく徐行を残して平常に戻る。
+   ■ ここでの扱い (★2026-09 に作り直し)
+     以前は区間を駅間ごとに「開通待ち」として残し、確認列車を1本ずつ
+     「1本進める」で通す形だった。列車が多いと同じ操作を何十回も繰り返すことになり、
+     実際の指令の仕事とも違っていたのでやめた。
+     1. 見合わせが始まったとき (trigger / triggerArea → onSuspend)、
+        区間の中の列車をすべて抑止する (Train.recoveryHold)。
+     2. 見合わせを解くとき (IncidentSystem.finish → startPlan)、区間と、その手前に
+        詰まっている列車を「抑止中の列車」として計画にまとめる。線路の見合わせは解く。
+     3. 運転再開の手配 (乗務員への通告・車両の点検, prepSec) のあいだは誰も発車させない。
+     4. そのあと Super-TID の指令員が「先頭を1本ずつ」「3本ずつ」「全列車」「線路ごと」で解除する。
+        指令卓の「抑止解除」「強制発車」で1本ずつ解いてもよい。
+     5. 画面の指令員が一定時間 (RECOVERY_RULES.idleSec) 操作しないか、
+        解除から一定時間 (handoverSec) 経ったら、応援の指令員が引き継ぐ。
+        旅客向け画面だけのときは、手配が済みしだい当務の指令員が受け持つ。
+        引き継いだ指令員は、線路ごとに先頭の列車を間隔 (gapSec) をあけて発車させる
+        (列が長いときは2本ずつの続行)。先に出した列車が駅間で止まっていれば待つ。
+     6. 抑止中の列車がいなくなったら平常に戻る (徐行は残る)。
+        どんな場合でも limitSec で残りをまとめて解除するので、取り残しは出ない。
 
    ★起きやすさ: 大雨・大雪はまれにしか起きない (1日あたり CONFIG.majorIncidentChance)。
      ふだんの輸送障害の種類と割合 (INCIDENT_TYPES) には手を触れていないので、
@@ -1187,7 +1213,7 @@ const MAJOR_AREAS = {
 /* 大規模な障害の種類。IncidentSystem の種類と同じ形 (報告書もそのまま作れる)。
      area        … MAJOR_AREAS のどれで起きるか
      maxBlockSec … 見合わせの上限 (ふつうの障害の1時間より長い)
-     recovery    … 段階的な運転再開 { segSec:[点検にかかる秒数], slow:{sec,factor} } */
+     recovery    … 段階的な運転再開 { prepSec:[運転再開の手配の秒数], gapSec:[自動で解除する間隔], slow:{sec,factor} } */
 const MAJOR_INCIDENT_TYPES = [
     {
         id: "heavy_rain", family: "major", name: "大雨 (雨量計の規制値超過)", weight: 0,
@@ -1210,7 +1236,7 @@ const MAJOR_INCIDENT_TYPES = [
             [0.50, "雨量の推移を監視", "雨は弱まりつつありますが、規制値を下回るまで見合わせを続けます。"],
             [0.85, "規制解除の準備", "規制解除後に巡回点検を行うため、保線区が出動しています。"]
         ],
-        recovery: { segSec: [900, 1500], slow: { sec: 1800, factor: 1.6 } }
+        recovery: { prepSec: [240, 420], gapSec: [120, 210], slow: { sec: 1800, factor: 1.6 } }
     },
     {
         id: "heavy_snow", family: "major", name: "大雪 (着雪・分岐器の不転換)", weight: 0,
@@ -1233,14 +1259,24 @@ const MAJOR_INCIDENT_TYPES = [
             [0.45, "除雪作業中 (継続)", "降雪が続いており、除雪を繰り返しています。"],
             [0.85, "運転再開の準備", "主な分岐器の除雪が終わりました。区間ごとの確認に移ります。"]
         ],
-        recovery: { segSec: [1500, 2100], slow: { sec: 2400, factor: 1.8 } }
+        recovery: { prepSec: [300, 540], gapSec: [150, 240], slow: { sec: 2400, factor: 1.8 } }
     }
 ];
 
 /* 人身事故の重いもの (現場付近の点検・車両の移動に時間がかかる)。
-   人身事故のうちこの割合が、見合わせ解除後に段階的な開通になる。 */
+   人身事故のうちこの割合が、見合わせ解除後に段階的な運転再開になる。 */
 const JINSHIN_STAGED_RATIO = 0.35;
-const JINSHIN_RECOVERY = { segSec: [600, 1080], slow: { sec: 900, factor: 1.5 } };
+const JINSHIN_RECOVERY = { prepSec: [120, 300], gapSec: [90, 150], slow: { sec: 900, factor: 1.5 } };
+
+/* 段階的な運転再開の時間の決まり (ゲーム内の秒)。
+     idleSec     … 画面の指令員が解除の操作をしないまま、この時間が経つと
+                   別の指令員 (応援) が引き継いで自動で解除していく
+     handoverSec … 見合わせの解除からこの時間が経ったら、操作の有無にかかわらず
+                   別の指令員に引き継ぐ (当務の指令員は次の障害・連絡の対応に戻る)
+     limitSec    … 見合わせの解除からこの時間が経っても抑止が残っていたら、
+                   残りをまとめて解除する (取り残しを作らない最後の保険)
+     margin      … 区間の外側で、区間の手前に詰まっている列車もこの閉塞の数だけ抑止に含める */
+const RECOVERY_RULES = { idleSec: 480, handoverSec: 1500, limitSec: 5400, margin: UNITS_PER_STATION };
 
 class RecoveryControl {
     constructor(game) {
@@ -1248,10 +1284,8 @@ class RecoveryControl {
         this.plans = [];
         this.seq = 0;
         /* 指令員が画面から操作しているか。Super-TID を開くと true になる
-           (js/42-tid-ui.js)。false のときは別の指令員が自動で開通させる。 */
+           (js/42-tid-ui.js)。false のときは当務の指令員が自動で解除していく。 */
         this.manual = false;
-        // 答えが無いときに別の指令員が開通させるまでの待ち [秒]
-        this.fallbackSec = 600;
         this.scheduleMajor(game.currentTime);
     }
 
@@ -1275,53 +1309,9 @@ class RecoveryControl {
         return this.game.incidents.triggerArea(type, area);
     }
 
-    /** 障害の見合わせを解くときに、段階的な運転再開の計画を作る */
-    startPlan(inc, rec) {
-        const g = this.game;
-        const area = inc.area || this.areaAround(inc);
-        if (!area) return null;
-        const segs = this.segmentsOf(area);
-        if (!segs.length) return null;
-        const plan = {
-            id: "rcv_" + (++this.seq), incId: inc.id, name: inc.type.name,
-            line: area.line || "", place: inc.place, startedAt: g.currentTime,
-            segs: segs, spec: rec, doneAt: null
-        };
-        /* 点検は区間の端から順に進める。保線区の班は区間3つにつき1班
-           (長い区間は複数の班が同時に回る)。班の数だけ最初の区間の点検が
-           終わる時刻を決め、あとは開通するたびに次の区間の点検を始める。 */
-        const rnd = (a) => a[0] + Math.random() * (a[1] - a[0]);
-        const teams = Math.max(1, Math.ceil(segs.length / 3));
-        segs.forEach((s, k) => {
-            s.state = "点検中";
-            s.readyAt = (k < teams) ? g.currentTime + rnd(rec.segSec) * (1 + 0.15 * k) : null;
-            s.passes = 0; s.grant = null; s.grantIn = false;
-            s.holds = [];
-            area.tracks.forEach(tid => {
-                const h = { trackId: tid, start: s.start, end: s.end, plan: plan.id, seg: k, grant: null };
-                g.trackMgr.recoveryHolds.push(h);
-                s.holds.push(h);
-                // 開通までのあいだ、確認列車は注意運転 (15km/h 程度)
-                g.trackMgr.addSpeedRestriction(tid, s.start, s.end, 3.0,
-                    "段階開通 (注意運転)", g.currentTime + 6 * 3600);
-            });
-        });
-        this.plans.push(plan);
-        const first = segs[0];
-        g.ui.updateBanner(
-            `🟠【運転再開・一部抑止】${inc.place}の${inc.type.name}は運転見合わせを解除しましたが、` +
-            `${area.line} ${segs[0].from}〜${segs[segs.length - 1].to} (${segs.length}区間) は` +
-            `点検の終わった区間から指令が順次開通させます。最初は ${first.from}〜${first.to}。`,
-            "banner-red");
-        this.note(plan, "段階開通",
-            `運転見合わせを解除。${area.line} ${segs[0].from}〜${segs[segs.length - 1].to} の${segs.length}区間は ` +
-            `抑止を継続し、点検の終わった区間から1区間ずつ開通させる。`);
-        return plan;
-    }
-
-    /** 人身事故のように場所で起きた障害の、前後の区間 (駅と駅のあいだ2〜3区間) */
+    // ------------------------------------------------------------ 区間
+    /** 人身事故のように場所で起きた障害の、前後の区間 (駅2つずつ) */
     areaAround(inc) {
-        const tracks = parallelTracks(inc.trackId).filter(t => /Out$|_Up$|_Down$/.test(t));
         const blks = this.game.trackMgr.blocks[inc.trackId];
         if (!blks) return null;
         const stationsNear = (dir) => {
@@ -1336,34 +1326,242 @@ class RecoveryControl {
         const back = stationsNear(-1), fwd = stationsNear(1);
         const from = back[back.length - 1] || back[0], to = fwd[fwd.length - 1] || fwd[0];
         if (!from || !to || from === to) return null;
-        return { line: recLineName(inc.trackId, blks[inc.index].stationIdx), tracks: tracks, from: from, to: to };
+        return { line: recLineName(inc.trackId, blks[inc.index].stationIdx),
+                 tracks: parallelTracks(inc.trackId), from: from, to: to };
     }
 
-    /** 区間を駅と駅のあいだごとに切る。{from, to, start, end} (start〜end は駅間のブロック) */
-    segmentsOf(area) {
-        const tid = area.tracks[0];
-        const blks = this.game.trackMgr.blocks[tid];
-        if (!blks) return [];
-        const a = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.from);
-        const z = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.to);
-        if (!a || !z) return [];
-        const lo = Math.min(a.index, z.index), hi = Math.max(a.index, z.index);
-        const sts = [];
-        for (let i = lo; i <= hi; i++) {
-            const b = blks[i];
-            if (b && b.x !== -1000 && isRealStationBlock(b)) sts.push(b);
+    /** 区間の両端のブロック番号 [lo, hi] (区間の両端の駅を含む) */
+    areaRange(area) {
+        for (const tid of area.tracks) {
+            const blks = this.game.trackMgr.blocks[tid];
+            if (!blks) continue;
+            const a = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.from);
+            const z = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === area.to);
+            if (a && z) return [Math.min(a.index, z.index), Math.max(a.index, z.index)];
         }
-        const segs = [];
-        for (let k = 0; k + 1 < sts.length; k++) {
-            const p = sts[k], q = sts[k + 1];
-            if (q.index - p.index < 2) continue;
-            // 大阪・京都方 (インデックスの大小どちらでも、線区の入口側) から順に
-            segs.push({ from: blockStationName(p), to: blockStationName(q), start: p.index + 1, end: q.index - 1 });
+        return null;
+    }
+
+    /** 区間の中 (と、区間の手前に詰まっている所) にいる列車 */
+    trainsInArea(area, range, margin) {
+        const m = margin || 0;
+        return this.game.trains.filter(t => {
+            if (t.state === "finished" || t.state === "in_depot" || t.currBlockIndex < 0) return false;
+            if (area.tracks.indexOf(t.trackId) < 0) return false;
+            const i = t.currBlockIndex;
+            if (i >= range[0] && i <= range[1]) return true;
+            // 区間の外は、区間へ向かって走ってくる側の手前だけ
+            if (t.dir === 1) return i < range[0] && i >= range[0] - m;
+            return i > range[1] && i <= range[1] + m;
+        });
+    }
+
+    /** 列車を段階的な運転再開の抑止に入れる */
+    holdTrain(t, planId) {
+        if (t.recoveryHold === planId) return false;
+        t.recoveryHold = planId;
+        t.isManuallySuspended = true;
+        t.manualSuspendTimer = 0;
+        t.hasNotifiedSuspendLong = true;     // 20分経過の乗務員連絡は、この抑止では出さない (指令が把握している)
+        if (t.state === "running") { t.state = "stopped"; t.timer = 15; }
+        return true;
+    }
+
+    /**
+     * 長引く見合わせが始まったとき (大雨・大雪・重い人身事故)。
+     * まず区間の中の列車をすべて抑止する。見合わせを解いても、この抑止は残る。
+     */
+    onSuspend(inc) {
+        const area = inc.area || this.areaAround(inc);
+        if (!area) return;
+        inc.area = area;
+        const range = this.areaRange(area);
+        if (!range) return;
+        const tag = "inc:" + inc.id;
+        let n = 0;
+        this.trainsInArea(area, range, 0).forEach(t => {
+            if (t.recoveryHold) return;
+            if (this.holdTrain(t, tag)) n++;
+        });
+        inc.recoveryHeld = n;
+        if (this.game.records && n) {
+            this.game.records.incidentAction(inc.id,
+                `区間内の列車 ${n}本 を抑止 (見合わせの解除後も、指令が順次解除するまで抑止を続ける)`, "指令");
         }
-        // 本線・分岐線の付け根に近い側 (列車が多く待っている側) から開ける
-        const rootFirst = (area.tracks[0].indexOf("Fukuchi") === 0 || area.tracks[0].indexOf("Ako") === 0)
-            ? segs.slice().reverse() : segs;
-        return rootFirst;
+    }
+
+    // ------------------------------------------------------------ 計画
+    /**
+     * 見合わせを解くときに、段階的な運転再開の計画を作る。
+     * 見合わせは正式に解除する。区間の列車は1本ずつの抑止として残り、
+     * 指令が1本ずつ・何本かずつ解除していく。
+     */
+    startPlan(inc, spec) {
+        const g = this.game;
+        const area = inc.area || this.areaAround(inc);
+        const tag = "inc:" + inc.id;
+        const range = area ? this.areaRange(area) : null;
+        if (!area || !range) {
+            // 区間が決められない (念のため): 見合わせ中に掛けた抑止を残さない
+            g.trains.forEach(t => { if (t.recoveryHold === tag) { t.recoveryHold = null; t.isManuallySuspended = false; } });
+            return null;
+        }
+        const rnd = (a) => a[0] + Math.random() * (a[1] - a[0]);
+        const plan = {
+            id: "rcv_" + (++this.seq), incId: inc.id, name: inc.type.name,
+            line: area.line || "", place: inc.place, area: area, range: range,
+            from: area.from, to: area.to,
+            startedAt: g.currentTime, spec: spec,
+            prepUntil: g.currentTime + rnd(spec.prepSec || [180, 360]),
+            lastManualAt: null,
+            mode: "prep",             // prep (運転再開の手配) → manual (画面の指令員) / auto (別の指令員が自動で)
+            by: "",
+            held: [],                 // 抑止中の列車ID
+            released: 0, manualReleased: 0, autoReleased: 0,
+            streams: {}               // 線路ごとの次の自動解除の時刻
+        };
+        // 見合わせ中から抑止していた列車と、いま区間 (と手前) にいる列車
+        g.trains.forEach(t => { if (t.recoveryHold === tag) { t.recoveryHold = plan.id; plan.held.push(t.id); } });
+        this.trainsInArea(area, range, RECOVERY_RULES.margin).forEach(t => {
+            if (t.recoveryHold) return;                   // この計画 (済み) か、ほかの計画の抑止
+            if (this.holdTrain(t, plan.id)) plan.held.push(t.id);
+        });
+        if (!plan.held.length) return null;
+
+        // 区間の徐行 (解除した列車が順に通る)
+        area.tracks.forEach(tid => {
+            const blks = g.trackMgr.blocks[tid];
+            if (!blks || !blks[range[0]]) return;
+            g.trackMgr.addSpeedRestriction(tid, range[0], range[1], spec.slow.factor,
+                plan.name + "後の徐行", g.currentTime + spec.slow.sec + 1800);
+        });
+        this.plans.push(plan);
+        const mins = Math.max(1, Math.round((plan.prepUntil - g.currentTime) / 60));
+        g.ui.updateBanner(
+            `🟠【運転再開・抑止継続】${inc.place}の${inc.type.name}は運転見合わせを解除しました。` +
+            `${area.line} ${area.from}〜${area.to} の列車 ${plan.held.length}本 は抑止を続け、` +
+            `約${mins}分後から指令が順次発車させます。`, "banner-red");
+        this.note(plan, "運転再開",
+            `運転見合わせを解除。${area.line} ${area.from}〜${area.to} の列車 ${plan.held.length}本 は個別の抑止を継続し、` +
+            `乗務員への通告・車両の点検が済みしだい、指令が順次解除する。`);
+        return plan;
+    }
+
+    /** 計画の中の列車を、線路ごとに「前にいる順」に並べる */
+    streamsOf(plan) {
+        const g = this.game;
+        const out = {};
+        plan.held.forEach(id => {
+            const t = g.getTrain(id);
+            if (!t) return;
+            const key = t.trackId + "|" + t.dir;
+            (out[key] = out[key] || []).push(t);
+        });
+        Object.keys(out).forEach(k => out[k].sort((a, b) => (b.currBlockIndex - a.currBlockIndex) * a.dir));
+        return out;
+    }
+
+    /** 抑止を解く */
+    releaseTrain(plan, t, by) {
+        const at = plan.held.indexOf(t.id);
+        if (at >= 0) plan.held.splice(at, 1);
+        if (t.recoveryHold !== plan.id) return false;
+        t.recoveryHold = null;
+        t.isManuallySuspended = false;
+        t.manualSuspendTimer = 0;
+        t.hasNotifiedSuspendLong = false;
+        if (t.state === "holding") { t.state = "running"; t.timer = 15; }
+        plan.released++;
+        if (by === "auto") plan.autoReleased++; else plan.manualReleased++;
+        return true;
+    }
+
+    /**
+     * 画面の指令員の操作。
+     *   count  … 線路ごとに先頭から何本解除するか (Infinity で全部)
+     *   stream … 特定の線路だけ (省略で全線路)
+     */
+    releaseNext(plan, count, stream, by) {
+        const g = this.game;
+        const streams = this.streamsOf(plan);
+        let n = 0;
+        const names = [];
+        Object.keys(streams).forEach(k => {
+            if (stream && k !== stream) return;
+            streams[k].slice(0, count).forEach(t => {
+                if (this.releaseTrain(plan, t, "manual")) { n++; if (names.length < 4) names.push(t.trainNo); }
+            });
+        });
+        if (!n) return 0;
+        plan.lastManualAt = g.currentTime;
+        if (plan.mode === "prep") plan.mode = "manual";
+        const who = by || "指令";
+        g.ui.updateBanner(`【指令】${plan.from}〜${plan.to} の抑止を解除: ${names.join("・")}` +
+            (n > names.length ? ` ほか計${n}本` : "") + ` (${who})`, "banner-orange");
+        this.note(plan, "抑止解除", `${names.join("・")}${n > names.length ? " ほか" : ""} 計${n}本 の抑止を解除 (${who})`, who);
+        return n;
+    }
+
+    /** 「全列車」: 残りをすべて解除して、段階的な運転再開を終える */
+    releaseAll(plan, by) {
+        const n = this.releaseNext(plan, Infinity, null, by);
+        const at = this.plans.indexOf(plan);
+        if (at >= 0) {
+            this.finishPlan(plan, `指令が残り${n}本の抑止をまとめて解除`);
+            this.plans.splice(at, 1);
+        }
+        return n;
+    }
+
+    /** 別の指令員に引き継ぐ (以後は自動で順次解除) */
+    handover(plan, reason) {
+        if (plan.mode === "auto" || plan.mode === "done") return;
+        plan.mode = "auto";
+        plan.by = this.manual ? "応援の指令員" : "当務の指令員";
+        plan.handedAt = this.game.currentTime;
+        const rest = plan.held.length;
+        this.game.ui.updateBanner(
+            `【指令】${plan.from}〜${plan.to} の抑止の解除は ${plan.by} が引き継ぎました (${reason})。` +
+            `残り ${rest}本 を間隔をあけて順次発車させます。`, "banner-blue");
+        this.note(plan, "引き継ぎ", `${plan.by} が引き継ぎ (${reason})。残り ${rest}本 を順次解除`, plan.by + " (代行)");
+    }
+
+    /** 自動の解除 (別の指令員)。線路ごとに先頭の列車を、間隔をあけて発車させる */
+    autoRelease(plan) {
+        const g = this.game;
+        const now = g.currentTime;
+        const gap = plan.spec.gapSec || [120, 200];
+        const streams = this.streamsOf(plan);
+        Object.keys(streams).forEach(k => {
+            const list = streams[k];
+            if (!list.length) return;
+            const next = plan.streams[k] || 0;
+            if (now < next) return;
+            /* 先に出した列車がすぐ先の駅間で止まっているうちは出さない
+               (解除した列車を追いかけさせて、またすぐ止めることになる) */
+            const lead = list[0];
+            if (this.blockedAhead(lead)) { plan.streams[k] = now + 30; return; }
+            // 長い列は2本ずつ (続行運転)。出したら次は間隔をあける
+            const group = list.length >= 6 ? 2 : 1;
+            const out = list.slice(0, group).filter(t => this.releaseTrain(plan, t, "auto"));
+            plan.streams[k] = now + gap[0] + Math.random() * (gap[1] - gap[0]);
+            if (out.length) this.note(plan, "抑止解除",
+                out.map(t => t.trainNo).join("・") + ` の抑止を解除 (${plan.by || "当務の指令員"})`);
+        });
+    }
+
+    /** その列車のすぐ先の駅間が、先に解除した列車でふさがっているか */
+    blockedAhead(t) {
+        const blks = this.game.trackMgr.blocks[t.trackId];
+        if (!blks) return false;
+        for (let k = 1; k <= 2; k++) {
+            const b = blks[t.currBlockIndex + t.dir * k];
+            if (!b || b.x === -1000) return false;
+            if (isRealStationBlock(b)) return false;
+            if (b.lanes.some(l => l && l !== t && l.dir === t.dir && !l.recoveryHold &&
+                                  (l.state === "holding" || l.state === "stopped"))) return true;
+        }
+        return false;
     }
 
     /** 毎Tick */
@@ -1379,107 +1577,90 @@ class RecoveryControl {
 
         for (let pi = this.plans.length - 1; pi >= 0; pi--) {
             const plan = this.plans[pi];
-            let allOpen = true;
-            plan.segs.forEach((s, k) => {
-                if (s.state === "開通") return;
-                allOpen = false;
-                // 点検が終わった
-                if (s.state === "点検中" && s.readyAt !== null && now >= s.readyAt) {
-                    s.state = "開通可";
-                    s.readySince = now;
-                    g.ui.updateBanner(
-                        `【保線区】${s.from}〜${s.to}間の点検が終わりました。` +
-                        (this.manual ? "指令の開通の指示を待っています。" : "開通させます。"), "banner-blue");
-                    this.note(plan, "点検完了", `${s.from}〜${s.to}間の点検完了`);
+            // 抑止の外れた列車 (消えた・指令が個別に解除した) を外す
+            plan.held = plan.held.filter(id => {
+                const t = g.getTrain(id);
+                if (!t || t.state === "finished" || t.state === "in_depot") {
+                    if (t && t.recoveryHold === plan.id) t.recoveryHold = null;
+                    return false;
                 }
-                // 指令員がいない・答えないときは、別の指令員が開通させる
-                if (s.state === "開通可" && (!this.manual || now - s.readySince >= this.fallbackSec)) {
-                    this.openSeg(plan, k, this.manual ? "他の指令員 (代行)" : "当務の指令員");
+                if (t.recoveryHold !== plan.id) return false;
+                if (!t.isManuallySuspended) {
+                    // 指令卓の「抑止解除」「強制発車」で個別に解いた
+                    t.recoveryHold = null;
+                    plan.released++; plan.manualReleased++;
+                    plan.lastManualAt = now;
+                    if (plan.mode === "prep") plan.mode = "manual";
+                    return false;
                 }
-                // 確認列車の通過を見届けたら、許可を消す
-                if (s.grant) {
-                    const t = g.getTrain(s.grant);
-                    const inside = !!t && t.state !== "finished" && s.holds.some(h =>
-                        h.trackId === t.trackId && t.currBlockIndex >= h.start && t.currBlockIndex <= h.end);
-                    if (inside) s.grantIn = true;
-                    if (!t || t.state === "finished" || (s.grantIn && !inside) ||
-                        (!s.grantIn && now - (s.grantAt || now) > 1200)) {
-                        s.grant = null; s.grantIn = false;
-                        s.holds.forEach(h => { h.grant = null; });
-                    }
-                }
-            });
-            if (allOpen) {
-                plan.doneAt = now;
-                g.ui.updateBanner(
-                    `🟢【平常運転へ】${plan.place}の${plan.name}に伴う段階的な開通が終わり、` +
-                    `全区間で運転を再開しました (${Math.round((now - plan.startedAt) / 60)}分)。` +
-                    `当分の間は徐行運転です。`, "banner-orange");
-                this.note(plan, "全区間開通", `全区間の開通を完了 (段階開通 ${Math.round((now - plan.startedAt) / 60)}分)`);
-                this.plans.splice(pi, 1);
-            }
-        }
-    }
-
-    /** 区間を開通させる */
-    openSeg(plan, k, by) {
-        const g = this.game;
-        const s = plan.segs[k];
-        if (!s || s.state === "開通") return false;
-        s.state = "開通";
-        s.openedAt = g.currentTime;
-        const holds = g.trackMgr.recoveryHolds;
-        s.holds.forEach(h => { const at = holds.indexOf(h); if (at >= 0) holds.splice(at, 1); });
-        // 注意運転を外して、しばらく徐行を残す
-        const sr = g.trackMgr.speedRestrictions;
-        for (let i = sr.length - 1; i >= 0; i--) {
-            const r = sr[i];
-            if (r.reason === "段階開通 (注意運転)" && s.holds.some(h => h.trackId === r.trackId && h.start === r.start && h.end === r.end)) sr.splice(i, 1);
-        }
-        s.holds.forEach(h => g.trackMgr.addSpeedRestriction(h.trackId, h.start, h.end,
-            plan.spec.slow.factor, plan.name + "後の徐行", g.currentTime + plan.spec.slow.sec));
-        // 次の区間の点検を始める
-        const next = plan.segs.find(x => x.state === "点検中" && x.readyAt === null);
-        if (next) {
-            const a = plan.spec.segSec;
-            next.readyAt = g.currentTime + a[0] + Math.random() * (a[1] - a[0]);
-        }
-        g.ui.updateBanner(`【指令】${s.from}〜${s.to}間を開通させました (${by})。`, "banner-orange");
-        this.note(plan, "開通", `${s.from}〜${s.to}間を開通 (${by})`, by);
-        return true;
-    }
-
-    /** 確認列車を1本だけ通す (注意運転) */
-    passOne(plan, k, by) {
-        const s = plan.segs[k];
-        if (!s || s.state === "開通") return false;
-        s.passes++;
-        this.game.ui.updateBanner(`【指令】${s.from}〜${s.to}間に確認の列車を1本、注意運転で進めます (${by})。`, "banner-orange");
-        this.note(plan, "確認列車", `${s.from}〜${s.to}間に確認列車を1本通す (${by})`, by);
-        return true;
-    }
-
-    /**
-     * 列車が開通待ちの区間へ入ろうとするとき、確認列車の許可があれば渡す。
-     * 許可を持つ列車だけが区間を通れる (TrackManager.isSuspended の train 引数)。
-     */
-    tryGrant(train, trackId, idx) {
-        for (const plan of this.plans) {
-            for (const s of plan.segs) {
-                if (s.state === "開通") continue;
-                const h = s.holds.find(x => x.trackId === trackId && idx >= x.start && idx <= x.end);
-                if (!h) continue;
-                if (s.grant === train.id) return true;
-                if (s.grant || s.passes <= 0) return false;
-                s.passes--;
-                s.grant = train.id; s.grantAt = this.game.currentTime; s.grantIn = false;
-                s.holds.forEach(x => { x.grant = train.id; });
-                this.note(plan, "確認列車", `${train.trainNo} が確認列車として ${s.from}〜${s.to}間へ進入`);
                 return true;
+            });
+
+            /* 区間の中の駅から新たに発車しようとする列車も、順番が来るまで待たせる。
+               ただし解除から30分まで (終着駅で折り返してくる列車を足し続けて、
+               いつまでも平常に戻らない、ということにしない)。 */
+            if (now - plan.startedAt < 1800) this.trainsInArea(plan.area, plan.range, 0).forEach(t => {
+                if (t.recoveryHold || t.hasDeparted || t.state !== "waiting_start") return;
+                if (this.holdTrain(t, plan.id)) plan.held.push(t.id);
+            });
+
+            if (!plan.held.length) { this.finishPlan(plan, "全列車の抑止を解除"); this.plans.splice(pi, 1); continue; }
+
+            // 取り残しを作らない最後の保険
+            if (now - plan.startedAt >= RECOVERY_RULES.limitSec) {
+                const n = plan.held.length;
+                plan.held.slice().forEach(id => { const t = g.getTrain(id); if (t) this.releaseTrain(plan, t, "auto"); });
+                plan.held = [];
+                this.note(plan, "抑止解除", `解除から${Math.round(RECOVERY_RULES.limitSec / 60)}分を経過したため、残り${n}本の抑止をまとめて解除`);
+                this.finishPlan(plan, "残りの抑止をまとめて解除");
+                this.plans.splice(pi, 1);
+                continue;
             }
+
+            // 運転再開の手配 (乗務員への通告・車両の点検) が終わった
+            if (plan.mode === "prep" && now >= plan.prepUntil) {
+                if (this.manual) {
+                    plan.mode = "manual";
+                    g.ui.updateBanner(
+                        `【指令】${plan.from}〜${plan.to} の運転再開の手配が済みました。抑止中の ${plan.held.length}本 を` +
+                        `順次発車させてください (操作が無いときは応援の指令員が引き継ぎます)。`, "banner-blue");
+                    this.note(plan, "手配完了", "乗務員への通告・車両の点検が完了。指令が順次解除できる状態");
+                } else {
+                    this.handover(plan, "当務の指令員が担当");
+                }
+            }
+            // 画面の指令員が操作しない・時間が経った → 別の指令員が引き継ぐ
+            if (plan.mode === "manual") {
+                const idleFrom = Math.max(plan.prepUntil, plan.lastManualAt || 0);
+                if (!this.manual) this.handover(plan, "画面の指令員が不在");
+                else if (now - idleFrom >= RECOVERY_RULES.idleSec) this.handover(plan, `${Math.round(RECOVERY_RULES.idleSec / 60)}分間 解除の操作が無かったため`);
+                else if (now - plan.startedAt >= RECOVERY_RULES.handoverSec) this.handover(plan, "当務の指令員がほかの対応へ移るため");
+            }
+            if (plan.mode === "auto") this.autoRelease(plan);
         }
-        return false;
     }
+
+    /** 計画を終える */
+    finishPlan(plan, reason) {
+        const g = this.game;
+        plan.doneAt = g.currentTime;
+        plan.mode = "done";
+        const min = Math.round((g.currentTime - plan.startedAt) / 60);
+        g.ui.updateBanner(
+            `🟢【平常運転へ】${plan.place}の${plan.name}に伴う抑止をすべて解除しました ` +
+            `(${plan.released}本・${min}分)。当分の間は徐行運転です。`, "banner-orange");
+        this.note(plan, "全列車解除", `${reason} (計${plan.released}本 / 指令卓の操作 ${plan.manualReleased}本 / 代行 ${plan.autoReleased}本 / ${min}分)`);
+    }
+
+    /** 指令の全解除 (防護無線・見合わせをすべて解いたとき) */
+    clearAll() {
+        this.plans.forEach(p => p.held.slice().forEach(id => { const t = this.game.getTrain(id); if (t) this.releaseTrain(p, t, "manual"); }));
+        this.plans = [];
+        this.game.trains.forEach(t => { if (t.recoveryHold) t.recoveryHold = null; });
+    }
+
+    /** 以前の「区間ごとの開通・確認列車」は使わない。呼ばれても何もしない */
+    tryGrant() { return false; }
 
     /** 記録簿に残す */
     note(plan, kind, text, by) {
@@ -1487,21 +1668,35 @@ class RecoveryControl {
         if (!rec) return;
         rec.timeline.push({ at: this.game.currentTime, kind: kind, text: text });
         if (by) rec.actions.push({ at: this.game.currentTime, by: by.indexOf("代行") >= 0 ? "代行" : "指令", text: text });
-        rec.status = (kind === "全区間開通") ? "運転再開 (徐行中)" : "段階的に運転再開中";
+        rec.status = (kind === "全列車解除") ? "運転再開 (徐行中)" : "運転再開・抑止を順次解除中";
     }
 
     /** 画面表示用 */
     list() {
-        const now = this.game.currentTime;
-        return this.plans.map(p => ({
-            id: p.id, name: p.name, place: p.place, line: p.line,
-            minutes: Math.round((now - p.startedAt) / 60),
-            segs: p.segs.map((s, k) => ({
-                k: k, label: s.from + "〜" + s.to, state: s.state, passes: s.passes,
-                grant: !!s.grant,
-                readyIn: (s.state === "点検中" && s.readyAt !== null) ? Math.max(0, Math.ceil((s.readyAt - now) / 60)) : null
-            }))
-        }));
+        const g = this.game;
+        const now = g.currentTime;
+        return this.plans.map(p => {
+            const streams = this.streamsOf(p);
+            const idleFrom = Math.max(p.prepUntil, p.lastManualAt || 0);
+            return {
+                id: p.id, name: p.name, place: p.place, line: p.line, from: p.from, to: p.to,
+                minutes: Math.round((now - p.startedAt) / 60),
+                mode: p.mode, by: p.by || "",
+                prepIn: p.mode === "prep" ? Math.max(0, Math.ceil((p.prepUntil - now) / 60)) : null,
+                // 別の指令員に引き継ぐまでの残り (画面の指令員が受け持っているとき)
+                handoverIn: p.mode === "manual" ? Math.max(0, Math.ceil(Math.min(
+                    RECOVERY_RULES.idleSec - (now - idleFrom),
+                    RECOVERY_RULES.handoverSec - (now - p.startedAt)) / 60)) : null,
+                held: p.held.length, released: p.released,
+                streams: Object.keys(streams).map(k => ({
+                    key: k, label: recTrackName(k.split("|")[0]),
+                    count: streams[k].length,
+                    head: streams[k][0] ? streams[k][0].trainNo : "",
+                    headAt: streams[k][0] ? commWhere(g, streams[k][0]) : "",
+                    trains: streams[k].slice(0, 8).map(t => t.trainNo)
+                }))
+            };
+        });
     }
 }
 
@@ -1534,6 +1729,8 @@ IncidentSystem.prototype.triggerArea = function (type, area) {
     this.active.push(inc);
     this.history.push({ at: g.currentTime, id: inc.id, name: type.name, place: inc.place, family: "major", major: true });
     if (g.records) g.records.incidentStarted(inc);
+    // 区間の列車をすべて抑止する (見合わせを解いても、指令が順次解除するまで残る)
+    if (g.recovery) g.recovery.onSuspend(inc);
     this.syncEmergencyState();
     g.ui.updateBanner(`🚨【${type.name}】${type.first(inc.place)}`, "banner-red");
     return inc;

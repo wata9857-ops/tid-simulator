@@ -16,40 +16,43 @@
      IDは本体のタブが配ったものを、従側もそのまま受け取っている。
 */
 
+/**
+ * 段階的な運転再開 (js/26-incidents.js の RecoveryControl) で抑止中の列車か。
+ * 解除できるのは指令員の操作 (cmd.by のある指令) だけにする。
+ * 指令連絡の自動処理・詰まりの見張りのような内部の処理が「抑止解除」「強制発車」を
+ * 出しても、順番待ちの列車を勝手に走らせない。
+ */
+function recoveryHoldBlocks(t, cmd) {
+    return !!(t && t.recoveryHold && !(cmd && cmd.by));
+}
+
 const DISPATCH = {
 
     /* ---------------- 段階的な運転再開 (js/26-incidents.js の RecoveryControl) */
-    /** 区間を開通させる */
-    recoveryOpen(game, cmd) {
+    /**
+     * 抑止中の列車を解除する。
+     *   count  … 線路ごとに先頭から何本 (1 / 3 / "all")
+     *   stream … 線路を1つに絞る (省略で全線路)
+     */
+    recoveryRelease(game, cmd) {
         const p = game.recovery && game.recovery.plans.find(x => x.id === cmd.plan);
-        if (!p) return { ok: false, msg: "その段階開通の手配は終わっています。" };
-        const s = p.segs[cmd.seg];
-        if (!s) return { ok: false, msg: "その区間はありません。" };
-        if (s.state === "開通") return { ok: false, msg: `${s.from}〜${s.to}間はすでに開通しています。` };
-        if (s.state === "点検中" && !cmd.force) {
-            return { ok: false, msg: `${s.from}〜${s.to}間はまだ点検中です。確認列車を1本通すか、点検の完了を待ってください。` };
-        }
-        game.recovery.openSeg(p, cmd.seg, cmd.by || "指令");
-        return { ok: true, msg: `${s.from}〜${s.to}間を開通させました。` };
+        if (!p) return { ok: false, msg: "その運転再開の手配は終わっています。" };
+        const count = (cmd.count === "all") ? Infinity : Math.max(1, Number(cmd.count) || 1);
+        const n = (count === Infinity && !cmd.stream)
+            ? game.recovery.releaseAll(p, cmd.by || "指令")
+            : game.recovery.releaseNext(p, count, cmd.stream || null, cmd.by || "指令");
+        return n ? { ok: true, msg: `${p.from}〜${p.to} の抑止を ${n}本 解除しました。` }
+                 : { ok: false, msg: "解除できる列車がありません。" };
     },
-    /** 確認列車を1本通す */
-    recoveryPass(game, cmd) {
+    /** 残りの解除を別の指令員に任せる (以後は自動で順次解除) */
+    recoveryHandover(game, cmd) {
         const p = game.recovery && game.recovery.plans.find(x => x.id === cmd.plan);
-        if (!p) return { ok: false, msg: "その段階開通の手配は終わっています。" };
-        const s = p.segs[cmd.seg];
-        if (!s || s.state === "開通") return { ok: false, msg: "その区間は開通しています。" };
-        game.recovery.passOne(p, cmd.seg, cmd.by || "指令");
-        return { ok: true, msg: `${s.from}〜${s.to}間に確認列車を1本進めます。` };
+        if (!p) return { ok: false, msg: "その運転再開の手配は終わっています。" };
+        if (p.mode === "auto") return { ok: false, msg: `すでに ${p.by} が順次解除しています。` };
+        game.recovery.handover(p, "指令の指示");
+        return { ok: true, msg: `${p.from}〜${p.to} の残り ${p.held.length}本 の解除を応援の指令員に任せました。` };
     },
-    /** 点検の終わった区間をまとめて開通させる */
-    recoveryOpenReady(game, cmd) {
-        const p = game.recovery && game.recovery.plans.find(x => x.id === cmd.plan);
-        if (!p) return { ok: false, msg: "その段階開通の手配は終わっています。" };
-        let n = 0;
-        p.segs.forEach((s, k) => { if (s.state === "開通可") { game.recovery.openSeg(p, k, cmd.by || "指令"); n++; } });
-        return n ? { ok: true, msg: `${n}区間を開通させました。` } : { ok: false, msg: "点検の終わった区間はありません。" };
-    },
-    /** 画面の指令員が段階開通を受け持つか (Super-TID を開くと true) */
+    /** 画面の指令員が段階的な運転再開の解除を受け持つか (Super-TID を開くと true) */
     recoveryManual(game, cmd) {
         if (game.recovery) game.recovery.manual = !!cmd.value;
         return { ok: true, msg: "" };
@@ -83,6 +86,7 @@ const DISPATCH = {
     release(game, cmd) {
         const t = game.getTrain(cmd.trainId);
         if (!t) return { ok: false, msg: "対象の列車が見つかりません。" };
+        if (recoveryHoldBlocks(t, cmd)) return { ok: false, msg: `${t.trainNo} は運転再開の順番待ちで抑止中です。` };
         t.isManuallySuspended = false;
         t.manualSuspendTimer = 0;
         t.hasNotifiedSuspendLong = false;
@@ -101,6 +105,7 @@ const DISPATCH = {
     force(game, cmd) {
         const t = game.getTrain(cmd.trainId);
         if (!t) return { ok: false, msg: "対象の列車が見つかりません。" };
+        if (recoveryHoldBlocks(t, cmd)) return { ok: false, msg: `${t.trainNo} は運転再開の順番待ちで抑止中です。` };
 
         if (t.state === "in_depot") {
             if (!t.depotOutConfig) {

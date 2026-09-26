@@ -281,6 +281,13 @@ Train.prototype.move = function () {
             targetTrackId = this.turnbackTrack;
         }
 
+        /* ★貨物ターミナル (js/34-freight-terminals.js)。行先がそのターミナルの貨物列車と、
+           乗務員交代・待避で停まる貨物列車は、本線から着発線へ横に入る。 */
+        {
+            const fTid = this.freightTerminalEntryTrack(nextIdx, targetTrackId);
+            if (fTid) targetTrackId = fTid;
+        }
+
         /* ★最後の関門: 進む線路の向きが列車の向きと食い違っていたら、
            同じ側の正しい向きの線路へ直す (逆走させない)。 */
         if (trackDirOf(targetTrackId) && trackDirOf(targetTrackId) !== this.dir) {
@@ -451,9 +458,13 @@ Train.prototype.move = function () {
                 this.timer = 60; this.nextAction = "depot"; this.isFinalStop = true; this.hasStoppedAtCurrent = true; return;
             }
 
-            /* ★貨物ターミナル (吹田タ・神戸タ・姫路タ・京都タ) に着いた貨物列車は、
-               着発線に入って荷役・機回しをし、次の貨物列車になる
-               (js/15-train-depot.js の freightTerminalWork)。 */
+            /* ★貨物ターミナルの着発線に着いた (js/34-freight-terminals.js)。
+               行先の列車は荷役・機回しをして次の貨物列車になり (freightTerminalWork)、
+               通過する列車は乗務員交代・待避のあと先へ進む。 */
+            if (nextBlock.freightTerminal && isFreightTerminalTrack(this.trackId)) {
+                this.arriveFreightTerminal(nextBlock.freightTerminal);
+                return;
+            }
             if (this.type === "貨物" && freightTerminalStation(this.dest) === st.name) {
                 this.state = "stopped";
                 this.hasStoppedAtCurrent = true;
@@ -463,9 +474,12 @@ Train.prototype.move = function () {
                 return;
             }
             /* 大阪タ (城東貨物線)・百済タ・安治川口 (梅田貨物線) 行きは
-               吹田貨物ターミナルで機関車の付け替えと乗務員の交代をしてから
-               線路図の外へ出ていく。 */
-            if (this.type === "貨物" && (st.name === "吹田貨" || st.name === "吹田") && ["大阪タ", "百済タ", "安治川タ"].includes(this.dest)) {
+               吹田貨物ターミナル (吹田タ) の着発線で機関車の付け替えと乗務員の交代をしてから
+               線路図の外へ出ていく (上の arriveFreightTerminal)。
+               ★以前は旅客駅の吹田・北方貨物線の吹田貨で消していた。
+                 着発線にたどり着けなかった列車 (線路図の端など) のための保険だけ残す。 */
+            if (this.type === "貨物" && st.name === "吹田貨" && ["大阪タ", "百済タ", "安治川タ"].includes(this.dest) &&
+                this.dir === -1) {
                 this.state = "stopped";
                 this.hasStoppedAtCurrent = true;
                 this.isFinalStop = true;
@@ -534,6 +548,8 @@ Train.prototype.shouldStop = function (st) {
         // ★追加: 湖西線の駅間調整用ダミーブロック（駅が存在しない区間）は無条件で通過とする
         if (st.name === "湖西線通過") return false;
 
+        // 貨物ターミナルの着発線 (入るのは、そこに用のある貨物列車だけ)
+        if (FREIGHT_TERMINALS[st.name]) return this.type === "貨物";
         let realSt = (STATION_MAP[st.name] !== undefined) ? STATIONS[STATION_MAP[st.name]] : st;
         let isFreight = realSt.isFreightTerm === true;
         if (this.serviceChange && this.serviceChange.at === st.name) return true;
@@ -598,6 +614,10 @@ Train.prototype.shouldStop = function (st) {
         }
         
         if (["貨物", "臨時"].includes(this.type)) {
+            /* ★貨物列車は、以前は旅客駅の ひめじ別所・鷹取・西大路・吹田貨 に停まって
+               乗務員交代・待避をしていた。いまは独立した貨物ターミナルの着発線に入る
+               (js/34-freight-terminals.js)。旅客駅に停まるのは試運転などの臨時列車だけ。 */
+            if (this.type === "貨物") return false;
             if (st.name === "ひめじ別所" && this.skipHimejiFreight) return false;
             if (st.name === "西大路" && this.skipKyotoFreight) return false;
             return (["ひめじ別所", "鷹取", "吹田貨", "西大路"].includes(st.name) || isFreight) ? true : false;

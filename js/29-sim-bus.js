@@ -146,6 +146,8 @@ class SimBus {
                 state: t.state, timer: t.timer, delayTime: t.delayTime,
                 startName: t.startName, dutyName: t.dutyName,
                 isManuallySuspended: !!t.isManuallySuspended,
+                recoveryHold: t.recoveryHold || null,
+                terminalWork: t.terminalWork ? Object.assign({}, t.terminalWork) : null,
                 minorTrouble: !!t.minorTrouble,
                 isDecelerating: !!t.isDecelerating,
                 isKoseiRoute: !!t.isKoseiRoute,

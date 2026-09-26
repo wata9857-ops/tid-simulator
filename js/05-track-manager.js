@@ -40,6 +40,12 @@ class TrackManager {
         // 赤穂線は JR宝塚線・JR東西線と横位置が重ならないので同じ段に描く
         this.trackY["Ako_Up"] = this.trackY["Fukuchi_Up"];
         this.trackY["Ako_Down"] = this.trackY["Fukuchi_Down"];
+        /* 貨物ターミナルの着発線。旅客向けの線路図では北方貨物線 (下) と湖西線のあいだに
+           構内を描く (js/17-renderer.js の drawFreightTerminals)。
+           ターミナルどうし・ほかの線区とは横位置が重ならない。 */
+        TRACKS.forEach(trk => {
+            if (trk.type === "freight_terminal") this.trackY[trk.id] = this.trackY["Down_Hoppo"] + 70;
+        });
     }
 
     // 【修正】TrackManagerクラスの initBlocks() 内
@@ -89,6 +95,7 @@ class TrackManager {
         };
 
         TRACKS.forEach(trk => {
+            if (trk.type === "freight_terminal") return;      // 貨物ターミナルは下でまとめて作る
             let trackBlocks = [];
             for (let i = 0; i < STATIONS.length; i++) {
                 let stationX = 100 + (i * UNITS_PER_STATION) * BLOCK_WIDTH;
@@ -224,6 +231,8 @@ class TrackManager {
             this.blocks[trk.id] = trackBlocks;
         });
 
+        this.initFreightTerminalBlocks();
+
         /* ★尼崎駅のレーン(番線)共有化処理。
            本数は番線の定義から取る (js/03-stations.js)。
            実物は島式4面8線＋北側の通過線(9番)で、
@@ -253,6 +262,39 @@ class TrackManager {
 
         this.shareStationLanes();
         this.shareSingleTrackLanes();
+    }
+
+    /**
+     * 貨物ターミナル (js/03-stations.js の FREIGHT_TERMINALS) の着発線。
+     *
+     * ほかの線路と同じ長さのブロックの並びを作り、着発線の位置 (pos) だけを
+     * 本物のブロック (レーン = 着発線の本数) にする。残りは線路の無いプレースホルダ。
+     * 列車は本線の同じ位置のブロックから横に入り、発車するときは本線の次のブロックへ出る
+     * (js/34-freight-terminals.js)。着発線のブロックの x は本線の同じ位置のブロックと同じなので、
+     * 転線先を x で探す move() の処理がそのまま使える。
+     */
+    initFreightTerminalBlocks() {
+        const len = (this.blocks["Up_Out"] || []).length;
+        TRACKS.forEach(trk => {
+            if (trk.type !== "freight_terminal") return;
+            const key = trk.terminal;
+            const ft = FREIGHT_TERMINALS[key];
+            const y = this.trackY[trk.id];
+            const arr = [];
+            for (let i = 0; i < len; i++) {
+                arr.push({ index: i, trackId: trk.id, isStation: false, x: -1000, y: y, lanes: [null] });
+            }
+            if (ft && ft.pos >= 0 && ft.pos < len) {
+                const n = (trk.dir === 1) ? ft.lanes.up : ft.lanes.down;
+                arr[ft.pos] = {
+                    index: ft.pos, trackId: trk.id, isStation: false,
+                    x: 100 + ft.pos * BLOCK_WIDTH, y: y,
+                    lanes: new Array(n).fill(null),
+                    hoppoStationName: key, freightTerminal: key
+                };
+            }
+            this.blocks[trk.id] = arr;
+        });
     }
 
     /**

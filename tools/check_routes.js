@@ -92,7 +92,12 @@ function probe() {
                          lbl: platformLabelOf(st, t.trackId, t.lane) || '?' };
 
         // --- 5. 方転できない駅での折り返し
-        if (t.turnbackTrack && !canTurnBackOnPlatform(st, t.trackId, t.lane, t.turnbackTrack)) {
+        /* 貨物ターミナルの着発線 (js/34-freight-terminals.js) では、turnbackTrack は
+           「発車して出ていく本線」を指す (向きを変える印ではない)。
+           ターミナルでの向きの変更は機回しで反対方向の着発線へ移る形で行い、
+           下の「構内折返」の見張りが見る。 */
+        const inYard = isFreightTerminalTrack(t.trackId);
+        if (!inYard && t.turnbackTrack && !canTurnBackOnPlatform(st, t.trackId, t.lane, t.turnbackTrack)) {
             count(bad.noReverse, st + ' ' + (platformLabelOf(st, t.trackId, t.lane) || '?'));
         }
         /* --- 5b. 実物の配線で方転できない駅での折り返し
@@ -102,17 +107,18 @@ function probe() {
                ・その場で向きを変えた印 (turnbackTrack) が付いたか
                ・同じ駅に居るまま向き (dir) が変わったか
              で見る。 */
-        if (t.turnbackTrack && !canReverseAt(st)) {
+        if (!inYard && t.turnbackTrack && !canReverseAt(st)) {
             count(bad.cantReverse, st + ' ' + t.trainNo + '(' + t.type + ') 同一ホーム折返');
         }
-        /* 貨物ターミナル (吹田貨・鷹取・ひめじ別所・西大路) は着発線と機回し線で
-           貨物列車の向きを変える (js/15-train-depot.js の freightTerminalWork)。 */
-        const freightTurn = t.type === '貨物' && freightTerminalAt(st);
+        /* 貨物ターミナル (吹田タ・神戸タ・姫路タ・京都タ。旅客駅とは別の構内) は
+           着発線と機回し線で貨物列車の向きを変える (js/15-train-depot.js の freightTerminalWork)。
+           向きを変えた列車は、反対方向の着発線へ移っていること。 */
+        const freightTurn = t.type === '貨物' && freightTerminalAt(st) && inYard && trackDirOf(t.trackId) === t.dir;
         if (prev && prev.st === st && prev.dir !== undefined && prev.dir !== t.dir &&
             !canReverseAt(st) && !freightTurn) {
             count(bad.cantReverse, st + ' ' + t.trainNo + '(' + t.type + ') 構内折返');
         }
-        if (t.turnbackTrack && canReverseAt(st)) count(revSeen, st);
+        if (!inYard && t.turnbackTrack && canReverseAt(st)) count(revSeen, st);
 
         // --- 7. 走行線路の規則
         if (['新快速', '快速', '普通'].indexOf(t.type) >= 0 &&

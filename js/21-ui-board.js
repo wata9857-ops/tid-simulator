@@ -6,10 +6,11 @@ UIManager.prototype.showDepartureBoard = function (stName) {
         let boardTrainsUp = [];
         let boardTrainsDown = [];
         
-        // ★貨物駅のエイリアス解決
-        const freightAlias = { "姫路タ": "ひめじ別所", "神戸タ": "鷹取", "京都タ": "西大路", "吹田タ": "吹田貨" };
-        let actualStName = freightAlias[stName] || stName;
-        let isFreightBoard = !!freightAlias[stName] || stName === "吹田タ";
+        /* ★貨物ターミナルの発車標。ターミナルは旅客駅とは別の構内になった
+           (js/03-stations.js の FREIGHT_TERMINALS)。以前は ひめじ別所・鷹取・西大路・吹田貨 に読み替えていた。 */
+        let actualStName = stName;
+        const boardFt = (typeof FREIGHT_TERMINALS !== "undefined") ? FREIGHT_TERMINALS[stName] : null;
+        let isFreightBoard = !!boardFt;
 
         this.game.trains.forEach(t => {
             if (t.state === "finished") return;
@@ -34,6 +35,13 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                 let bName = b.hoppoStationName;
                 if (!bName && b.stationIdx >= 0 && STATIONS[b.stationIdx]) {
                     bName = STATIONS[b.stationIdx].name;
+                }
+                /* 貨物ターミナル: 着発線にいる列車と、これから着発線へ入る貨物列車 */
+                if (boardFt && b.index === boardFt.pos &&
+                    (isFreightTerminalTrack(t.trackId) ||
+                     (typeof t.wantsFreightTerminal === "function" ? t.wantsFreightTerminal(stName) : t.type === "貨物"))) {
+                    targetBlock = b;
+                    break;
                 }
                 if (bName === actualStName) {
                     targetBlock = b;
@@ -326,10 +334,7 @@ UIManager.prototype.showDepartureBoard = function (stName) {
         this.currentBoardStation = stName; 
 
         let displayName = stName.endsWith("タ") ? stName : `${stName}駅`;
-        if (stName === "吹田タ") displayName = "吹田貨物ターミナル";
-        else if (stName === "姫路タ") displayName = "姫路貨物駅";
-        else if (stName === "神戸タ") displayName = "神戸貨物ターミナル";
-        else if (stName === "京都タ") displayName = "京都貨物駅";
+        if (boardFt) displayName = boardFt.name;
 
         document.getElementById("dep-board-header-up").innerHTML = `${displayName} 発車標<br><span style="font-size:18px; font-weight:normal;">Departures</span>`;
         document.getElementById("dep-board-header-down").innerHTML = `${displayName} 発車標<br><span style="font-size:18px; font-weight:normal;">Departures</span>`;

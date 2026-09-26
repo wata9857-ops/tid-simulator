@@ -303,6 +303,8 @@ class Train {
 
     update() {
         if (this.state === "finished") return;
+        // 貨物ターミナルの着発線にいるあいだは、出ていく本線を決めておく (js/34-freight-terminals.js)
+        if (this.terminalWork || isFreightTerminalTrack(this.trackId)) this.syncFreightTerminalExit();
         
         // ★修正: 留置場内での待機・出区処理 (緊急停止等の影響を受けないように最優先で処理)
         if (this.state === "in_depot") {

@@ -1308,6 +1308,8 @@ class CommSystem {
         this.game.trains.forEach(t => {
             if (t.commIncident !== p.id) return;
             t.commIncident = null;
+            // 段階的な運転再開の抑止 (js/26-incidents.js) が掛かっている列車は、そちらが解くまで止めておく
+            if (t.recoveryHold) return;
             t.isManuallySuspended = false;
             t.manualSuspendTimer = 0;
             t.hasNotifiedSuspendLong = false;
@@ -1356,6 +1358,9 @@ class CommSystem {
         this.game.trains.forEach(t => {
             if (t.commIncident) return;          // 応答待ちの抑止は触らない
             if (!t.commHoldLimit) return;
+            /* 段階的な運転再開の抑止 (js/26-incidents.js) の列車は、指令連絡の抑止だけを取り消し、
+               列車そのものの抑止は運転再開の側が解くまで残す */
+            if (t.recoveryHold) { t.commHoldLimit = 0; t.commHoldTimer = 0; t.commHoldExpire = 0; t.plannedStop = null; return; }
             if (t.isManuallySuspended) {
                 t.commHoldTimer = (t.commHoldTimer || 0) + CONFIG.TICK_SEC;
                 if (t.commHoldTimer >= t.commHoldLimit) {
@@ -1375,6 +1380,7 @@ class CommSystem {
             if (!t.commIncident) return;
             if (this.pending.some(p => p.id === t.commIncident)) return;
             t.commIncident = null;
+            if (t.recoveryHold) return;          // 段階的な運転再開の抑止はそちらが解く
             this.game.applyCommand({ name: "release", trainId: t.id });
         });
 

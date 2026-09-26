@@ -67,4 +67,61 @@ Object.keys(BEFORE).forEach(f => {
 ok('抽選した系統の割合が以前の割合と一致する (差 0.5% 以内)', worst < 0.005,
    '最大の差 ' + (worst * 100).toFixed(2) + '%');
 
+
+// ---- 場面 (js/33-incident-scenarios.js)
+const noScen = INCIDENT_TYPES.filter(t => !(INCIDENT_SCENARIOS[t.id] && INCIDENT_SCENARIOS[t.id].length >= 2));
+ok('どの種類にも場面が2つ以上ある', noScen.length === 0, noScen.map(t => t.id).join(','));
+const nScen = Object.keys(INCIDENT_SCENARIOS).reduce((a, k) => a + INCIDENT_SCENARIOS[k].length, 0);
+console.log('  種類 ' + INCIDENT_TYPES.length + ' / 場面 合計 ' + nScen + ' 通り');
+ok('場面の定義が実在の種類だけを指している',
+   Object.keys(INCIDENT_SCENARIOS).every(k => INCIDENT_TYPES.some(t => t.id === k)));
+const keepBad = [];
+INCIDENT_TYPES.forEach(t => (INCIDENT_SCENARIOS[t.id] || []).forEach(sc => {
+    const e = applyIncidentScenario(t, sc);
+    if (e.id !== t.id || e.family !== t.family || e.name !== t.name || e.weight !== t.weight) keepBad.push(t.id + ':' + sc.label);
+    if (!e.phases || !e.crew || !e.causeText) keepBad.push(t.id + ':' + sc.label + '(欠け)');
+}));
+ok('場面を重ねても id・系統・名前・重みは種類のまま', keepBad.length === 0, keepBad.join(','));
+// 場面ごとの時間の倍率を、種類の中で平均すると 1 (種類としての重さは以前と同じ)
+const meanBad = INCIDENT_TYPES.filter(t => {
+    const list = INCIDENT_SCENARIOS[t.id] || [];
+    const w = list.reduce((a, s) => a + (s.w || 1), 0);
+    const m = list.reduce((a, s) => a + (s.w || 1) * ((s.dur || 1) / incidentScenarioMeanDur(t)), 0) / w;
+    return Math.abs(m - 1) > 1e-9;
+});
+ok('場面の時間の倍率は、種類の中で平均すると以前と同じ長さ', meanBad.length === 0, meanBad.map(t => t.id).join(','));
+ok('場面を重ねても種類の定義そのものは書き換わらない',
+   INCIDENT_TYPES.reduce((s, t) => s + t.weight, 0) === 60 && INCIDENT_TYPES.every(t => !t.scenario));
+
+// 場面の抽選をはさんでも系統の割合は同じ
+const got2 = {};
+const ctxs = [{ line: 'main', urban: true, rural: false, station: true, rush: true, night: false },
+              { line: 'kosei', urban: false, rural: true, station: false, rush: false, night: true }];
+for (let i = 0; i < N; i++) {
+    const t = pickIncidentType();
+    pickIncidentScenario(t, ctxs[i % 2]);
+    const f = t.family || t.id;
+    got2[f] = (got2[f] || 0) + 1;
+}
+let worst2 = 0;
+Object.keys(BEFORE).forEach(f => { worst2 = Math.max(worst2, Math.abs(BEFORE[f] / 60 - (got2[f] || 0) / N)); });
+ok('場面の抽選をはさんでも系統の割合は以前と同じ (差 0.5% 以内)', worst2 < 0.005, '最大の差 ' + (worst2 * 100).toFixed(2) + '%');
+
+// どの種類も実際に起こせて、復旧まで進められる
+for (let k = 0; k < 2400; k++) game.update();
+const trigBad = [];
+const seenScen = new Set();
+INCIDENT_TYPES.forEach(t => {
+    try {
+        const inc = game.incidents.trigger(t.id);
+        if (!inc) { trigBad.push(t.id + '(場所なし)'); return; }
+        if (inc.type.id !== t.id) trigBad.push(t.id + '→' + inc.type.id);
+        if (inc.scenario) seenScen.add(t.id);
+        game.incidents.active = game.incidents.active.filter(x => x !== inc);
+        game.incidents.finish(inc, '検証', true);
+    } catch (e) { trigBad.push(t.id + ' ' + e.message); }
+});
+ok('どの種類も起こして復旧まで進められる', trigBad.length === 0, trigBad.join(', '));
+ok('起こした障害に場面が付いている', seenScen.size >= INCIDENT_TYPES.length * 0.8, seenScen.size + ' / ' + INCIDENT_TYPES.length);
+
 console.log('\n' + (failures === 0 ? '>>> すべて合格' : '>>> ' + failures + ' 件 不合格'));

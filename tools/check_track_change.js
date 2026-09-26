@@ -66,7 +66,9 @@ ok('予約で止まり続ける列車が無い (待ちの上限 + 余裕)', res.
 
 // 断るべき予約
 {
-    const t = game.trains.find(x => x.state === 'running' && x.trackId === 'Up_In');
+    // 前方に駅が3つ以上ある列車で試す (内側線の終わり近くの列車だと「先の駅」が無い)
+    const t = game.trains.find(x => x.state === 'running' && x.trackId === 'Up_In' &&
+                                    trainStationsAhead(game, x, 4).length >= 3);
     const blks = game.trackMgr.blocks[t.trackId];
     let behind = null;
     for (let i = t.currBlockIndex - t.dir; i >= 0 && i < blks.length; i -= t.dir) {

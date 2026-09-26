@@ -74,7 +74,8 @@ const REF = {
     // ================================ 山陽本線 (姫路口)  画像(706)(707)
     '姫路':       { cross: 1, pairs: [['Up_Out', 'Down_Out', 'x']], stubs: 2,
                     src: '706/707 播但線は東側の上、姫新線は西側の下 (網干は線路図の中になった)' },
-    'ひめじ別所': { cross: 0, stubs: 1, src: '706 曽根側の上に貨物駅' },
+    // 姫路貨物駅・神戸タ・吹田タ・京都貨物は、支線の印ではなく独立した構内として描く (FREIGHT_TERMINALS)
+    'ひめじ別所': { cross: 0, stubs: 0, src: '706 曽根側の上の貨物駅は FREIGHT_TERMINALS["姫路タ"] (本線の上)' },
     '曽根':       { none: true, src: '706 相対式2面2線。線の折れだけ' },
     '東姫路':     { none: true, src: '706 相対式2面2線' },
     '宝殿':       { cross: 1, pairs: [['Up_Out', 'Down_Out', 'x']], src: '706 2面2線＋中線' },
@@ -96,7 +97,7 @@ const REF = {
     '須磨':   { cross: 1, pairs: [['Down_In', 'Up_In', 'x', 'L']],
                 src: '704 電車線どうしの両渡り1組 (神戸側)。内外の渡り線は無い' },
     '須磨海浜公園': { none: true, src: '704 島式1面2線' },
-    '鷹取':   { cross: 0, stubs: 1, src: '704 神戸貨物ターミナルは須磨側の下' },
+    '鷹取':   { cross: 0, stubs: 0, src: '704 神戸貨物ターミナルは須磨側の下 → FREIGHT_TERMINALS["神戸タ"]' },
     '新長田': { none: true, src: '704 相対式2面2線' },
     '兵庫':   { cross: 2, pairs: [['Down_Out', 'Down_In', 'l', 'R'], ['Up_In', 'Up_Out', 'r', 'R']],
                 stubs: 1, src: '704 新長田側に片渡り2つ。上下はつながらない。和田岬線は上へ' },
@@ -131,8 +132,8 @@ const REF = {
     '大阪':   { cross: 2, pairs: [['Up_Out', 'Up_In'], ['Down_In', 'Down_Out']], stubs: 2,
                 src: '697 環状線は天満方=左・福島方=右、どちらも上' },
     '新大阪': { cross: 2, stubs: 2, src: '697 おおさか東線は東淀川側の上' },
-    '吹田':   { cross: 1, pairs: [['Down_In', 'Up_In', 'x', 'R']], junctions: 2, stubs: 1,
-                src: '696 東淀川側に 下り内↔上り内 の両渡り。貨物ターミナルは岸辺側の下' },
+    '吹田':   { cross: 1, pairs: [['Down_In', 'Up_In', 'x', 'R']], junctions: 2, stubs: 0,
+                src: '696 東淀川側に 下り内↔上り内 の両渡り。貨物ターミナルは岸辺側の下 → FREIGHT_TERMINALS["吹田タ"]' },
     '岸辺':   { cross: 0, stubs: 1, src: '696 吹田総合車両所は吹田側の下' },
     '千里丘': { none: true, src: '696 相対式2面2線' },
     '東淀川': { none: true, src: '697 相対式2面2線' },
@@ -148,7 +149,7 @@ const REF = {
     '向日町操': { cross: 0, stubs: 1, src: '694 京都支所は本線の上' },
     '向日町': { cross: 2, src: '694 島式2面4線' },
     '桂川':   { none: true, src: '694 島式1面2線 (内側線のあいだ)' },
-    '西大路': { cross: 0, stubs: 1, src: '693 京都貨物は京都側の下' },
+    '西大路': { cross: 0, stubs: 0, src: '693 京都貨物は京都側の下 → FREIGHT_TERMINALS["京都タ"]' },
     '京都':   { cross: 2, stubs: 3, src: '693 奈良線=左の上、山陰本線=右の上' },
 
     // ================================ 東海道本線 (琵琶湖線)  画像(690)(691)(692)

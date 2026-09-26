@@ -80,7 +80,8 @@ function stationPlatformPlan(game, stName, opts) {
             const e = stationLaneEntry(stName, tid, li);
             // 番線を共有する駅は、その番線が属する本線の線路名で出す
             const homeTrack = shared && e ? (stationLaneTracks(stName)[e.index] || tid) : tid;
-            const label = displayPlatformLabel(stName, tid, li);
+            const label = isFreightTerminalTrack(tid) ? freightTerminalLaneLabel(tid, li)
+                                                      : displayPlatformLabel(stName, tid, li);
             const p = {
                 key: key, trackId: tid, homeTrack: homeTrack, lane: li,
                 dir: trackDirOf(tid), label: label,
@@ -241,7 +242,10 @@ TidUI.prototype.renderStation = function () {
             `</td></tr>`;
     };
 
-    let html = `<div class="tid-station-head"><b>${esc(name)}</b> 駅 番線別 発着予定` +
+    const ftHere = (typeof FREIGHT_TERMINALS !== "undefined") ? FREIGHT_TERMINALS[name] : null;
+    let html = `<div class="tid-station-head"><b>${esc(ftHere ? ftHere.name : name)}</b> ` +
+               (ftHere ? `構内 着発線別 在線・作業 <small>(${esc(ftHere.cargo)} 着発線荷役 / 着発線 上下${ftHere.lanes.up}本ずつ)</small>`
+                       : "駅 番線別 発着予定") +
                `<small class="tid-pl-now">${esc(tidClock(plan.at))} 現在</small>` +
                `<button id="tid-station-close" class="tid-x">閉じる</button></div>` +
                `<div class="tid-pl-legend"><span class="tid-pl-b tid-pl-stop">停車</span>` +
@@ -261,7 +265,8 @@ TidUI.prototype.renderStation = function () {
         const occ = p.occupant;
         const occText = occ
             ? `${chip(occ)} ${esc(occ.type)} ${esc(occ.dest || "")}` +
-              ` <small>(${esc({ stopped: "停車中", holding: "抑止・信号待ち", waiting_start: "発車待ち",
+              ` <small>(${esc((ftHere && freightTerminalStage(occ, this.game.currentTime)) ||
+                              { stopped: "停車中", holding: "抑止・信号待ち", waiting_start: "発車待ち",
                                  turning_back: "折り返し", running: "発車" }[occ.state] || occ.state)})</small>`
             : '<span class="tid-free">空き</span>';
         const arr = p.arrivals.filter(x => !x.here).slice(0, MAX_ROWS);

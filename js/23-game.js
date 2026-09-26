@@ -343,6 +343,7 @@ class GameSystem {
         const hide = (id) => { const e = document.getElementById(id); if (e) e.style.display = "none"; };
         hide("emg-control"); hide("emergency-banner"); hide("info-banner");
         this.trackMgr.manualSuspensions = [];
+        if (this.recovery) this.recovery.clearAll();
         this.signals.clearFaults();
         this.trains.forEach(t => {
             t.isManuallySuspended = false;

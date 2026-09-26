@@ -92,8 +92,8 @@ class TidUI {
     init() {
         this.fillSelectors();
         this.bindButtons();
-        /* Super-TID を開いているあいだは、段階的な運転再開の開通を
-           この画面の指令員が受け持つ (答えないときは別の指令員が代行する)。 */
+        /* Super-TID を開いているあいだは、段階的な運転再開の抑止の解除を
+           この画面の指令員が受け持つ (操作が無いときは応援の指令員が引き継ぐ)。 */
         this.game.dispatch({ name: "recoveryManual", value: true });
         this.render();
     }
@@ -301,20 +301,20 @@ class TidUI {
         if (incBox) incBox.addEventListener("click", (e) => {
             const b = e.target.closest ? e.target.closest("[data-rec='report']") : null;
             if (b) { this.openReport(b.getAttribute("data-id")); return; }
-            // 段階的な運転再開の操作 (開通 / 確認列車を1本 / 点検済みをまとめて開通)
+            // 段階的な運転再開の操作 (抑止中の列車の解除 / 応援の指令員に任せる)
             const r = e.target.closest ? e.target.closest("[data-rcv]") : null;
             if (!r) return;
             const plan = r.getAttribute("data-plan");
-            const seg = parseInt(r.getAttribute("data-seg"), 10);
             const act = r.getAttribute("data-rcv");
-            if (act === "open") this.run({ name: "recoveryOpen", plan: plan, seg: seg });
-            if (act === "force") {
-                if (confirm("点検が終わっていない区間を開通させます。よろしいですか？")) {
-                    this.run({ name: "recoveryOpen", plan: plan, seg: seg, force: true });
+            const stream = r.getAttribute("data-stream") || null;
+            if (act === "one") this.run({ name: "recoveryRelease", plan: plan, count: 1, stream: stream });
+            if (act === "three") this.run({ name: "recoveryRelease", plan: plan, count: 3, stream: stream });
+            if (act === "all") {
+                if (confirm("抑止中の列車をすべて解除します。区間に列車が続けて入ります。よろしいですか？")) {
+                    this.run({ name: "recoveryRelease", plan: plan, count: "all", stream: stream });
                 }
             }
-            if (act === "pass") this.run({ name: "recoveryPass", plan: plan, seg: seg });
-            if (act === "ready") this.run({ name: "recoveryOpenReady", plan: plan });
+            if (act === "hand") this.run({ name: "recoveryHandover", plan: plan });
         });
         on("tid-btn-major-rain", () => this.run({ name: "majorIncident", kind: "rain" }));
         on("tid-btn-major-snow", () => this.run({ name: "majorIncident", kind: "snow" }));
@@ -652,6 +652,9 @@ class TidUI {
             })(t.trackChangeReservation)) : "") +
             row("信号現示", asp ? `<span class="tid-asp tid-asp-${aspect}">${asp.name} (${aspect})</span>` : "—") +
             row("遅れ", Math.floor((t.delayTime || 0) / 60) + "分") +
+            ((typeof freightTerminalStage === "function" && freightTerminalStage(t, this.game.currentTime))
+                ? row("構内作業", escapeLogHtml(FREIGHT_TERMINALS[freightTerminalOfTrack(t.trackId)].name + " " +
+                      (trainPlatformLabel(this.game, t) || "") + " … " + freightTerminalStage(t, this.game.currentTime))) : "") +
             row("始発", escapeLogHtml(t.startName || "—")) +
             row("編成", (t.vehicles || []).map(v =>
                 `<span class="tid-fleet" style="background:${(TID_FLEET_COLORS[v.group] || {}).bg}">${escapeLogHtml(v.fullId)}</span>`).join(" ") || "—") +
@@ -672,30 +675,37 @@ class TidUI {
             e.innerHTML = '<p class="tid-empty">輸送障害はありません。</p>';
             return;
         }
-        /* 段階的な運転再開 (見合わせは解除したが、区間ごとに抑止が残っている)。
-           区間ごとに 点検中 → 開通可 → 開通 と進む。開通は指令の操作で行う。 */
+        /* 段階的な運転再開 (見合わせは解除したが、区間の列車は1本ずつ抑止が残っている)。
+           指令は線路ごとに先頭から解除する。操作が無いときは応援の指令員が引き継ぐ。 */
+        const esc = escapeLogHtml;
+        const modeText = (p) => p.mode === "prep" ? `運転再開の手配中 (乗務員への通告・点検 あと約${p.prepIn}分)`
+            : p.mode === "manual" ? `指令が順次解除 (操作が無ければ約${p.handoverIn}分で応援の指令員が引き継ぎ)`
+            : `${esc(p.by)}が間隔をあけて順次解除中`;
+        const btn = (p, act, label, stream, cls) =>
+            `<button class="tid-btn tid-rcv-btn${cls ? " " + cls : ""}" data-rcv="${act}" data-plan="${esc(p.id)}"` +
+            (stream ? ` data-stream="${esc(stream)}"` : "") + `>${label}</button>`;
         const planHtml = plans.map(p =>
             `<div class="tid-rcv">` +
-            `<div class="tid-rcv-head"><b>段階的な運転再開</b> ${escapeLogHtml(p.line)} ` +
-            `<span class="tid-inc-place">${escapeLogHtml(p.place)} ${escapeLogHtml(p.name)}</span>` +
-            `<span class="tid-inc-rem">開始から${p.minutes}分</span>` +
-            `<button class="tid-btn tid-rcv-btn" data-rcv="ready" data-plan="${escapeLogHtml(p.id)}">点検済みを開通</button></div>` +
-            p.segs.map(s =>
-                `<div class="tid-rcv-seg is-${s.state === "開通" ? "open" : (s.state === "開通可" ? "ready" : "hold")}">` +
-                `<span class="tid-rcv-label">${escapeLogHtml(s.label)}</span>` +
-                `<span class="tid-rcv-state">${escapeLogHtml(s.state)}` +
-                (s.readyIn !== null ? ` (点検 あと約${s.readyIn}分)` : "") +
-                (s.grant ? " / 確認列車 進行中" : (s.passes ? ` / 確認列車 ${s.passes}本 待ち` : "")) + `</span>` +
-                (s.state === "開通" ? "" :
-                    `<button class="tid-btn tid-rcv-btn" data-rcv="pass" data-plan="${escapeLogHtml(p.id)}" data-seg="${s.k}">1本進める</button>` +
-                    (s.state === "開通可"
-                        ? `<button class="tid-btn tid-btn-go tid-rcv-btn" data-rcv="open" data-plan="${escapeLogHtml(p.id)}" data-seg="${s.k}">開通</button>`
-                        : `<button class="tid-btn tid-rcv-btn" data-rcv="force" data-plan="${escapeLogHtml(p.id)}" data-seg="${s.k}" title="点検の完了を待たずに開通">開通 (点検前)</button>`)) +
+            `<div class="tid-rcv-head"><b>運転再開・抑止継続</b> ${esc(p.line)} ${esc(p.from)}〜${esc(p.to)} ` +
+            // 区間と同じ場所の名前は繰り返さない (人身事故のように駅で起きたときだけ場所を出す)
+            `<span class="tid-inc-place">${p.place.indexOf(p.from) >= 0 ? "" : esc(p.place) + " "}${esc(p.name)}</span>` +
+            `<span class="tid-inc-rem">解除から${p.minutes}分 / 抑止 ${p.held}本・解除済 ${p.released}本</span></div>` +
+            `<div class="tid-rcv-seg is-${p.mode === "auto" ? "open" : (p.mode === "manual" ? "ready" : "hold")}">` +
+            `<span class="tid-rcv-state">${modeText(p)}</span>` +
+            btn(p, "one", "各線 先頭1本", null, "tid-btn-go") + btn(p, "three", "各線 3本ずつ") +
+            btn(p, "all", "全列車") + (p.mode === "auto" ? "" : btn(p, "hand", "応援に任せる")) +
+            `</div>` +
+            p.streams.map(s =>
+                `<div class="tid-rcv-seg is-hold">` +
+                `<span class="tid-rcv-label">${esc(s.label)} ${s.count}本</span>` +
+                `<span class="tid-rcv-state">先頭 ${esc(s.head)} (${esc(s.headAt)})` +
+                (s.trains.length > 1 ? ` → ${esc(s.trains.slice(1).join("・"))}${s.count > s.trains.length ? " …" : ""}` : "") + `</span>` +
+                btn(p, "one", "1本", s.key) + btn(p, "three", "3本", s.key) +
                 `</div>`).join("") +
             `</div>`).join("");
         e.innerHTML = planHtml + list.map(i =>
             `<div class="tid-inc">` +
-            `<span class="tid-inc-name">${escapeLogHtml(i.name)}</span>` +
+            `<span class="tid-inc-name">${escapeLogHtml(i.name)}${i.scenario ? "<small>・" + escapeLogHtml(i.scenario) + "</small>" : ""}</span>` +
             `<span class="tid-inc-place">${escapeLogHtml(i.place)}</span>` +
             `<span class="tid-inc-stage">${escapeLogHtml(i.stage)}</span>` +
             `<span class="tid-inc-rem">再開見込 約${i.remain}分</span>` +

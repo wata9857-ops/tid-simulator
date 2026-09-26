@@ -296,7 +296,10 @@ body.tid-dock-tall #tid-dock { max-height: 62vh; }
 .tid-rcv-label { font-weight: bold; min-width: 120px; }
 .tid-rcv-state { flex: 1 1 auto; color: #5C6680; }
 .tid-rcv-seg.is-ready .tid-rcv-state { color: #17823C; font-weight: bold; }
-.tid-rcv-seg.is-open .tid-rcv-state { color: #8A93A8; }
+.tid-rcv-seg.is-open .tid-rcv-state { color: #1F5FA8; }
+/* 運転再開の手配中 (まだ誰も発車させない) と、線路ごとの抑止中の列の行 */
+.tid-rcv-seg.is-hold .tid-rcv-state { color: #8A5A00; }
+.tid-rcv-state small, .tid-inc-name small { font-weight: normal; color: #5C6680; }
 .tid-rcv-btn { min-height: 26px; padding: 3px 8px; margin: 0; font-size: 11px; }
 
 /* 記録 */

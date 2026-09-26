@@ -176,6 +176,11 @@ class TidRenderer {
                 add(name, x, ys.bot);
             });
         });
+        // 貨物ターミナルの構内の名札 (押すと着発線ごとの在線と作業)
+        for (const key in FREIGHT_TERMINALS) {
+            const Y = this.freightYard(key);
+            if (Y) this.hitStations.push({ name: key, x: Y.cx - 55, y: Y.plateY - 11, w: 110, h: 22 });
+        }
     }
 
     pick(clientX, clientY) {
@@ -228,6 +233,7 @@ class TidRenderer {
 
         this.drawTracks(ctx, xMin, xMax);
         this.drawStations(ctx, xMin, xMax);
+        this.drawFreightTerminals(ctx, xMin, xMax);
         if (this.show.route) this.drawRoutes(ctx, xMin, xMax);
         if (this.show.signal) this.drawSignals(ctx, xMin, xMax);
         this.drawDepots(ctx, xMin, xMax);
@@ -889,6 +895,82 @@ class TidRenderer {
         }
     }
 
+    /* ------------------------------------------------------------ 貨物ターミナル
+       旅客駅とは別の構内 (js/03-stations.js の FREIGHT_TERMINALS)。
+       本線の上 (姫路タ) か下 (神戸タ・吹田タ・京都タ) に張り出して、
+       着発線・はしご状の取付線・転てつ器・E&S の荷役ホーム・構内の名札を描く。
+       着発線に居る列車は drawTrains がこの形の上に描く。 */
+
+    /** 構内の形 (その線区を表示していなければ null) */
+    freightYard(key) {
+        const ft = FREIGHT_TERMINALS[key];
+        if (!ft) return null;
+        const mainId = (ft.side === "top") ? "Down_Out" : "Up_Out";
+        const y = this.trackY[mainId];
+        if (y === undefined) return null;
+        return tidFreightYardLayout(key, y);
+    }
+
+    drawFreightTerminals(ctx, xMin, xMax) {
+        const line = (xa, ya, xb, yb) => {
+            ctx.strokeStyle = TID_COLORS.railEdge; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+            ctx.strokeStyle = TID_COLORS.rail; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+        };
+        for (const key in FREIGHT_TERMINALS) {
+            const Y = this.freightYard(key);
+            if (!Y || Y.x2 + 200 < xMin || Y.x1 - 200 > xMax) continue;
+            const lead = TID_YARD.lead;
+            // はしご状の取付線: 本線の転てつ器から、いちばん外の着発線の端へ
+            [[Y.x1, -1], [Y.x2, 1]].forEach(([xe, s]) => {
+                const xm = xe + s * (lead + 22);                    // 本線の転てつ器
+                const xf = xe + s * 8;                              // いちばん外の着発線の端
+                line(xm, Y.mainY, xf, Y.farY);
+                tidDrawTurnoutBox(ctx, xm, Y.mainY);
+                // それぞれの着発線を、はしごにつなぐ
+                Y.lanes.forEach(ln => {
+                    const r = (ln.y - Y.mainY) / (Y.farY - Y.mainY);
+                    const xl = xm + (xf - xm) * r;
+                    line(xe, ln.y, xl, ln.y);
+                    tidDrawTurnoutBox(ctx, xl, ln.y);
+                });
+            });
+            // E&S の荷役ホーム (下り着発線と上り着発線のあいだ)
+            if (this.show.platform) {
+                ctx.fillStyle = "rgba(170,178,196,0.55)";
+                ctx.fillRect(Y.x1 + 6, Y.dockY - 4, (Y.x2 - Y.x1) - 12, 8);
+            }
+            // 着発線
+            Y.lanes.forEach(ln => {
+                tidDrawRail(ctx, Y.x1, Y.x2, ln.y);
+                // 着発線の番号 (左端。列車表示は少し右に寄せて描くので重ならない)
+                ctx.font = "bold 9px 'Meiryo UI', sans-serif";
+                ctx.fillStyle = "#1B2440";
+                ctx.textAlign = "left"; ctx.textBaseline = "middle";
+                ctx.fillText(ln.label.replace(/[^0-9]/g, ""), Y.x1 + 2, ln.y - 7);
+            });
+            // 構内の名札 (旅客駅の札と同じ形)
+            tidDrawPlate(ctx, FREIGHT_TERMINALS[key].plate, Y.cx, Y.plateY);
+            // 吹田タは北方貨物線ともつながる (北方貨物線は本線の上の帯)
+            if (key === "吹田タ") {
+                ctx.font = "bold 9px 'Meiryo UI', sans-serif";
+                ctx.fillStyle = "#1B2440"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText("北方貨物線とも接続", Y.cx, Y.plateY + Y.sgn * 18);
+            }
+        }
+    }
+
+    /** 着発線に居る列車の描く位置 (構内を表示していなければ null) */
+    freightYardTrainPos(t) {
+        const key = freightTerminalOfTrack(t.trackId);
+        if (!key) return null;
+        const Y = this.freightYard(key);
+        if (!Y) return null;
+        const ln = Y.lanes.find(l => l.trackId === t.trackId && l.lane === t.lane);
+        return ln ? { x: Y.cx, y: ln.y } : null;
+    }
+
     /** 列車 */
     drawTrains(ctx, xMin, xMax) {
         const selected = this.game.tidUI ? this.game.tidUI.selectedId : null;
@@ -898,6 +980,21 @@ class TidRenderer {
             if (!blks) return;
             const b = blks[t.currBlockIndex];
             if (!b || b.x === -1000) return;
+            // 貨物ターミナルの着発線 (構内の中に描く)
+            if (isFreightTerminalTrack(t.trackId)) {
+                const p = this.freightYardTrainPos(t);
+                if (!p || p.x < xMin || p.x > xMax) return;
+                const stoppedF = !(t.state === "running");
+                tidDrawOccupyDot(ctx, p.x - tidW(BLOCK_WIDTH) * TID_YARD.halfW + 16, p.y, stoppedF);
+                const boxF = tidDrawTrainLabel(ctx, t, p.x + 16, p.y,
+                    { showFleet: false, below: false, inlineFleet: true });
+                this.hitTrains.push({ id: t.id, x: boxF.x, y: boxF.y, w: boxF.w, h: boxF.h });
+                if (selected === t.id) {
+                    ctx.strokeStyle = "#FF2020"; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+                    ctx.strokeRect(boxF.x, boxF.y, boxF.w, boxF.h); ctx.setLineDash([]);
+                }
+                return;
+            }
             const bx = tidX(b.x);
             if (bx < xMin || bx > xMax) return;
             const baseY = this.trackY[t.trackId];

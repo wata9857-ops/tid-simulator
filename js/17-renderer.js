@@ -160,7 +160,6 @@ class Renderer {
                 addSt(FREIGHT_STATION_LABEL[st.name], x, tY["Down_Out"] + 35);
             }
             if (i === W(39)) { addSt("宮原操", x, tY["Up_Hoppo"] - 20); addSt("宮原操", x, tY["Down_Hoppo"] + 30); }
-            if (i === W(41)) { addSt("吹田タ", x, tY["Up_Hoppo"] - 20); addSt("吹田タ", x, tY["Down_Hoppo"] + 30); }
 
             if (KOSEI_STATIONS_MAP[i])   addSt(KOSEI_STATIONS_MAP[i],   x, (tY["Kosei_Up"] + tY["Kosei_Down"]) / 2);
             if (FUKUCHI_STATIONS_MAP[i]) addSt(FUKUCHI_STATIONS_MAP[i], x, (tY["Fukuchi_Up"] + tY["Fukuchi_Down"]) / 2);
@@ -168,11 +167,60 @@ class Renderer {
             if (AKO_STATIONS_MAP[i])     addSt(AKO_STATIONS_MAP[i],     x, (tY["Ako_Up"] + tY["Ako_Down"]) / 2);
         });
 
+        // 貨物ターミナルの名札 (押すと発車標)
+        for (const key in FREIGHT_TERMINALS) {
+            const g = this.freightYardGeometry(key);
+            addSt(key, g.cx, g.plateY);
+        }
+
         for (const stName in DEPOTS) {
             const g = this.depotGeometry(stName);
             if (!g) continue;
             this.depotHitboxes.push({ name: stName, x: g.cx - 60, y: g.startY - 12 - 25,
                                       w: 120, h: g.totalHeight + 40 });
+        }
+    }
+
+    /**
+     * 貨物ターミナルの構内の位置 (旅客向けの線路図)。
+     * 北方貨物線 (下) と湖西線のあいだに、下り着発線を左、上り着発線を右の2列で並べる。
+     */
+    freightYardGeometry(key) {
+        const ft = FREIGHT_TERMINALS[key];
+        const tY = this.game.trackMgr.trackY;
+        const cx = 100 + ft.pos * BLOCK_WIDTH;
+        const top = tY[freightTerminalTrack(key, 1)];
+        const gap = 30;
+        const rows = Math.max(ft.lanes.up, ft.lanes.down);
+        const pos = (trackId, lane) => ({
+            x: cx + (/_Up$/.test(trackId) ? 56 : -56),
+            y: top + lane * gap
+        });
+        return { cx: cx, top: top, gap: gap, rows: rows, pos: pos, plateY: top - 36 };
+    }
+
+    drawFreightTerminals(ctx, xMin, xMax) {
+        const tY = this.game.trackMgr.trackY;
+        for (const key in FREIGHT_TERMINALS) {
+            const ft = FREIGHT_TERMINALS[key];
+            const g = this.freightYardGeometry(key);
+            if (g.cx < xMin - 200 || g.cx > xMax + 200) continue;
+            // 本線 (外側線) から構内への取付線
+            ctx.strokeStyle = CONFIG.lineMain; ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(g.cx - 56, tY["Down_Out"]); ctx.lineTo(g.cx - 56, g.top - 8); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(g.cx + 56, tY["Up_Out"]); ctx.lineTo(g.cx + 56, tY["Up_Out"] + 20); ctx.stroke();
+            ctx.setLineDash([]);
+            // 着発線 (下り = 左の列、上り = 右の列)
+            ctx.lineWidth = 3;
+            [[-1, ft.lanes.down], [1, ft.lanes.up]].forEach(([d, n]) => {
+                for (let l = 0; l < n; l++) {
+                    const p = g.pos(freightTerminalTrack(key, d), l);
+                    ctx.strokeStyle = CONFIG.lineMain;
+                    ctx.beginPath(); ctx.moveTo(p.x - 52, p.y); ctx.lineTo(p.x + 52, p.y); ctx.stroke();
+                }
+            });
+            this.drawStationBox(ctx, key, g.cx, g.plateY);
         }
     }
 
@@ -215,6 +263,7 @@ class Renderer {
 
         // --- 線路の横線
         TRACKS.forEach(trk => {
+            if (trk.type === "freight_terminal") return;      // 貨物ターミナルの構内は下で描く
             const y = tY[trk.id];
             ctx.strokeStyle = CONFIG.lineMain;
             ctx.lineWidth = 3;
@@ -246,7 +295,10 @@ class Renderer {
             ctx.beginPath(); ctx.moveTo(a, y); ctx.lineTo(b, y); ctx.stroke();
         });
 
-        // --- 北方貨物線の側線 (宮原操・吹田タ)
+        // --- 貨物ターミナルの構内 (旅客駅とは別の場所。js/03-stations.js の FREIGHT_TERMINALS)
+        this.drawFreightTerminals(ctx, xMin, xMax);
+
+        // --- 北方貨物線の側線 (宮原操・吹田信号場)
         [[39, 2], [41, 4]].forEach((pair) => {
             const i = pair[0], n = pair[1];
             const x = 100 + (i * UNITS_PER_STATION) * BLOCK_WIDTH;
@@ -291,10 +343,6 @@ class Renderer {
             if (i === W(39)) {
                 this.drawStationBox(ctx, "宮原操", x, tY["Up_Hoppo"] - 20);
                 this.drawStationBox(ctx, "宮原操", x, tY["Down_Hoppo"] + 30);
-            }
-            if (i === W(41)) {
-                this.drawStationBox(ctx, "吹田タ", x, tY["Up_Hoppo"] - 20);
-                this.drawStationBox(ctx, "吹田タ", x, tY["Down_Hoppo"] + 30);
             }
 
             this.drawStationTracksStatic(ctx, x, tY["Up_Out"], tY["Up_In"], tY["Down_In"], tY["Down_Out"], st.name);
@@ -518,6 +566,14 @@ class Renderer {
             const b = blks[t.currBlockIndex];
             if (!b || b.x < viewMin || b.x > viewMax) return;
 
+            // 貨物ターミナルの着発線に居る列車は、構内の中に描く
+            if (isFreightTerminalTrack(t.trackId)) {
+                const key = freightTerminalOfTrack(t.trackId);
+                const p = this.freightYardGeometry(key).pos(t.trackId, t.lane);
+                this.drawTrainLabelAt(ctx, t, p.x, p.y);
+                return;
+            }
+
             // 進路 (前方の閉塞が空いている方向)
             ctx.strokeStyle = CONFIG.route;
             const nextB = blks[t.currBlockIndex + t.dir];
@@ -560,7 +616,14 @@ class Renderer {
             ctx.strokeStyle = col; ctx.beginPath();
             ctx.moveTo(b.x - 60, dy); ctx.lineTo(b.x + 60, dy); ctx.stroke();
 
-            const bw = 100, bh = 24, tw = (t.type === "特急" ? 75 : 55), lx = b.x - bw / 2, ly = dy - bh / 2;
+            this.drawTrainLabelAt(ctx, t, b.x, dy);
+        });
+    }
+
+    /** 列車の札 (列車番号・行先・遅れ) を (x, dy) に描く */
+    drawTrainLabelAt(ctx, t, x, dy) {
+        {
+            const bw = 100, bh = 24, tw = (t.type === "特急" ? 75 : 55), lx = x - bw / 2, ly = dy - bh / 2;
             const cdata = CONFIG.colors[t.type] || CONFIG.colors["普通"];
             let bgColor = cdata.bg;
             if (t.type === "新快速" && t.isKoseiRoute) bgColor = "#00bfff";
@@ -604,6 +667,6 @@ class Renderer {
                 ctx.textAlign = "center"; ctx.textBaseline = "middle";
                 ctx.fillText(String(delayMinutes), dlx + sz / 2, dly + sz / 2 + 1);
             }
-        });
+        }
     }
 }

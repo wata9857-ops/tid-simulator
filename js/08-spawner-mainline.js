@@ -155,12 +155,14 @@ Spawner.prototype.trySpawn = function (type, dir) {
             if (type === "貨物") {
                 if (dir === 1) {
                     /* 山陽本線の上り貨物は岡山方面から上郡で線路図に入ってくる。
-                       姫路貨物駅 (ひめじ別所) 発のものもある。 */
+                       姫路貨物駅 (姫路タ) 発のものもある。
+                       ★姫路タ・吹田タは旅客駅とは別の貨物ターミナルになった
+                         (以前は ひめじ別所・北方貨物線の吹田貨 から出していた。割合は同じ)。 */
                     const rf = Math.random();
-                    candidates = rf < 0.35 ? ["上郡"] : (rf < 0.5 ? ["ひめじ別所"] : ["吹田貨"]);
+                    candidates = rf < 0.35 ? ["上郡"] : (rf < 0.5 ? ["姫路タ"] : ["吹田タ"]);
                 } else {
                     let r = Math.random();
-                    candidates = r < 0.15 ? ["敦賀"] : (r < 0.57 ? ["米原"] : ["吹田貨"]);
+                    candidates = r < 0.15 ? ["敦賀"] : (r < 0.57 ? ["米原"] : ["吹田タ"]);
                 }
             } else {
                 candidates = (dir === 1) ? [] : ["京都"];
@@ -223,6 +225,23 @@ Spawner.prototype.trySpawn = function (type, dir) {
         const headwayBlocks = (type === "新快速" || type === "特急") ? 3 : 2;
         let availableCandidates = [];
         for (let stName of candidates) {
+            /* 貨物ターミナルの着発線から出る列車 (js/34-freight-terminals.js)。
+               その向きの着発線に空きがあり、出ていく本線のすぐ先が空いていること。 */
+            if (FREIGHT_TERMINALS[stName]) {
+                const ft = FREIGHT_TERMINALS[stName];
+                const fb = (this.game.trackMgr.blocks[freightTerminalTrack(stName, dir)] || [])[ft.pos];
+                if (!fb || !fb.lanes.some(l => l === null)) continue;
+                const exitTid = (dir === 1 ? ft.exits.up : ft.exits.down)[0];
+                const eb = this.game.trackMgr.blocks[exitTid] || [];
+                let clear = true;
+                for (let k = 1; k <= headwayBlocks; k++) {
+                    const b = eb[ft.pos + dir * k];
+                    if (!b || b.x === -1000) break;
+                    if (b.lanes.some(l => l !== null)) { clear = false; break; }
+                }
+                if (clear) availableCandidates.push(stName);
+                continue;
+            }
             let checkTrackId = trackId;
             /* ★物理的に列車が現れる駅で判定する。
                始発駅の候補には「網干」「播州赤穂」「上郡」のように
@@ -272,7 +291,9 @@ Spawner.prototype.trySpawn = function (type, dir) {
         let startName = availableCandidates[Math.floor(Math.random() * availableCandidates.length)];
 
         if (type === "貨物") {
-            if (startName === "吹田貨") {
+            if (FREIGHT_TERMINALS[startName]) {
+                trackId = freightTerminalTrack(startName, dir);
+            } else if (startName === "吹田貨") {
                 trackId = (dir === 1) ? "Up_Hoppo" : "Down_Hoppo";
             } else if (startName === "敦賀" && dir === -1) {
                 trackId = "Kosei_Down";
@@ -306,7 +327,12 @@ Spawner.prototype.trySpawn = function (type, dir) {
 
         let startBlk = null;
         let blks = this.game.trackMgr.blocks[trackId];
-        if (blks) {
+        const startFt = FREIGHT_TERMINALS[startName];
+        if (blks && startFt) {
+            // 着発線のブロック。前方の貨物列車は、出ていく本線で見る
+            startBlk = blks[startFt.pos];
+            blks = this.game.trackMgr.blocks[(dir === 1 ? startFt.exits.up : startFt.exits.down)[0]] || blks;
+        } else if (blks) {
             if (startStIdx !== undefined) {
                 startBlk = blks.find(b => b.stationIdx === startStIdx);
             } else {
@@ -432,12 +458,14 @@ Spawner.prototype.trySpawn = function (type, dir) {
  * 進む向きの先にある貨物駅と、線路図の外の貨物駅から選ぶ。
  */
 Spawner.prototype.freightDestFrom = function (stName, dir) {
-    const here = (stName === "吹田貨") ? STATION_MAP["吹田"] : STATION_MAP[stName];
+    // 貨物ターミナルは着発線の位置 (駅と駅のあいだ) で前後を比べる
+    const posOf = (n) => FREIGHT_TERMINALS[n] ? FREIGHT_TERMINALS[n].pos / UNITS_PER_STATION
+                       : (n === "吹田貨" ? STATION_MAP["吹田"] : STATION_MAP[n]);
+    const here = posOf(stName);
     const ahead = [];
     for (const k in FREIGHT_TERMINALS) {
-        const s = FREIGHT_TERMINALS[k].station;
-        if (s === stName) continue;
-        const i = (s === "吹田貨") ? STATION_MAP["吹田"] : STATION_MAP[s];
+        if (k === stName) continue;
+        const i = posOf(k);
         if (here !== undefined && i !== undefined && (i - here) * dir > 0) ahead.push({ d: k, w: 12 });
     }
     const beyond = (dir === 1)
@@ -449,7 +477,7 @@ Spawner.prototype.freightDestFrom = function (stName, dir) {
 Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
         if (type === "貨物") {
             if (dir === 1) {
-                if (startName === "吹田貨") {
+                if (startName === "吹田タ" || startName === "吹田貨") {
                     const dests = [
                         {d: "東京タ", w: 50},
                         {d: "名古屋タ", w: 30},
@@ -468,11 +496,12 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                         {d: "京都タ", w: 6}
                     ];
                     // 姫路タより西から出る列車だけ、姫路タ・神戸タを行先にできる
-                    if (startName === "ひめじ別所") dests.push({d: "京都タ", w: 6});
+                    if (startName === "姫路タ") dests.push({d: "京都タ", w: 6});
                     return this.weightedRandom(dests.filter(o => {
                         const s = freightTerminalStation(o.d);
                         if (!s) return true;
-                        const i = (s === "吹田貨") ? STATION_MAP["吹田"] : STATION_MAP[s];
+                        if (s === startName) return false;
+                        const i = STATION_MAP[s];
                         const h = STATION_MAP[startName];
                         return h === undefined || i === undefined || i > h;
                     }));
@@ -480,7 +509,7 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
             } else {
                 if (startName === "敦賀") {
                     return Math.random() < 0.5 ? "吹田タ" : "百済タ";
-                } else if (startName === "吹田貨") {
+                } else if (startName === "吹田タ" || startName === "吹田貨") {
                     const dests = [
                         {d: "福岡タ", w: 40},
                         {d: "広島タ", w: 30},

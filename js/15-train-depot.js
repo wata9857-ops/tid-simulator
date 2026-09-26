@@ -51,22 +51,32 @@ Train.prototype.enterDepot = function (stName) {
 /**
  * 貨物ターミナルに着いた貨物列車の、荷役・機回し・次の列車への付け替え。
  *
- * 着発線に止まったまま、ターミナルごとの時間 (FREIGHT_TERMINALS.dwell) を過ごし、
- * 次の貨物列車として発車する。半分は機回しをして来た方向へ戻り、
- * 半分はそのまま先へ進む (実際のターミナルも着発線から両方向へ出ていく)。
+ * 着発線 (js/03-stations.js の FREIGHT_TERMINALS) に止まったまま、
+ * ターミナルごとの時間 (dwell) を過ごし、次の貨物列車として発車する。
+ *   機関車開放 → 機回し → 荷役 (E&S 着発線荷役) → 機関車連結 → ブレーキ試験 → 出発待ち
+ * 半分は機回しをして来た方向へ戻り (反対方向の着発線へ移る)、半分はそのまま先へ進む。
  * 反対方向の着発線が空いていないときは、そのまま先へ進む。
+ * 夜中 (0〜4時台) に着いた列車は、4割が朝まで着発線に留置される。
  */
 Train.prototype.freightTerminalWork = function (stName) {
     const g = this.game;
-    const key = freightTerminalAt(stName) || this.dest;
+    const key = freightTerminalAt(stName) || freightTerminalOfTrack(this.trackId) || this.dest;
     const ft = FREIGHT_TERMINALS[key] || { name: stName, dwell: [1800, 3600] };
-    const dwell = ft.dwell[0] + Math.random() * (ft.dwell[1] - ft.dwell[0]);
+    let dwell = ft.dwell[0] + Math.random() * (ft.dwell[1] - ft.dwell[0]);
+    const h = (g.currentTime / 3600) % 24;
+    let stabled = false;
+    if (h < 4.5 && Math.random() < 0.4) {
+        // 朝 5〜6時台の発車まで留置
+        dwell = Math.max(dwell, (5 - h) * 3600 + Math.random() * 3600);
+        stabled = true;
+    }
     let newDir = (Math.random() < 0.5) ? -this.dir : this.dir;
     if (newDir !== this.dir) {
         // 機回しをして反対方向の着発線から出る
-        const opp = this.trackId.indexOf("Hoppo") >= 0
-            ? (newDir === 1 ? "Up_Hoppo" : "Down_Hoppo")
-            : (newDir === 1 ? "Up_Out" : "Down_Out");
+        const opp = isFreightTerminalTrack(this.trackId) ? freightTerminalTrack(key, newDir)
+            : (this.trackId.indexOf("Hoppo") >= 0
+                ? (newDir === 1 ? "Up_Hoppo" : "Down_Hoppo")
+                : (newDir === 1 ? "Up_Out" : "Down_Out"));
         const ob = g.trackMgr.blocks[opp];
         const nb = ob ? ob[this.currBlockIndex] : null;
         const blks = g.trackMgr.blocks[this.trackId];
@@ -86,10 +96,10 @@ Train.prototype.freightTerminalWork = function (stName) {
     }
     const oldNo = this.trainNo;
     g.spawner.activeTrainNos.delete(this.trainNo);
-    this.dest = g.spawner.freightDestFrom(stName, newDir);
-    this.trainNo = g.spawner.generateTrainNumber("貨物", newDir, stName, this.trackId);
+    this.dest = g.spawner.freightDestFrom(key, newDir);
+    this.trainNo = g.spawner.generateTrainNumber("貨物", newDir, key, this.trackId);
     this.dutyName = this.trainNo;
-    this.startName = stName;
+    this.startName = key;
     this.nextAction = "depot";
     this.isFinalStop = false;
     this.hasStoppedAtCurrent = false;
@@ -97,12 +107,20 @@ Train.prototype.freightTerminalWork = function (stName) {
     this.delayTime = 0;
     this.state = "waiting_start";
     this.timer = Math.round(dwell);
+    this.terminalWork = { key: key, kind: "turn", start: g.currentTime, until: g.currentTime + this.timer, stabled: stabled };
+    this.syncFreightTerminalExit();
     g.freightStats = g.freightStats || { arrivals: {}, departures: {} };
     g.freightStats.arrivals[key] = (g.freightStats.arrivals[key] || 0) + 1;
     g.ui.updateBanner(
-        `【貨物】${oldNo} は${ft.name}の着発線に到着。荷役・機回しのあと、約${Math.round(dwell / 60)}分後に ` +
+        `【貨物】${oldNo} は${ft.name}の${platformOrLane(this)}に到着。` +
+        (stabled ? `朝まで着発線に留置し、` : `荷役・機回しのあと、約${Math.round(dwell / 60)}分後に `) +
         `${this.trainNo} (${this.dest}行き) として発車します。`, "banner-blue");
 };
+
+/** 着発線の番線名 (無ければ「着発線」) */
+function platformOrLane(t) {
+    return (isFreightTerminalTrack(t.trackId) && freightTerminalLaneLabel(t.trackId, t.lane)) || "着発線";
+}
 
     // ★追加: 留置場からの出区を試行するメソッド
 Train.prototype.tryDepotOut = function (depotName, force = false) {

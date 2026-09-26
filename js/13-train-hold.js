@@ -11,6 +11,12 @@ Train.prototype.checkHold = function (isStarting) {
            発車できないままホームを占め続けてしまう。 */
         const aheadTrackId = this.turnbackTrack || this.trackId;
         const aheadBlks = this.game.trackMgr.blocks[aheadTrackId] || blks;
+        /* ★貨物ターミナルの着発線にいる列車は、後ろから来る優等列車・前を走る列車を
+           「出ていく本線」で見る (js/34-freight-terminals.js)。着発線そのものの前後は
+           線路の無いプレースホルダなので、そこを見ると本線の様子が分からず、
+           優等列車の直前へ飛び出したり、前の列車に詰めて発車したりしていた。
+           以前の旅客駅 (鷹取など) の待避線に停まっていたときと同じく、本線の列車を見て判断する。 */
+        const ownTrack = isFreightTerminalTrack(this.trackId) ? aheadTrackId : this.trackId;
 
         /* ★信号現示による停止判定 (js/25-signals.js)。
            転てつ器故障・信号故障など、進路が構成できない障害が
@@ -181,7 +187,9 @@ Train.prototype.checkHold = function (isStarting) {
                  else if (troubleAheadDist !== -1) effectiveAheadDist = troubleAheadDist;
 
                  if (effectiveAheadDist !== -1) {
-                     const isMajorOrOvertake = OVERTAKE_STATIONS.includes(currentStName) || SWITCHABLE_STATIONS.includes(currentStName);
+                     // 貨物ターミナルの着発線でも、前方が止まっているうちは本線へ出ずに待つ
+                     const isMajorOrOvertake = OVERTAKE_STATIONS.includes(currentStName) || SWITCHABLE_STATIONS.includes(currentStName) ||
+                                               !!FREIGHT_TERMINALS[currentStName];
                      if (isMajorOrOvertake) {
                          // 長引きそうな場合はより遠くの駅でも抑止 (timer > 600 で約10分、または個別トラブル検知)
                          let isProlonged = (this.game.emergencyState && this.game.emergencyState.timer > 600) || (troubleAheadDist !== -1);
@@ -199,7 +207,7 @@ Train.prototype.checkHold = function (isStarting) {
                  // 【追加終了】
 
                  // ★修正: 三ノ宮など独立した並走駅での謎の抑止を防ぐため、別線路(In/Out)のチェックは合流・待避駅に限定
-                 const isMergeOrOvertake = OVERTAKE_STATIONS.includes(currentStName) || ["草津", "京都", "高槻", "新大阪", "大阪", "尼崎", "芦屋", "西明石", "兵庫"].includes(currentStName);
+                 const isMergeOrOvertake = OVERTAKE_STATIONS.includes(currentStName) || !!FREIGHT_TERMINALS[currentStName] || ["草津", "京都", "高槻", "新大阪", "大阪", "尼崎", "芦屋", "西明石", "兵庫"].includes(currentStName);
 
                  // ====================================================================
                  // ★新規追加: 駅構内での発車優先順位の厳格な調停ロジック（デッドロック完全排除）
@@ -210,10 +218,10 @@ Train.prototype.checkHold = function (isStarting) {
                  // ★超強化: デッドロック完全排除と不要な遅延防止ロジック
                  // ====================================================================
                  if (currentBlock && (currentBlock.isStation || currentBlock.hoppoStationName)) {
-                     let checkTracks = [this.trackId];
+                     let checkTracks = [ownTrack];
                      if (isMergeOrOvertake) {
-                         if (this.trackId.includes("In")) checkTracks.push(this.trackId.replace("In", "Out"));
-                         else if (this.trackId.includes("Out")) checkTracks.push(this.trackId.replace("Out", "In"));
+                         if (ownTrack.includes("In")) checkTracks.push(ownTrack.replace("In", "Out"));
+                         else if (ownTrack.includes("Out")) checkTracks.push(ownTrack.replace("Out", "In"));
                      }
                      
                      let shouldYieldToSameStation = false;
@@ -302,14 +310,15 @@ Train.prototype.checkHold = function (isStarting) {
                  // ====================================================================
 
                  // 【追加①】同駅・後方近傍の優等列車発車優先ロジック
-                 let yieldCheckTracks = [this.trackId];
+                 let yieldCheckTracks = [ownTrack];
                  if (isMergeOrOvertake) {
-                     if (this.trackId.includes("In")) yieldCheckTracks.push(this.trackId.replace("In", "Out"));
-                     else if (this.trackId.includes("Out")) yieldCheckTracks.push(this.trackId.replace("Out", "In"));
+                     if (ownTrack.includes("In")) yieldCheckTracks.push(ownTrack.replace("In", "Out"));
+                     else if (ownTrack.includes("Out")) yieldCheckTracks.push(ownTrack.replace("Out", "In"));
                  }
 
              // ★改善②: 優等列車からの逃げ切り最優先ロジック（待避不能駅での意味不明な抑止を完全排除）
-             if (!OVERTAKE_STATIONS.includes(currentStName)) {
+             // 貨物ターミナルの着発線は待避できる場所 (優等列車を先に通してから出る)
+             if (!OVERTAKE_STATIONS.includes(currentStName) && !FREIGHT_TERMINALS[currentStName]) {
                  let approachingHigherPriority = false;
                  const escapeCheckDist = Math.ceil(UNITS_PER_STATION * 3.0);
                  for (let tId of yieldCheckTracks) {
@@ -434,7 +443,7 @@ Train.prototype.checkHold = function (isStarting) {
              // 並走線路を含めると、別線路を走る優等列車に反応してしまい三ノ宮等で謎の抑止が多発するため完全排除。
              // ★修正: 前方スキャン（車間距離チェック）は「自線路のみ」に限定。
              // 並走線路を含めると、別線路を走る優等列車に反応してしまい三ノ宮等で謎の抑止が多発するため完全排除。
-             let scanTracks = [this.trackId];
+             let scanTracks = [ownTrack];
  // 1. 普通・快速・新快速のダンゴ運転防止 ＆ 2. 優先度に基づく接近チェック（高度な動的間隔調整）
              if (["普通", "快速", "新快速"].includes(this.type)) {
                  // 過剰な遠方検知を防ぐため車間距離を適正化

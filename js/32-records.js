@@ -65,9 +65,13 @@ function recTrackName(trackId) {
         Up_Hoppo: "北方貨物線 上り", Down_Hoppo: "北方貨物線 下り",
         Kosei_Up: "湖西線 上り", Kosei_Down: "湖西線 下り",
         Fukuchi_Up: "JR宝塚線 上り", Fukuchi_Down: "JR宝塚線 下り",
-        Tozai_Up: "JR東西線 上り", Tozai_Down: "JR東西線 下り"
+        Tozai_Up: "JR東西線 上り", Tozai_Down: "JR東西線 下り",
+        Ako_Up: "赤穂線 上り", Ako_Down: "赤穂線 下り"
     };
-    return map[trackId] || trackId;
+    if (map[trackId]) return map[trackId];
+    // 貨物ターミナルの着発線 (js/03-stations.js の FREIGHT_TERMINALS)
+    const trk = (typeof TRACKS !== "undefined") ? TRACKS.find(x => x.id === trackId) : null;
+    return trk ? trk.label : trackId;
 }
 
 /** 線区名 (その場所の線路と駅の位置から) */
@@ -76,6 +80,7 @@ function recLineName(trackId, stIdx) {
     if (trackId.indexOf("Fukuchi") === 0) return "福知山線 (JR宝塚線)";
     if (trackId.indexOf("Tozai") === 0) return "JR東西線・片町線";
     if (trackId.indexOf("Hoppo") >= 0) return "東海道本線 (北方貨物線)";
+    if (/^Frt_/.test(trackId)) return "貨物ターミナル構内";
     const i = (stIdx === undefined || stIdx === null) ? -1 : stIdx;
     if (i >= 0 && i <= STATION_MAP["神戸"]) return "山陽本線 (JR神戸線)";
     if (i > STATION_MAP["神戸"] && i <= STATION_MAP["大阪"]) return "東海道本線 (JR神戸線)";
@@ -199,7 +204,8 @@ class OpsRecords {
         const section = this.sectionOf(inc);
         const rec = {
             id: inc.id, no: no, typeId: type.id, family: type.family || type.id,
-            name: type.name, cat: type.cat || "", cause: type.cause || type.name,
+            name: type.name, scenario: inc.scenario || type.scenario || "",
+            cat: type.cat || "", cause: type.cause || type.name,
             causeText: type.causeText || "調査中",
             place: inc.place, trackId: inc.trackId, index: inc.index,
             line: recLineName(inc.trackId, stIdx), section: section,
@@ -542,7 +548,7 @@ class OpsRecords {
             '<div class="rec-from">大阪総合指令所 輸送指令 作成</div>' +
             '<table class="rec-kv"><tbody>' +
             kv("報告番号", recEsc(r.no)) +
-            kv("区分", recEsc(r.cat || "—") + " / " + recEsc(r.name)) +
+            kv("区分", recEsc(r.cat || "—") + " / " + recEsc(r.name) + (r.scenario ? "（" + recEsc(r.scenario) + "）" : "")) +
             kv("発生日時", "本日 " + recEsc(recClock(r.startedAt, true))) +
             kv("発生場所", recEsc(r.line) + " " + recEsc(r.place) + " (" + recEsc(recTrackName(r.trackId)) + ")") +
             kv("支障区間", recEsc(r.section || r.place)) +
@@ -657,7 +663,7 @@ class OpsRecords {
         L.push("大阪総合指令所 輸送指令 作成");
         L.push(line);
         L.push("報告番号　" + r.no);
-        L.push("区分　　　" + (r.cat || "—") + " / " + r.name);
+        L.push("区分　　　" + (r.cat || "—") + " / " + r.name + (r.scenario ? "（" + r.scenario + "）" : ""));
         L.push("発生日時　本日 " + recClock(r.startedAt, true));
         L.push("発生場所　" + r.line + " " + r.place + " (" + recTrackName(r.trackId) + ")");
         L.push("支障区間　" + (r.section || r.place));

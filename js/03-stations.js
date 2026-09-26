@@ -26,10 +26,10 @@ const STATIONS = [
     {name:"相生", type:2, cap:3, stopTime: STOP_TIME.SHORT}, {name:"竜野", type:2, cap:3, stopTime: STOP_TIME.SHORT},
     {name:"網干", type:2, cap:3, stopTime: STOP_TIME.SHORT}, {name:"はりま勝原", type:2, cap:2, stopTime: STOP_TIME.SHORT},
     {name:"英賀保", type:2, cap:3, stopTime: STOP_TIME.SHORT}, {name:"手柄山平和公園", type:2, cap:2, stopTime: STOP_TIME.SHORT},
-    {name:"姫路", type:2, cap:4, stopTime: STOP_TIME.MEDIUM}, {name:"東姫路", type:0, cap:2, stopTime: STOP_TIME.SHORT}, {name:"御着", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"ひめじ別所", type:0, cap:2, stopTime: STOP_TIME.SHORT, isFreightTerm: true}, {name:"曽根", type:0, cap:2, stopTime: STOP_TIME.SHORT},
+    {name:"姫路", type:2, cap:4, stopTime: STOP_TIME.MEDIUM}, {name:"東姫路", type:0, cap:2, stopTime: STOP_TIME.SHORT}, {name:"御着", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"ひめじ別所", type:0, cap:2, stopTime: STOP_TIME.SHORT}, {name:"曽根", type:0, cap:2, stopTime: STOP_TIME.SHORT},
     {name:"宝殿", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"加古川", type:2, cap:4, stopTime: STOP_TIME.SHORT}, {name:"東加古川", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"土山", type:0, cap:3, stopTime: STOP_TIME.SHORT}, {name:"魚住", type:0, cap:2, stopTime: STOP_TIME.SHORT}, {name:"大久保", type:0, cap:5, stopTime: STOP_TIME.SHORT}, 
     {name:"西明石", type:2, cap:6, stopTime: STOP_TIME.LONG}, {name:"明石", type:2, cap:4, stopTime: STOP_TIME.SHORT}, {name:"朝霧", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"舞子", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"垂水", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"塩屋", type:0, cap:4, stopTime: STOP_TIME.SHORT}, 
-    {name:"須磨", type:1, cap:6, stopTime: STOP_TIME.SHORT}, {name:"須磨海浜公園", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"鷹取", type:0, cap:4, stopTime: STOP_TIME.SHORT, isFreightTerm: true}, {name:"新長田", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"兵庫", type:1, cap:4, stopTime: STOP_TIME.SHORT}, 
+    {name:"須磨", type:1, cap:6, stopTime: STOP_TIME.SHORT}, {name:"須磨海浜公園", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"鷹取", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"新長田", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"兵庫", type:1, cap:4, stopTime: STOP_TIME.SHORT}, 
     {name:"神戸", type:2, cap:5, stopTime: STOP_TIME.SHORT}, {name:"元町", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"三ノ宮", type:2, cap:4, stopTime: STOP_TIME.MEDIUM},
     {name:"摩耶", type:0, cap:6, stopTime: STOP_TIME.SHORT, hasDownSiding: true}, {name:"灘", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"六甲道", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"住吉", type:1, cap:4, stopTime: STOP_TIME.SHORT}, {name:"摂津本山", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"甲南山手", type:0, cap:4, stopTime: STOP_TIME.SHORT}, 
     {name:"芦屋", type:2, cap:6, stopTime: STOP_TIME.MEDIUM}, {name:"さくら夙川", type:0, cap:4, stopTime: STOP_TIME.SHORT}, {name:"西宮", type:1, cap:6, stopTime: STOP_TIME.SHORT}, {name:"甲子園口", type:0, cap:5, stopTime: STOP_TIME.SHORT}, {name:"立花", type:0, cap:4, stopTime: STOP_TIME.SHORT}, 
@@ -61,11 +61,11 @@ const STATION_PLATFORM_RULES = {
     "相生": { labels:["3","2","1"], lanes:[true,true,true] }, "竜野": { labels:["3","2","1"], lanes:[true,true,true] },
     "網干": { labels:["1","2","3"], lanes:[true,true,true] }, "はりま勝原": { labels:["2","1"], lanes:[true,true] },
     "英賀保": { labels:["3","2","1"], lanes:[true,true,true] }, "手柄山平和公園": { labels:["2","1"], lanes:[true,true] },
-    "姫路": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "東姫路": { labels:["2","1"], lanes:[true,true] }, "御着": { labels:["3","2","1"], lanes:[true,true,true] }, "ひめじ別所": { labels:["2","1","貨","貨"], lanes:[true,true,true,true] }, "曽根": { labels:["2","1"], lanes:[true,true] },
+    "姫路": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "東姫路": { labels:["2","1"], lanes:[true,true] }, "御着": { labels:["3","2","1"], lanes:[true,true,true] }, "ひめじ別所": { labels:["2","1"], lanes:[true,true] }, "曽根": { labels:["2","1"], lanes:[true,true] },
     "宝殿": { labels:["上通","3","2","1"], lanes:[false,true,true,true] }, "加古川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "東加古川": { labels:["3","2","1"], lanes:[true,true,true] }, "土山": { labels:["3","2","1"], lanes:[true,true,true] }, "魚住": { labels:["2","1"], lanes:[true,true] },
     "大久保": { labels:["4","3","2","1","下通"], lanes:[true,true,true,true,false] }, "西明石": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "明石": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "朝霧": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "舞子": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "垂水": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "塩屋": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "須磨": { labels:["上外","4","3","2","1","下外"], lanes:[false,true,true,true,true,false] },
-    "須磨海浜公園": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "鷹取": { labels:["上外","2","1","下外","上待","下待"], lanes:[false,true,true,false,false,false] }, "新長田": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "兵庫": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    "須磨海浜公園": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "鷹取": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "新長田": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "兵庫": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "神戸": { labels:["5","4","3","2","1"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] },
     "灘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "六甲道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "住吉": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摂津本山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "甲南山手": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","2","1","下外"], lanes:[true,true,true,true,false] },
@@ -73,7 +73,7 @@ const STATION_PLATFORM_RULES = {
     "新大阪": { labels:["上通","10","9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true,true,true] }, "東淀川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "吹田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "岸辺": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "千里丘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "茨木": { labels:["上待","4","3","2","1","下待"], lanes:[false,true,true,true,true,false] }, "JR総持寺": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "摂津富田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "高槻": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "島本": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "山崎": { labels:["4","3","2","1","下待"], lanes:[true,true,true,true,false] }, "長岡京": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
-    "向日町": { labels:["1","2","3","4","下待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["発1","発2"], lanes:[true,true], type:"freight_term" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1","京","タ"], lanes:[true,true,true,true,false,false] },
+    "向日町": { labels:["1","2","3","4","下待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["発1","発2"], lanes:[true,true], type:"freight_term" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "京都": { labels:["下通","0","2","3","4","5","6","7"], lanes:[false,true,true,true,true,true,true,true] },
     "山科": { labels:["上通","3","2","下通"], lanes:[false,true,true,false] }, "大津": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "膳所": { labels:["1","2","3","4","上待","下待"], lanes:[true,true,true,true,false,false] }, "石山": { labels:["4","3","2","1","上待","下待"], lanes:[true,true,true,true,false,false] }, "瀬田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "南草津": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "草津": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "栗東": { labels:["2","1"], lanes:[true,true] }, "守山": { labels:["2","1"], lanes:[true,true] }, "野洲": { labels:["3","2","1"], lanes:[true,true,true] },
@@ -205,7 +205,16 @@ const TRACKS = [
     { id: "Down_In", label: "下り内", dir: -1 }, { id: "Down_Out", label: "下り外", dir: -1 }, { id: "Down_Hoppo", label: "北方貨物下", dir: -1, type: "freight_line" },{ id: "Kosei_Up", label: "湖西線上り", dir: 1 }, { id: "Kosei_Down", label: "湖西線下り", dir: -1 },
     { id: "Fukuchi_Up", label: "福知山線上り", dir: 1 }, { id: "Fukuchi_Down", label: "福知山線下り", dir: -1 },
     { id: "Tozai_Up", label: "東西線上り", dir: 1 }, { id: "Tozai_Down", label: "東西線下り", dir: -1 },
-    { id: "Ako_Up", label: "赤穂線上り", dir: 1 }, { id: "Ako_Down", label: "赤穂線下り", dir: -1 }
+    { id: "Ako_Up", label: "赤穂線上り", dir: 1 }, { id: "Ako_Down", label: "赤穂線下り", dir: -1 },
+    // 貨物ターミナルの着発線 (FREIGHT_TERMINALS)。旅客駅とは別の場所にある
+    { id: "Frt_Himeji_Up", label: "姫路タ 上り着発線", dir: 1, type: "freight_terminal", terminal: "姫路タ" },
+    { id: "Frt_Himeji_Down", label: "姫路タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "姫路タ" },
+    { id: "Frt_Kobe_Up", label: "神戸タ 上り着発線", dir: 1, type: "freight_terminal", terminal: "神戸タ" },
+    { id: "Frt_Kobe_Down", label: "神戸タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "神戸タ" },
+    { id: "Frt_Suita_Up", label: "吹田タ 上り着発線", dir: 1, type: "freight_terminal", terminal: "吹田タ" },
+    { id: "Frt_Suita_Down", label: "吹田タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "吹田タ" },
+    { id: "Frt_Kyoto_Up", label: "京都タ 上り着発線", dir: 1, type: "freight_terminal", terminal: "京都タ" },
+    { id: "Frt_Kyoto_Down", label: "京都タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "京都タ" }
 ];
 
 /* ------------------------------------------------------------------ 単線区間
@@ -303,36 +312,102 @@ const AKO_STATIONS_MAP = _shiftKeys({ "-9": "播州赤穂", "-8": "坂越", "-7"
 /* 赤穂線ブロックの範囲 (播州赤穂 〜 相生) */
 const AKO_WEST_IDX = W(-9), AKO_JUNCTION_IDX = W(-6);
 
-/* 貨物駅としての別名 (線路図の上下に出す) */
-const FREIGHT_STATION_LABEL = { "ひめじ別所": "姫路タ", "鷹取": "神戸タ", "西大路": "京都タ" };
+/* 貨物駅としての別名 (線路図の上下に出す)。
+   ★旅客駅に貨物駅の名前を重ねるのはやめた (貨物ターミナルは FREIGHT_TERMINALS で別に持つ)。 */
+const FREIGHT_STATION_LABEL = {};
 
-/* ------------------------------------------------------------------ 貨物ターミナル (利用者の指摘 6)
+/* ------------------------------------------------------------------ 貨物ターミナル
 
-   貨物列車の行先になる、線路図の中の貨物駅。
-     station … 線路図の上で着発線を持つ駅 (貨物列車は外側の着発線に入る)
-     dwell   … 着いてから次に出るまで [秒] (荷役・機関車の付け替え (機回し)・入換)
-   ★吹田貨物ターミナルは北方貨物線の上 (岸辺〜吹田の北側) にあり、
-     本線から来る貨物列車は塚本・茨木方で北方貨物線に入って着発線へ着く。
-     以前は吹田タ行きの貨物列車が吹田に着いたとたんに消え、
-     吹田貨物ターミナル発の列車はどこからともなく現れていた。
-   ★神戸タ (鷹取)・姫路タ (ひめじ別所)・京都タ (西大路・梅小路) も同じ扱いにする。
-     着いた列車は着発線で荷役と機回しをして、次の貨物列車として発車する
-     (向きを変えることもある)。 */
+   ■ 以前の形と、何が問題だったか
+     神戸タは鷹取、京都タは西大路、姫路タはひめじ別所という「旅客駅の一部」として持ち、
+     旅客駅の外側線に2本目のレーン (貨物の待避線) を足して着発線の代わりにしていた。
+     吹田タも北方貨物線の上の、吹田駅と同じ位置のブロックだった。
+     そのため貨物列車は旅客駅の番線に着き、旅客駅の在線表に貨物列車が並んでいた。
+
+   ■ いまの形
+     貨物ターミナルは旅客駅とは別の場所 (駅と駅のあいだの閉塞の位置) に、
+     専用の線路 (Frt_<id>_Up / Frt_<id>_Down) と着発線を持つ。
+     配線略図 (スクリーンショット) で読んだ位置と向き
+       姫路タ … ひめじ別所の曽根方、本線の上側 (706)。着発線 上下3本ずつ
+       神戸タ … 須磨海浜公園〜鷹取のあいだ、本線の下側 (704)。着発線 上下3本ずつ
+       吹田タ … 吹田〜岸辺のあいだ、本線の下側 (696)。東海道本線と北方貨物線の両方につながる。
+                 規模が大きいので着発線は上下5本ずつ
+       京都タ … 西大路〜京都のあいだ (梅小路)、本線の下側 (680)。着発線 上下3本ずつ
+     着発線は本線と同じ位置のブロックとして持ち、そこから本線 (links) へ横に出入りする。
+     本線の閉塞・信号・進路の判定をそのまま使えるので、ターミナルの線路は
+     「線路図に描いただけの線」ではなく、実際に列車が着いて・待って・発車する線路になる。
+
+     pos       … 着発線のあるブロック番号 (駅と駅のあいだ)
+     side      … Super-TID で本線の上側 ("top") / 下側 ("bottom") のどちらに描くか
+     lanes     … 着発線の本数 { up, down }
+     links     … 本線のどの線路から入れるか (向きごと)
+     exits     … 発車して本線へ出るときの線路 (向きごと。先に書いたほうから使う)
+     dwell     … 着いてから次の列車として出るまで [秒] (荷役・機回し・入換)
+     stopSec   … 通過する貨物列車の停車 (乗務員交代・待避) [秒]
+     cargo     … 荷役の方式 (E&S = 着発線荷役。着発線に着いたまま、コンテナを積み下ろしする) */
 const FREIGHT_TERMINALS = {
-    "吹田タ": { station: "吹田貨",     name: "吹田貨物ターミナル", dwell: [2400, 4800] },
-    "神戸タ": { station: "鷹取",       name: "神戸貨物ターミナル", dwell: [1800, 3600] },
-    "姫路タ": { station: "ひめじ別所", name: "姫路貨物駅",         dwell: [1800, 3600] },
-    "京都タ": { station: "西大路",     name: "京都貨物駅",         dwell: [1800, 3600] }
+    "姫路タ": { id: "Himeji", name: "姫路貨物駅", plate: "姫路貨物",
+               pos: STATION_MAP["ひめじ別所"] * UNITS_PER_STATION + 1, side: "top", near: "ひめじ別所",
+               lanes: { up: 3, down: 3 },
+               links: { up: ["Up_Out"], down: ["Down_Out"] },
+               exits: { up: ["Up_Out"], down: ["Down_Out"] },
+               dwell: [1800, 3600], stopSec: 420, cargo: "E&S", ref: "(706)" },
+    "神戸タ": { id: "Kobe", name: "神戸貨物ターミナル", plate: "神戸(タ)",
+               pos: STATION_MAP["須磨海浜公園"] * UNITS_PER_STATION + 2, side: "bottom", near: "鷹取",
+               lanes: { up: 3, down: 3 },
+               links: { up: ["Up_Out", "Up_In"], down: ["Down_Out", "Down_In"] },
+               exits: { up: ["Up_Out"], down: ["Down_Out"] },
+               dwell: [1800, 3600], stopSec: 420, cargo: "E&S", ref: "(704)" },
+    "吹田タ": { id: "Suita", name: "吹田貨物ターミナル", plate: "吹田(タ)",
+               pos: STATION_MAP["吹田"] * UNITS_PER_STATION + 2, side: "bottom", near: "岸辺",
+               lanes: { up: 5, down: 5 },
+               links: { up: ["Up_Out", "Up_In", "Up_Hoppo"], down: ["Down_Out", "Down_In", "Down_Hoppo"] },
+               // 発車は北方貨物線へ (以前の吹田貨と同じ。茨木・塚本の先で列車線に合流する)
+               exits: { up: ["Up_Hoppo", "Up_Out"], down: ["Down_Hoppo", "Down_Out"] },
+               dwell: [2400, 4800], stopSec: 780, cargo: "E&S", ref: "(696)" },
+    "京都タ": { id: "Kyoto", name: "京都貨物駅", plate: "京都貨物",
+               pos: STATION_MAP["西大路"] * UNITS_PER_STATION + 2, side: "bottom", near: "京都",
+               lanes: { up: 3, down: 3 },
+               links: { up: ["Up_Out", "Up_In"], down: ["Down_Out", "Down_In"] },
+               exits: { up: ["Up_Out"], down: ["Down_Out"] },
+               dwell: [1800, 3600], stopSec: 420, cargo: "E&S", ref: "(680)" }
 };
-/** 貨物列車の行先が線路図の中の貨物駅なら、その駅名 (着発線のある駅) */
-function freightTerminalStation(dest) {
-    const t = FREIGHT_TERMINALS[dest];
-    return t ? t.station : null;
+/* 着発線のブロック番号 → ターミナル */
+const FREIGHT_TERMINAL_AT = {};
+for (const k in FREIGHT_TERMINALS) {
+    FREIGHT_TERMINAL_AT[FREIGHT_TERMINALS[k].pos] = k;
+    /* 行先・発駅としての位置 (向きの判定に使う)。いちばん近い駅の番号にする。
+       ★ブロックの stationIdx には入れない (旅客駅のブロックとは別の場所なので)。 */
+    STATION_MAP[k] = Math.round(FREIGHT_TERMINALS[k].pos / UNITS_PER_STATION);
 }
-/** その駅が貨物ターミナルなら、その行先名 (吹田貨 → 吹田タ) */
-function freightTerminalAt(stName) {
-    for (const k in FREIGHT_TERMINALS) if (FREIGHT_TERMINALS[k].station === stName) return k;
+/** 貨物ターミナルの着発線の線路IDか */
+function isFreightTerminalTrack(trackId) { return /^Frt_/.test(trackId || ""); }
+/** 着発線の線路ID → ターミナル (吹田タ など) */
+function freightTerminalOfTrack(trackId) {
+    if (!isFreightTerminalTrack(trackId)) return null;
+    for (const k in FREIGHT_TERMINALS) if (trackId.indexOf("Frt_" + FREIGHT_TERMINALS[k].id + "_") === 0) return k;
     return null;
+}
+/** ターミナルの、その向きの着発線の線路ID */
+function freightTerminalTrack(key, dir) {
+    const ft = FREIGHT_TERMINALS[key];
+    return ft ? "Frt_" + ft.id + (dir === 1 ? "_Up" : "_Down") : null;
+}
+/** 着発線の番線名 (下りが1番から、上りはその続き) */
+function freightTerminalLaneLabel(trackId, lane) {
+    const key = freightTerminalOfTrack(trackId);
+    const ft = key && FREIGHT_TERMINALS[key];
+    if (!ft) return null;
+    const n = /_Up$/.test(trackId) ? ft.lanes.down + lane + 1 : lane + 1;
+    return "着発" + n + "番";
+}
+/** 貨物列車の行先が線路図の中の貨物ターミナルなら、その名前 (着発線のブロックの名前と同じ) */
+function freightTerminalStation(dest) {
+    return FREIGHT_TERMINALS[dest] ? dest : null;
+}
+/** その場所が貨物ターミナルなら、その名前 */
+function freightTerminalAt(stName) {
+    return FREIGHT_TERMINALS[stName] ? stName : null;
 }
 
 const timeToSec = (h, m, s) => h*3600 + m*60 + s;
@@ -399,15 +474,10 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY, downOutY, downOutY + 30];
     }
     else if (stationName === "ひめじ別所") {
-        /* 姫路口は複線。ホーム2面と貨物待避線2本を上下線に割り当てる。
-           (以前は内側線の座標を使っていて、存在しない線路に番線が付いていた) */
-        yPositions = [upOutY, downOutY, upOutY - 30, downOutY + 30];
-    }
-    else if (stationName === "鷹取") {
-        yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
-    }
-    else if (stationName === "西大路") {
-        yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
+        /* 姫路口は複線。ホーム2面を上下線に割り当てる。
+           ★以前は貨物の待避線2本もこの駅の番線として持っていたが、
+             姫路貨物駅は独立した貨物ターミナル (FREIGHT_TERMINALS) にした。 */
+        yPositions = [upOutY, downOutY];
     }
     /* 膳所・石山 — 配線略図どおり、外側線のさらに外側に待避線がある。
        (スクリーンショット(692).png の 石山: 本線4本＋待避線2本＋島式ホーム2面) */
@@ -702,8 +772,9 @@ function stationMainLaneCount(stName, trackId) {
     if (stName === "近江八幡" && trackId.indexOf("Down") === 0) return 2;
     if (["芦屋", "須磨", "神戸"].indexOf(stName) >= 0 && isInner) return 2;
     if (stName === "大久保") return 2;
-    if (["ひめじ別所", "鷹取", "西大路"].indexOf(stName) >= 0 &&
-        trackId.indexOf("Out") >= 0) return 2;
+    /* ★ひめじ別所・鷹取・西大路の外側線の2本目 (貨物の待避線) はやめた。
+         姫路貨物駅・神戸貨物ターミナル・京都貨物駅は、旅客駅とは別の
+         貨物ターミナル (FREIGHT_TERMINALS) として持つ。 */
     /* 配線略図 (スクリーンショット(692).png など) にある待避線。
        外側線の外側に、駅の前後で本線から分かれて戻る線がある。 */
     if (["膳所", "石山"].indexOf(stName) >= 0 && trackId.indexOf("Out") >= 0) return 2;
@@ -1698,6 +1769,7 @@ function trainPlatformLabel(game, t) {
     const b = blks[t.currBlockIndex];
     if (!b || b.x === -1000) return null;
     if (!b.isStation && !b.hoppoStationName) return null;   // 駅間は出さない
+    if (isFreightTerminalTrack(t.trackId)) return freightTerminalLaneLabel(t.trackId, t.lane);
     const st = blockStationName(b);
     if (!st) return null;
     return platformLabelOf(st, t.trackId, t.lane);
