@@ -42,8 +42,9 @@ Train.prototype.checkHold = function (isStarting) {
                 // 尼崎駅への直接進入判定
                 if (nextBlk.stationIdx === STATION_MAP["尼崎"]) {
                     if (this.dir === 1 && this.trackId === "Fukuchi_Up") {
+                        // 特急 (こうのとり) は列車線 (外側線) へ
                         targetTrackId = TOZAI_THROUGH_DESTS.includes(this.dest) ?
-                            "Tozai_Up" : "Up_In";
+                            "Tozai_Up" : (this.type === "特急" ? "Up_Out" : "Up_In");
                     } else if (this.dir === 1 && !this.trackId.includes("Tozai") && TOZAI_THROUGH_DESTS.includes(this.dest)) {
                         targetTrackId = "Tozai_Up";
                     } else if (this.dir === -1 && !this.trackId.includes("Fukuchi") && FUKUCHI_THROUGH_DESTS.includes(this.dest)) {
@@ -65,7 +66,8 @@ Train.prototype.checkHold = function (isStarting) {
                         const tBlks = this.game.trackMgr.blocks[inTrackId];
                         if (tBlks) {
                             const targetNextBlk = tBlks.find(b => b.stationIdx === nextBlk.stationIdx);
-                            if (targetNextBlk && targetNextBlk.lanes.some(l => l === null)) {
+                            // move() と同じく「この列車が入れる番線」があるかで決める (停まる列車はホームのある番線)
+                            if (targetNextBlk && this.findFreeLane(targetNextBlk) !== -1) {
                                 targetTrackId = inTrackId;
                             }
                         }
@@ -398,7 +400,20 @@ Train.prototype.checkHold = function (isStarting) {
                                                   // 目標の線路（targetTrackId）が一致する場合のみ待避する
                                               if (targetTrackId === otherTarget) {
                                                     // 異常な長期抑止(8分以上)をされている優等列車は無視する(デッドロック回避)
-                                             if (l.stuckTime < 480) {
+                                             /* ★優等列車がこの駅へ入れないなら待たない。優等列車の入れる番線を
+                                                自分がふさいでいると、互いに待ち合って動けなくなる
+                                                (草津の下り内側線で、普通が快速を待ち、快速は普通の居る番線にしか
+                                                入れず、どちらも待ちの上限まで止まっていた)。 */
+                                             const hereBlk = (this.game.trackMgr.blocks[otherTarget] || [])[this.currBlockIndex];
+                                             let canEnter = true;
+                                             if (hereBlk && l.currBlockIndex !== this.currBlockIndex) {
+                                                 const hr = (this.game.currentTime / 3600) % 24;
+                                                 const pl = stationPreferredLanes(currentStName, otherTarget, l.type, hr, "arrive");
+                                                 const needPf = l.passengerStopsAt(currentStName);   // 停まる列車はホームのある番線に限る
+                                                 canEnter = hereBlk.lanes.some((x, li) => x === null && (!pl || !pl.length || pl.indexOf(li) >= 0) &&
+                                                                                    (!needPf || laneHasPlatform(currentStName, otherTarget, li)));
+                                             }
+                                             if (canEnter && l.stuckTime < 480) {
                                                   yieldToHigher = true;
                                                         }
                                                     }
@@ -427,6 +442,12 @@ Train.prototype.checkHold = function (isStarting) {
                          if (idx >= 0 && idx < blks.length) {
                              for(let l of blks[idx].lanes) {
                                  if (l && l !== this && l.type === "新快速" && l.dir === this.dir) {
+                                     /* 新快速がこの駅へ入れないなら待たない (自分が新快速の入る番線を
+                                        ふさいでいると、互いに待ち合う)。停まる新快速はホームのある番線に限る。 */
+                                     const hb = blks[this.currBlockIndex];
+                                     const needPf = l.passengerStopsAt(currentStName);
+                                     if (k > 0 && hb && !hb.lanes.some((x, li) => x === null &&
+                                             (!needPf || laneHasPlatform(currentStName, this.trackId, li)))) continue;
                                      approachingSpecialRapid = true;
                                      break;
                                  }
@@ -814,6 +835,8 @@ function pickRouteLane(block, stName, trackId, mode, type, hour, outer) {
  */
 Train.prototype.findFreeLane = function (block, toTrack) {
         if (!block.isStation && !block.hoppoStationName) return (block.lanes[0]===null) ? 0 : -1;
+        // 貨物ターミナルの着発線は、線の種類 (着発・E&S・荷役・留置) で選ぶ (js/34-freight-terminals.js)
+        if (block.freightTerminal) return freightTerminalLaneFor(block, this.freightTerminalIntent(block.freightTerminal));
         let stName = block.hoppoStationName || STATIONS[block.stationIdx].name;
         
         /* ★指令の着発番線変更はここでは扱わない。
@@ -855,7 +878,9 @@ Train.prototype.findFreeLane = function (block, toTrack) {
 
         const isFreight = ["貨物", "回送", "臨時"].includes(this.type);
         if (stName === "向日町操") {
-            if (this.startName==="向日町操"||this.dest==="向日町操"||isFreight||this.type==="特急") {
+            /* 車両所 (京都支所) に出入りする列車だけが着発線 (外側の線) を使い、
+               ほかの列車は本線 (0番目のレーン) を通る */
+            if (this.startName==="向日町操"||this.dest==="向日町操") {
                 for(let l=block.lanes.length-1; l>=0; l--) if(block.lanes[l]===null) return l;
                 return -1;
             } else return (block.lanes[0]===null) ? 0 : -1;
@@ -947,6 +972,10 @@ function trackChangeCheck(game, t, stName, trackId, lane) {
     if (!(lane >= 0 && lane < sb.lanes.length)) return { ok: false, msg: "その番線はありません。" };
     const label = displayPlatformLabel(stName, trackId, lane);
     const text = label ? platformText(label) : ("第" + (lane + 1) + "線");
+    // 客扱いをする駅では、ホームの無い線 (通過線・側線) は選べない
+    if (!laneHasPlatform(stName, trackId, lane) && typeof t.passengerStopsAt === "function" && t.passengerStopsAt(stName)) {
+        return { ok: false, msg: `${stName}駅の${text}はホームの無い線です。${t.trainNo} はこの駅で客扱いをするので入れられません。` };
+    }
 
     // 向き (上り列車は上りの線路、下り列車は下りの線路)
     // ★終着列車は、到着する側に渡り線がある駅なら反対側の着発線にも入れる
@@ -1162,3 +1191,126 @@ Train.prototype.applyTrackReservation = function () {
     if (this.turnbackTrack === this.trackId) this.turnbackTrack = null;
     this.completeReservation("転線しました");
 };
+
+/* ================================================================== ホームの無い線に旅客列車を停めない
+
+   ■ 何が起きていたか
+     芦屋の「下通」のような、ホームの無い通過線・待避線 (STATION_PLATFORM_RULES の lanes が false)
+     に、新快速などの旅客列車が入ってそのまま客扱いの停車をしていた。
+     着発線の選び方 (findFreeLane) が「空いているレーン」を探すだけで、
+     ホームがあるかを見ていなかったため。
+
+   ■ 決まり (全駅に同じく当てる)
+     ・旅客列車 (普通・快速・新快速・特急) がその駅に停まる (客扱いをする) ときは、
+       少なくとも片側にホームのある線にしか入れない。
+     ・ホームのある線が空いていなければ、手前で待つ (ホームの無い線で客扱いをしない)。
+     ・通過する列車・回送・貨物は、これまでどおりホームの無い線も通れる。
+     ・ホームの無い線は、番線の定義のまま「ホームの無い線」として残す。
+     ・指令の着発番線変更でも、停まる駅でホームの無い線は選べない。 */
+
+const PASSENGER_TYPES = ["普通", "快速", "新快速", "特急"];
+
+/** その列車がその駅で客扱いの停車をするか */
+Train.prototype.passengerStopsAt = function (stName) {
+    if (PASSENGER_TYPES.indexOf(this.type) < 0 || !stName) return false;
+    if (this.serviceChange && this.serviceChange.at === stName) return true;
+    if (this.dest === stName) return true;
+    if (lineEndForBeyond(this.dest) === stName) return true;
+    const st = (STATION_MAP[stName] !== undefined && STATIONS[STATION_MAP[stName]] &&
+                STATIONS[STATION_MAP[stName]].name === stName) ? STATIONS[STATION_MAP[stName]] : { name: stName, stopTime: 60 };
+    try { return !!this.shouldStop(st); } catch (e) { return false; }
+};
+
+/** その駅のそのレーンにホームがあるか (番線の定義の無い駅は、あるものとして扱う) */
+function laneHasPlatform(stName, trackId, lane) {
+    if (!STATION_PLATFORM_RULES[stName]) return true;
+    if ((PLATFORM_OUTSIDE_LANE_DATA[stName] || []).indexOf(trackId) >= 0) return true;
+    const e = stationLaneEntry(stName, trackId, lane);
+    return e ? !!e.platform : true;
+}
+
+/* 番線の定義 (レーン) には入っていないが、実物ではホームのある線。
+   山科 … 外側線 (列車線) と湖西線の列車は 1番・4番のりば (湖西線側のホーム) に停まる。
+          番線の定義では外側線のレーンを「上通」「下通」として持っているだけなので、ここで補う。 */
+const PLATFORM_OUTSIDE_LANE_DATA = { "山科": ["Up_Out", "Down_Out", "Kosei_Up", "Kosei_Down"] };
+
+(function () {
+    const base = Train.prototype.findFreeLane;
+    Train.prototype.findFreeLane = function (block, toTrack) {
+        const lane = base.call(this, block, toTrack);
+        if (!block || block.freightTerminal || !(block.isStation || block.hoppoStationName)) return lane;
+        const stName = block.hoppoStationName || (STATIONS[block.stationIdx] ? STATIONS[block.stationIdx].name : "");
+        const tid = block.trackId || this.trackId;
+        if (this.skipStopAt && this.skipStopAt !== stName) this.skipStopAt = null;
+        if (this.crossingOutAt && this.crossingOutAt !== stName) this.crossingOutAt = null;
+        /* 行き止まりの折返線 (甲子園口の2番) は、その駅で折り返す列車だけが入る。
+           折り返す列車は空いていれば折返線を使い、通る列車は折返線以外の線へ。 */
+        if (STATION_STUB_LANES[stName]) {
+            const ends = this.dest === stName || (this.serviceChange && this.serviceChange.at === stName);
+            const stubFree = [];
+            for (let l = 0; l < block.lanes.length; l++) if (block.lanes[l] === null && isStubLane(stName, tid, l)) stubFree.push(l);
+            if (ends && stubFree.length && (lane < 0 || !isStubLane(stName, tid, lane))) return stubFree[0];
+            if (!ends && lane >= 0 && isStubLane(stName, tid, lane)) {
+                for (let l = 0; l < block.lanes.length; l++) {
+                    if (block.lanes[l] === null && !isStubLane(stName, tid, l) && laneHasPlatform(stName, tid, l)) return l;
+                }
+                return -1;
+            }
+        }
+        if (lane < 0 || laneHasPlatform(stName, tid, lane)) return lane;
+        if (!this.passengerStopsAt(stName)) return lane;              // 通過なら通過線でよい
+        /* その駅での客扱いを済ませて、同じ駅の中で隣の線路へ移って発車するとき
+           (西明石で下り内側線から下り外側線へ出る など) は、もう停車ではないので
+           ホームの無い線でよい。ここで止めると、この列車を待って譲った列車と
+           互いに待ち合って動けなくなる。 */
+        {
+            const cur = (this.game.trackMgr.blocks[this.trackId] || [])[this.currBlockIndex];
+            if (cur && cur !== block && isRealStationBlock(cur) && blockStationName(cur) === stName && this.hasStoppedAtCurrent) {
+                this.crossingOutAt = stName;                           // 客扱いを済ませて渡り線を通って出ていく途中
+                return lane;
+            }
+        }
+        /* 停まる列車がホームの無い線を選ばれた → 進路のつながっている、ホームのある線を探す */
+        const hour = (this.game.currentTime / 3600) % 24;
+        // 進路は入る線路 (tid) で見る。複々線の端で外側線から内側線へ移るときは this.trackId と違う
+        const pref = stationPreferredLanes(stName, tid, this.type, hour, "arrive");
+        const out = (toTrack && toTrack !== tid) ? stationRouteLanes(stName, toTrack, "depart") : null;
+        let reachable = 0;
+        for (let l = 0; l < block.lanes.length; l++) {
+            if (!laneHasPlatform(stName, tid, l)) continue;
+            if (pref && pref.indexOf(l) < 0) continue;
+            if (out && out.indexOf(l) < 0) continue;
+            reachable++;
+            if (block.lanes[l] === null) return l;
+        }
+        if (reachable > 0) return -1;                                  // ホームのある線が空くまで手前で待つ
+        /* この線路からはホームのある線へ入れない (例: 電車線にしかホームの無い駅で、
+           列車線に回った普通)。ホームの無い線で客扱いはしないので、この駅は停まらずに通る。
+           終着駅だけは例外 (そこで運転を終える)。 */
+        if (this.dest === stName) {
+            /* 終着駅なのに、この線路ではホームに入れない (運転整理で短縮された列車など)。
+               ホームの無い線で運転を終えることはできないので、この線路にホームがあって
+               折り返せる、前方の駅まで行先を延ばす。 */
+            let nx = stName;
+            for (let k = 0; k < 10; k++) {
+                nx = nextReversibleAhead(nx, this.dir);
+                if (!nx) break;
+                const nb = (this.game.trackMgr.blocks[tid] || []).find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === nx);
+                if (nb && nb.lanes.some((_, l) => laneHasPlatform(nx, tid, l))) {
+                    this.game.ui.updateBanner(`【運転整理】${this.trainNo} は${stName}駅の${trackLabelOf(tid)}にホームが無いため、行先を ${nx} に延長します。`, "banner-orange");
+                    this.dest = nx;
+                    break;
+                }
+            }
+            if (this.dest === stName) return lane;                    // 延ばせる駅が無い (念のため)
+        }
+        this.skipStopAt = stName;
+        return lane;
+    };
+    // ホームへ入れない駅は通過する (上の skipStopAt)
+    const baseStop = Train.prototype.shouldStop;
+    Train.prototype.shouldStop = function (st) {
+        if (st && this.skipStopAt && st.name === this.skipStopAt && this.dest !== st.name) return false;
+        return baseStop.call(this, st);
+    };
+})();

@@ -243,8 +243,11 @@ TidUI.prototype.renderStation = function () {
     };
 
     const ftHere = (typeof FREIGHT_TERMINALS !== "undefined") ? FREIGHT_TERMINALS[name] : null;
-    let html = `<div class="tid-station-head"><b>${esc(ftHere ? ftHere.name : name)}</b> ` +
-               (ftHere ? `構内 着発線別 在線・作業 <small>(${esc(ftHere.cargo)} 着発線荷役 / 着発線 上下${ftHere.lanes.up}本ずつ)</small>`
+    const yardHere = STATION_MAP[name] !== undefined && STATIONS[STATION_MAP[name]] && STATIONS[STATION_MAP[name]].isSeparateLine &&
+                     STATIONS[STATION_MAP[name]].name === name;
+    let html = `<div class="tid-station-head"><b>${esc(ftHere ? ftHere.name : yardHere ? "吹田総合車両所京都支所 出入口" : name)}</b> ` +
+               (yardHere ? "(向日町操・旅客駅ではありません) 着発線別 在線 " : "") +
+               (ftHere ? `構内 着発線別 在線・作業 <small>(${esc(ftHere.cargo)} / 上り着発線 ${ftHere.lanes.up}本・下り着発線 ${ftHere.lanes.down}本 ・配線略図 ${esc(ftHere.ref)})</small>`
                        : "駅 番線別 発着予定") +
                `<small class="tid-pl-now">${esc(tidClock(plan.at))} 現在</small>` +
                `<button id="tid-station-close" class="tid-x">閉じる</button></div>` +
@@ -283,6 +286,30 @@ TidUI.prototype.renderStation = function () {
                 : '<p class="tid-pl-none">到着・通過の予定はありません</p>') +
             `</div>`;
     });
+
+    /* 引上線・留置線・電留線の在線 (ホームの無い線も、列車が居られる線はすべて出す) */
+    const sidings = (typeof SIDINGS !== "undefined" && SIDINGS[name]) ? sidingOccupancy(this.game, name) : [];
+    if (sidings.length) {
+        html += `<div class="tid-station-sub">引上線 <small>(${esc(SIDINGS[name].name)} ・配線略図 ${esc(SIDINGS[name].ref)})</small></div>`;
+        sidings.forEach((occ, i) => {
+            html += `<div class="tid-plat${occ ? " is-busy" : ""}"><div class="tid-plat-h"><b class="tid-plat-no">引上${sidings.length > 1 ? i + 1 : ""}</b>` +
+                `<span class="tid-plat-line">引上線 (ホームなし)</span><span class="tid-plat-occ">` +
+                (occ ? `${chip(occ)} ${esc(occ.type)} ${esc(occ.dest || "")} <small>(折り返し待ち・発車の約${Math.ceil(SIDING_RETURN_SEC / 60)}分前にホームへ)</small>`
+                     : '<span class="tid-free">空き</span>') + `</span></div></div>`;
+        });
+    }
+    const depKey = (typeof depotKeyOf === "function") ? depotKeyOf(name) : name;
+    if (typeof DEPOTS !== "undefined" && DEPOTS[depKey] && typeof DEPOT_LAYOUTS !== "undefined" && DEPOT_LAYOUTS[depKey] &&
+        typeof collectDepotItems === "function") {
+        const placed = assignDepotSlots(DEPOT_LAYOUTS[depKey], collectDepotItems(depKey));
+        html += `<div class="tid-station-sub">留置線・電留線 <small>(${esc(DEPOTS[depKey].display || depKey)})</small></div>` +
+            `<table class="tid-pl-t"><tbody>` +
+            placed.tracks.map(tr => `<tr${tr.items.length ? ' class="is-here"' : ""}><td class="tid-pl-time">${esc(tr.label)}</td>` +
+                `<td colspan="5">${tr.items.length ? tr.items.map(it => esc(it.label) + (it.sub ? " <small>" + esc(it.sub) + "</small>" : "")).join(" / ")
+                                                   : '<span class="tid-free">空き</span>'}</td></tr>`).join("") +
+            (placed.overflow.length ? `<tr><td class="tid-pl-time">構内留置</td><td colspan="5">${placed.overflow.map(it => esc(it.label)).join(" / ")}</td></tr>` : "") +
+            `</tbody></table>`;
+    }
 
     if (plan.depotOut.length) {
         html += `<div class="tid-station-sub">留置場からの出区予定</div><table class="tid-pl-t"><tbody>` +

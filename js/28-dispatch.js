@@ -26,6 +26,58 @@ function recoveryHoldBlocks(t, cmd) {
     return !!(t && t.recoveryHold && !(cmd && cmd.by));
 }
 
+/**
+ * 指令が「後ろの駅」を行先にしたときの折り返し。
+ * いまいる駅の配線で折り返せるなら当駅で、無理なら前方で最初に折り返せる駅で折り返す。
+ * 折り返せるかは実際の配線 (渡り線・引上線) で決める (canTurnBackOnPlatform / canReverseAt)。
+ *   例) 野洲 2番に着いた京都方からの列車 → 京都方の渡り線で上下の本線につながるので、当駅で折り返せる
+ * 戻り値 { at, text } (折り返せる駅が無ければ null)
+ */
+function dispatchTurnbackPlan(game, t, newDest) {
+    const blks = game.trackMgr.blocks[t.trackId];
+    const b = blks ? blks[t.currBlockIndex] : null;
+    const here = (b && isRealStationBlock(b)) ? blockStationName(b) : null;
+    const wantDir = game.ops.directionFor(here || t.startName, newDest);
+    let at = null;
+    if (here && wantDir === -t.dir) {
+        // 当駅: 反対方向の線路へ、いまの番線から渡れるか
+        const opp = sameSideTrackFor(t.trackId, -t.dir, b.stationIdx);
+        if (canTurnBackOnPlatform(here, t.trackId, t.lane, opp) || canReverseAt(here)) at = here;
+    }
+    if (!at && !here) {
+        // 駅間にいるときは、次に着く駅そのもので折り返せるか (例: 守山〜野洲間 → 野洲で折り返し)
+        const nxt = trainStationsAhead(game, t, 1)[0];
+        if (nxt && canReverseAt(nxt) && game.ops.directionFor(nxt, newDest) === -t.dir) at = nxt;
+    }
+    if (!at) {
+        // 前方で最初に折り返せる駅 (そこから新しい行先へ向きを変えて行けること)
+        let name = here || trainStationsAhead(game, t, 1)[0] || t.startName;
+        for (let k = 0; k < 12; k++) {
+            const nx = nextReversibleAhead(name, t.dir);
+            if (!nx) break;
+            if (game.ops.directionFor(nx, newDest) === -t.dir) { at = nx; break; }
+            name = nx;
+        }
+    }
+    if (!at) return null;
+    const newDir = -t.dir;
+    t.dest = at;
+    t.isFinalStop = false;
+    t.nextAction = "turnback";
+    t.serviceChange = {
+        at: at, type: t.type, dest: newDest,
+        name: game.spawner.generateTrainNumber(t.type, newDir, at, sameSideTrackFor(t.trackId, newDir))
+    };
+    // すでにその駅に停まっているなら、ここで折り返しの手順に入る
+    if (at === here && ["stopped", "waiting_start", "holding"].indexOf(t.state) >= 0) {
+        t.state = "stopped";
+        t.isFinalStop = true;
+        t.hasStoppedAtCurrent = true;
+        t.timer = Math.max(30, t.timer || 0);
+    }
+    return { at: at, text: `${at}で折り返し、${t.serviceChange.name} ${newDest}行きとする` };
+}
+
 const DISPATCH = {
 
     /* ---------------- 段階的な運転再開 (js/26-incidents.js の RecoveryControl) */
@@ -160,10 +212,28 @@ const DISPATCH = {
             changed.push("種別を" + cmd.type + "に変更");
         }
         if (cmd.dest) {
+            const oldDest = t.dest, oldFinal = t.isFinalStop;
             t.dest = cmd.dest;
             t.isFinalStop = false;
             t.updateKoseiRoute();
-            changed.push("行先を" + cmd.dest + "に変更");
+            /* ★いまの向きのままでは行けない行先 (後ろの駅) を指定されたときは、
+                 実際の配線で折り返せる駅で折り返させる (serviceChange)。
+                 以前はそのまま行先だけを書き換えていたため、行先の見張り
+                 (js/27-operations.js の fixUnreachableDest) が「行けない」と判断して、
+                 すぐに前方 (野洲なら米原方) の行先へ戻していた。 */
+            // 駅間にいるときは、次に着く駅から見て行けるかを判断する (canReach は駅間では判断しない)
+            const refSt = trainStationsAhead(game, t, 1)[0];
+            const refDir = refSt ? game.ops.directionFor(refSt, cmd.dest) : 0;
+            if (game.ops && (!game.ops.canReach(t) || (refDir !== 0 && refDir === -t.dir && refSt !== cmd.dest))) {
+                const tb = dispatchTurnbackPlan(game, t, cmd.dest);
+                if (!tb) {
+                    t.dest = oldDest; t.isFinalStop = oldFinal; t.updateKoseiRoute();
+                    return { ok: false, msg: `${t.trainNo} は、いまの位置から折り返せる駅がないため ${cmd.dest} へは行けません。` };
+                }
+                changed.push(tb.text);
+            } else {
+                changed.push("行先を" + cmd.dest + "に変更");
+            }
         }
         if (cmd.action) { t.nextAction = cmd.action; changed.push("終着後の処置を変更"); }
 

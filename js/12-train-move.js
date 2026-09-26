@@ -93,7 +93,8 @@ Train.prototype.terminalCrossArrival = function (nextBlock) {
     // 反対側の着発線のうち、折り返して出ていける番線 (外側から) を選ぶ
     let lane = -1;
     for (let l = oppB.lanes.length - 1; l >= 0; l--) {
-        if (oppB.lanes[l] === null && canDepartTo(st, oppId, l, oppId)) { lane = l; break; }
+        // ホームのある線だけ (終着駅で客扱いをするので)
+        if (oppB.lanes[l] === null && canDepartTo(st, oppId, l, oppId) && laneHasPlatform(st, oppId, l)) { lane = l; break; }
     }
     if (lane < 0) return null;
     return { trackId: oppId, block: oppB, lane: lane };
@@ -183,6 +184,23 @@ Train.prototype.move = function () {
            複々線・分岐線の端では線路の無い区間を指してしまう。 */
         const aheadBlks = (this.turnbackTrack && this.game.trackMgr.blocks[this.turnbackTrack])
             ? this.game.trackMgr.blocks[this.turnbackTrack] : blks;
+        /* 行き止まりの折返線 (甲子園口の2番) から、行き止まりの方へは進めない。
+           (折り返して反対の線路へ出る列車は turnbackTrack を持っている) */
+        {
+            const cb0 = blks[this.currBlockIndex];
+            const stn0 = cb0 && isRealStationBlock(cb0) ? blockStationName(cb0) : null;
+            const stub0 = stn0 && STATION_STUB_LANES[stn0];
+            if (stub0 && this.dir === stub0.deadEnd && !this.turnbackTrack && isStubLane(stn0, this.trackId, this.lane)) {
+                this.state = "holding"; this.timer = 15;
+                this.stubBlocked = (this.stubBlocked || 0) + 1;
+                // 長く止まるなら、その場で折り返して反対の線路へ出す (取り残さない)
+                if (this.stubBlocked >= 8 && this.game.ops.moveToOppositeTrack(this, stn0, -this.dir)) {
+                    this.stubBlocked = 0;
+                    if (["回送", "貨物"].indexOf(this.type) < 0) this.dest = this.game.spawner.fallbackTerminal(this.dir, stn0, this.trackId);
+                }
+                return;
+            }
+        }
 
         let nextBlock = aheadBlks[nextIdx];
         if (!nextBlock) { this.remove(); return; }
@@ -202,8 +220,9 @@ Train.prototype.move = function () {
 // 尼崎駅への直接進入判定（目標路線の決定）
         if (nextBlock && nextBlock.stationIdx === STATION_MAP["尼崎"]) {
             if (this.dir === 1 && this.trackId === "Fukuchi_Up") {
+                // 特急 (こうのとり) は列車線 (外側線) へ
                 targetTrackId = TOZAI_THROUGH_DESTS.includes(this.dest) ?
-"Tozai_Up" : "Up_In";
+"Tozai_Up" : (this.type === "特急" ? "Up_Out" : "Up_In");
             } else if (this.dir === 1 && !this.trackId.includes("Tozai") && TOZAI_THROUGH_DESTS.includes(this.dest)) {
                 targetTrackId = "Tozai_Up";
             } else if (this.dir === -1 && !this.trackId.includes("Fukuchi") && FUKUCHI_THROUGH_DESTS.includes(this.dest)) {
@@ -284,6 +303,9 @@ Train.prototype.move = function () {
         /* ★貨物ターミナル (js/34-freight-terminals.js)。行先がそのターミナルの貨物列車と、
            乗務員交代・待避で停まる貨物列車は、本線から着発線へ横に入る。 */
         {
+            // 吹田タへ入る列車は、手前で貨物線 (北方貨物線) に入れておく
+            const hTid = this.suitaCorridorTrack(nextIdx, targetTrackId);
+            if (hTid) targetTrackId = hTid;
             const fTid = this.freightTerminalEntryTrack(nextIdx, targetTrackId);
             if (fTid) targetTrackId = fTid;
         }
@@ -420,12 +442,7 @@ Train.prototype.move = function () {
                 this.isFinalStop = true; 
                 return;
             }
-            if (this.trainNo.includes("こうのとり") && this.dir === -1 && st.name === "尼崎") { 
-                this.state="stopped";
-                this.timer=60; this.nextAction="depot"; 
-                this.isFinalStop = true; 
-                return;
-            }
+            // ★こうのとりは尼崎止まりではない (福知山線へ入り、新三田で線路図の外へ出る。下の lineEndForBeyond)
             /* 線路図の外へ向かう列車の終点処理。
                姫路より西・学研都市線を線路図に入れたので、線区の端は
                  山陽本線 … 上郡 (その先 三石・岡山方面、智頭急行)
@@ -586,7 +603,9 @@ Train.prototype.shouldStop = function (st) {
 
         if (this.trackId.includes("Fukuchi") || this.trackId.includes("Tozai")) {
             if (["貨物", "回送", "臨時"].includes(this.type)) return false;
-            if (this.type === "特急") return ["宝塚", "三田"].includes(st.name);
+            // 福知山線の特急の停車駅 (こうのとりは尼崎にも停まる。尼崎では福知山線の線路として判定されるため)
+            if (this.type === "特急") return ["宝塚", "三田"].includes(st.name) ||
+                (st.name === "尼崎" && !!this.trainNo && this.trainNo.indexOf("こうのとり") >= 0);
             /* 学研都市線の快速は、京橋〜四条畷で 放出・住道 だけに停まり、
                四条畷から先 (木津方) は各駅に停まる。JR東西線の中は各駅に停まる。 */
             if (this.type === "快速" && this.trackId.includes("Tozai")) {
@@ -640,6 +659,8 @@ Train.prototype.shouldStop = function (st) {
         }
         
         if (this.type === "特急") {
+            // こうのとり (福知山線直通) は尼崎にも停まる
+            if (this.trainNo && this.trainNo.indexOf("こうのとり") >= 0) return ["尼崎", "大阪", "新大阪"].includes(st.name);
             return ["姫路", "明石", "三ノ宮", "大阪", "新大阪", "京都", "敦賀"].includes(st.name);
         }
         return false;

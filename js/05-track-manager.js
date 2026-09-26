@@ -45,6 +45,7 @@ class TrackManager {
            ターミナルどうし・ほかの線区とは横位置が重ならない。 */
         TRACKS.forEach(trk => {
             if (trk.type === "freight_terminal") this.trackY[trk.id] = this.trackY["Down_Hoppo"] + 70;
+            if (trk.type === "siding") this.trackY[trk.id] = (trk.siding === "松井山手") ? this.trackY["Tozai_Up"] : this.trackY["Up_In"];
         });
     }
 
@@ -95,7 +96,7 @@ class TrackManager {
         };
 
         TRACKS.forEach(trk => {
-            if (trk.type === "freight_terminal") return;      // 貨物ターミナルは下でまとめて作る
+            if (trk.type === "freight_terminal" || trk.type === "siding") return;      // 貨物ターミナル・引上線は下でまとめて作る
             let trackBlocks = [];
             for (let i = 0; i < STATIONS.length; i++) {
                 let stationX = 100 + (i * UNITS_PER_STATION) * BLOCK_WIDTH;
@@ -292,6 +293,19 @@ class TrackManager {
                     lanes: new Array(n).fill(null),
                     hoppoStationName: key, freightTerminal: key
                 };
+            }
+            this.blocks[trk.id] = arr;
+        });
+        // 駅の引上線 (js/03-stations.js の SIDINGS)。同じく1つのブロックだけが実体
+        TRACKS.forEach(trk => {
+            if (trk.type !== "siding") return;
+            const sd = SIDINGS[trk.siding];
+            const y = this.trackY[trk.id];
+            const arr = [];
+            for (let i = 0; i < len; i++) arr.push({ index: i, trackId: trk.id, isStation: false, x: -1000, y: y, lanes: [null] });
+            if (sd && sd.pos >= 0 && sd.pos < len) {
+                arr[sd.pos] = { index: sd.pos, trackId: trk.id, isStation: false, x: 100 + sd.pos * BLOCK_WIDTH, y: y,
+                                lanes: new Array(sd.lanes).fill(null), siding: trk.siding };
             }
             this.blocks[trk.id] = arr;
         });

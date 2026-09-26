@@ -5,7 +5,7 @@
    ■ 利用者の指定
      ・貨物ターミナルは旅客駅の一部ではなく、独立した場所として持つ
        (神戸タ = 鷹取の一部、京都タ = 西大路の一部 のような持ち方をやめる)
-     ・着発線はおおむね上下3本ずつ、吹田タのような大きなターミナルは上下5本ずつ
+     ・着発線の本数・並び・つながりは配線略図のとおり (決め打ちにしない)。上り・下りを分けて示す
      ・線路図に描くだけでなく、線路のつながりとして本線につながり、
        貨物列車が着く・止まる・待つ・発車する・構内作業をするのに実際に使われる
    ■ 見ること
@@ -38,9 +38,15 @@ KEYS.forEach(k => {
     ok(`${k}: 専用の線路 (上り・下りの着発線) がある`, !!up && !!dn && TRACKS.some(t => t.id === freightTerminalTrack(k, 1)));
     ok(`${k}: 着発線は駅と駅のあいだにあり、旅客駅のブロックとは別`, ft.pos % UNITS_PER_STATION !== 0 &&
        !game.trackMgr.blocks['Up_Out'][ft.pos].isStation, 'ブロック ' + ft.pos);
-    const want = (k === '吹田タ') ? 5 : 3;
-    ok(`${k}: 着発線は上下${want}本ずつ`, up[ft.pos].lanes.length === want && dn[ft.pos].lanes.length === want,
+    // 本数は配線略図を写した yard から数える (決め打ちにしない)
+    const nUp = ft.yard.filter(r => r.n && r.dir === 1).length, nDn = ft.yard.filter(r => r.n && r.dir === -1).length;
+    ok(`${k}: 着発線の本数が配線略図 ${ft.ref} の線の数と一致する (上り ${nUp} / 下り ${nDn})`,
+       up[ft.pos].lanes.length === nUp && dn[ft.pos].lanes.length === nDn && nUp > 0 && nDn > 0,
        `上り ${up[ft.pos].lanes.length} / 下り ${dn[ft.pos].lanes.length}`);
+    ok(`${k}: 線の番号が配線略図の並びどおり 1 から続く`,
+       ft.yard.filter(r => r.n).every((r, i) => r.n === i + 1));
+    ok(`${k}: 上り着発線・下り着発線はそれぞれ1つのまとまりに並ぶ (画面で分けて示せる)`,
+       ft.yard.filter(r => r.n).reduce((a, r, i, arr) => a + (i && arr[i - 1].dir !== r.dir ? 1 : 0), 0) === 1);
     ok(`${k}: 着発線のほかのブロックは線路の無いプレースホルダ (行き止まりの切れ端を作らない)`,
        up.every((b, i) => i === ft.pos || b.x === -1000) && dn.every((b, i) => i === ft.pos || b.x === -1000));
     ok(`${k}: 着発線のブロックの名前はターミナル名 (旅客駅の名前ではない)`,
@@ -75,9 +81,16 @@ KEYS.forEach(k => {
         ok(`${k} ${d === 1 ? '上り' : '下り'}: 着発線から本線へ出られる (${outOk.join('・')})`, outOk.length >= 1);
     });
 });
-ok('吹田タは北方貨物線ともつながる', FREIGHT_TERMINALS['吹田タ'].links.up.indexOf('Up_Hoppo') >= 0 &&
-   FREIGHT_TERMINALS['吹田タ'].links.down.indexOf('Down_Hoppo') >= 0 &&
-   game.trackMgr.blocks['Up_Hoppo'][FREIGHT_TERMINALS['吹田タ'].pos].x !== -1000);
+{
+    const sf = FREIGHT_TERMINALS['吹田タ'];
+    const all = sf.links.up.concat(sf.links.down, sf.exits.up, sf.exits.down);
+    ok('吹田タは北方貨物線 (貨物線) とだけつながり、本線から直接は出入りしない (696)',
+       all.every(t => /Hoppo/.test(t)) && game.trackMgr.blocks['Up_Hoppo'][sf.pos].x !== -1000, all.join(','));
+    ok('吹田タは Super-TID の北方貨物線の帯に描く', sf.band === 'hoppo');
+    ok('吹田には本線と北方貨物線の合流・分岐を描かない (696)。茨木の千里丘方に描く (695)',
+       !(TID_JUNCTIONS['吹田'].junctions || []).length &&
+       (TID_JUNCTIONS['茨木'].junctions || []).filter(j => /Hoppo/.test(j[1]) && j[3] === 'R').length === 2);
+}
 
 // ---------------------------------------------------------------- 3・4. 1日走らせる
 head('1日走らせる (着く・待つ・発車する・行き詰まらない)');
@@ -195,13 +208,16 @@ if (typeof tidFreightYardLayout === 'function') {
     const trackY = buildTidTrackY(TID_AREAS[0].groups);
     KEYS.forEach(k => {
         const ft = FREIGHT_TERMINALS[k];
-        const mainY = trackY[ft.side === 'top' ? 'Down_Out' : 'Up_Out'];
+        const ty = (ft.band === 'hoppo') ? buildTidTrackY(['北方貨物線', '本線']) : trackY;
+        const mainY = ty[tidFreightYardRowId(ft)];
         const Y = tidFreightYardLayout(k, mainY);
         ok(`${k}: 構内に着発線をすべて描く (${Y.lanes.length}本)`, Y.lanes.length === ft.lanes.up + ft.lanes.down);
-        ok(`${k}: 構内は${ft.side === 'top' ? '本線の上' : '本線の下'}に張り出す (配線略図 ${ft.ref})`,
+        const bandName = ft.band === 'hoppo' ? '北方貨物線' : '本線';
+        ok(`${k}: 構内は${bandName}の${ft.side === 'top' ? '上' : '下'}に張り出す (配線略図 ${ft.ref})`,
            ft.side === 'top' ? Y.farY < mainY : Y.farY > mainY);
-        ok(`${k}: 構内が線路図の範囲に収まる`, Math.min(Y.farY, Y.plateY) > 0 && Math.max(Y.farY, Y.plateY) < trackY.__height,
-           `${Math.round(Y.plateY)} / 高さ ${Math.round(trackY.__height)}`);
+        ok(`${k}: 構内が線路図の範囲に収まる`, Math.min(Y.farY, Y.plateY) > 0 && Math.max(Y.farY, Y.plateY) < ty.__height,
+           `${Math.round(Y.plateY)} / 高さ ${Math.round(ty.__height)}`);
+        ok(`${k}: 上り着発線と下り着発線を別のまとまりとして描く`, Y.groups.length === 2 && Y.groups[0].dir !== Y.groups[1].dir);
         // となりの駅の駅名札 (本線の上下) と重ならない
         const near = [Math.floor(ft.pos / UNITS_PER_STATION), Math.ceil(ft.pos / UNITS_PER_STATION)];
         const hits = near.filter(i => {

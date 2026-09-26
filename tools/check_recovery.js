@@ -159,9 +159,10 @@ if (r1b) {
     const p = r1b.plan;
     const n = p.held.length;
     const before3 = p.released;
+    // 線路の数は解除の前に数える (解除で空になった線路は数えられなくなるため)
+    const nStreams = Object.keys(game.recovery.streamsOf(p)).length || 1;
     game.dispatch({ name: 'recoveryRelease', plan: p.id, count: 3 });
     const got3 = p.released - before3;
-    const nStreams = Object.keys(game.recovery.streamsOf(p)).length || 1;
     ok('「各線 3本ずつ」は1回の操作で複数本を解除する', got3 >= Math.min(n, 2) && got3 <= nStreams * 3 + 2, got3 + '本 / ' + n + '本');
     __run(120);
     game.dispatch({ name: 'recoveryRelease', plan: p.id, count: 'all' });
@@ -255,6 +256,8 @@ const longStuck = game.trains.filter(t => t.state !== 'finished' && t.state !== 
     (t.stuckTime || 0) >= 2400 && !t.minorTrouble && !t.isManuallySuspended);
 ok('抑止も障害も無いのに40分以上動けない列車が居ない', longStuck.length === 0,
    longStuck.map(t => t.trainNo + '@' + commWhere(game, t)).join(', '));
-ok('抑止が残ったままの列車が無い', !game.trains.some(t => t.recoveryHold && t.state !== 'finished'));
+// 終わった時点でまだ続いている見合わせ (inc:<id>) の抑止は、取り残しではない
+ok('抑止が残ったままの列車が無い', !game.trains.some(t => t.recoveryHold && t.state !== 'finished' &&
+    !game.incidents.active.some(x => 'inc:' + x.id === t.recoveryHold)));
 
 console.log('\n' + (failures === 0 ? '>>> すべて合格' : '>>> ' + failures + ' 件 不合格'));

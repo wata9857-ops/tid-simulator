@@ -234,6 +234,7 @@ class TidRenderer {
         this.drawTracks(ctx, xMin, xMax);
         this.drawStations(ctx, xMin, xMax);
         this.drawFreightTerminals(ctx, xMin, xMax);
+        this.drawSidings(ctx, xMin, xMax);
         if (this.show.route) this.drawRoutes(ctx, xMin, xMax);
         if (this.show.signal) this.drawSignals(ctx, xMin, xMax);
         this.drawDepots(ctx, xMin, xMax);
@@ -548,7 +549,8 @@ class TidRenderer {
     /** その線区・そのインデックスにある駅名 (無ければ null) */
     stationNameOn(group, i) {
         if (group === "本線" || group === "北方貨物線") {
-            return (STATIONS[i] && !STATIONS[i].branchOnly) ? STATIONS[i].name : null;
+            // 向日町操は旅客駅ではない (車両所の出入口)。駅名札は出さず、構内の札を別に描く
+            return (STATIONS[i] && !STATIONS[i].branchOnly && !STATIONS[i].isSeparateLine) ? STATIONS[i].name : null;
         }
         if (group === "赤穂線") return AKO_STATIONS_MAP[i] || null;
         if (group === "湖西線") return KOSEI_STATIONS_MAP[i] || null;
@@ -606,8 +608,9 @@ class TidRenderer {
                     this.drawStationLanes(ctx, st.name, x, tY["Up_Out"], false);
                 }
 
-                // 発着予告 (その駅の線路ごとに、次に来る列車を出す)
-                this.drawPredictions(ctx, st.name, x, "本線");
+                // 発着予告 (その駅の線路ごとに、次に来る列車を出す)。車両所の出入口には出さない
+                if (!st.isSeparateLine) this.drawPredictions(ctx, st.name, x, "本線");
+                else this.drawYardPlate(ctx, st.name, x);
             }
 
             // 分岐線の駅の番線
@@ -632,6 +635,23 @@ class TidRenderer {
                 tidDrawPlate(ctx, name, x, ys.top);
                 tidDrawPlate(ctx, name, x, ys.bot);
             });
+        });
+    }
+
+    /** 車両所の出入口 (向日町操) の札。旅客駅の札とは色を変えて、駅ではないことを示す */
+    drawYardPlate(ctx, name, cx) {
+        const band = this.groupBands().find(b => b.group === "本線");
+        if (!band) return;
+        const ys = this.plateYsFor(band, name);
+        [ys.top, ys.bot].forEach(y => {
+            const text = "京都支所 出入口 (向日町操)";
+            ctx.font = "bold 11px 'Meiryo UI', sans-serif";
+            const w = ctx.measureText(text).width + 14;
+            ctx.fillStyle = "#3B4A6B"; ctx.fillRect(cx - w / 2, y - 10, w, 20);
+            ctx.strokeStyle = "#8FA0C8"; ctx.lineWidth = 1; ctx.strokeRect(cx - w / 2 + 0.5, y - 9.5, w - 1, 19);
+            ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(text, cx, y + 1);
+            this.hitStations.push({ name: name, x: cx - w / 2, y: y - 10, w: w, h: 20 });
         });
     }
 
@@ -760,8 +780,13 @@ class TidRenderer {
              stationLaneSlots)。以前は番線の定義のぶんだけ描いていたので、
              定義より線路のレーンが多い駅では、その番線に入った列車だけが
              線路の無い高さに描かれ、ほかの札と重なっていた。 */
+        /* 行き止まりの番線 (甲子園口の折返線)。行き止まりの側には取付線を描かず、車止めを描く。
+           行き止まりの向き -1 (下り方) は画面の右、1 (上り方) は画面の左。 */
+        const stubDef = (typeof STATION_STUB_LANES !== "undefined") ? STATION_STUB_LANES[stName] : null;
         const lanes = L.slots.map((sl, i) => ({
-            y: L.ys[i], home: L.homeYs[i], label: sl.label, plat: sl.platform
+            y: L.ys[i], home: L.homeYs[i], label: sl.label, plat: sl.platform,
+            stubSide: (stubDef && stubDef[sl.track] && stubDef[sl.track].indexOf(sl.label) >= 0)
+                      ? (stubDef.deadEnd === -1 ? "R" : "L") : null
         }));
         lanes.sort((a, b) => a.y - b.y);
 
@@ -781,13 +806,22 @@ class TidRenderer {
                (実物の Super-TID も、京都のような大きな駅では
                 本線が駅の手前で上下に曲がって着発線に入る) */
             if (Math.abs(ln.y - ln.home) > 1.2) {
-                line(x1, ln.y, x1 - lead, ln.home);
-                line(x2, ln.y, x2 + lead, ln.home);
-                tidDrawTurnoutBox(ctx, x1 - lead, ln.home);
-                tidDrawTurnoutBox(ctx, x2 + lead, ln.home);
+                if (ln.stubSide !== "L") { line(x1, ln.y, x1 - lead, ln.home); tidDrawTurnoutBox(ctx, x1 - lead, ln.home); }
+                if (ln.stubSide !== "R") { line(x2, ln.y, x2 + lead, ln.home); tidDrawTurnoutBox(ctx, x2 + lead, ln.home); }
+            }
+            if (ln.stubSide) {
+                const xs = ln.stubSide === "R" ? x2 : x1;
+                ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(xs, ln.y - 6); ctx.lineTo(xs, ln.y + 6); ctx.stroke();   // 車止め
             }
             // 構内 (着発線) の枠
             tidDrawStationTrackBox(ctx, cx, ln.y, boxW);
+            // ホームの無い着発線 (車両所の出入口など) は、線の名前を左端に書く
+            if (!ln.plat && /着発|引上|折返/.test(ln.label || "")) {
+                ctx.font = "bold 9px 'Meiryo UI', sans-serif"; ctx.fillStyle = "#1B2440";
+                ctx.textAlign = "left"; ctx.textBaseline = "middle";
+                ctx.fillText(ln.label, x1 + 3, ln.y - 8);
+            }
         });
 
         /* 構内の入口の転てつ器 (実物は着発線の枠のすぐ外側に白い四角)。
@@ -876,7 +910,11 @@ class TidRenderer {
             let y;
             if (dep.line === "Tozai") y = this.trackY["Tozai_Up"] + 30;
             else if (dep.line === "Fukuchi") y = this.trackY["Fukuchi_Up"] + 30;
-            else if (name === "宮原操") y = this.trackY["Up_Hoppo"] + 30;
+            else if (name === "宮原操") {
+                // 宮原操の構内 (drawHoppoFeatures) の上に出す。北方貨物線を表示していなければ出さない
+                if (this.trackY["Down_Hoppo"] === undefined) continue;
+                y = tidMiyaharaYardLayout(x, this.trackY["Down_Hoppo"]).top - 30;
+            }
             else y = this.trackY["Up_Out"] + 30;
 
             const idle = this.game.fleet.poolAt(name).length;
@@ -905,9 +943,8 @@ class TidRenderer {
     freightYard(key) {
         const ft = FREIGHT_TERMINALS[key];
         if (!ft) return null;
-        const mainId = (ft.side === "top") ? "Down_Out" : "Up_Out";
-        const y = this.trackY[mainId];
-        if (y === undefined) return null;
+        const y = this.trackY[tidFreightYardRowId(ft)];
+        if (y === undefined) return null;          // その帯 (本線・北方貨物線) を表示していない
         return tidFreightYardLayout(key, y);
     }
 
@@ -918,47 +955,164 @@ class TidRenderer {
             ctx.strokeStyle = TID_COLORS.rail; ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
         };
+        const tag = (x, y, text, bg) => {
+            ctx.font = "bold 10px 'Meiryo UI', sans-serif";
+            const w = ctx.measureText(text).width + 8;
+            ctx.fillStyle = bg; ctx.fillRect(x - w, y - 7, w, 14);
+            ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(text, x - w / 2, y);
+        };
         for (const key in FREIGHT_TERMINALS) {
             const Y = this.freightYard(key);
-            if (!Y || Y.x2 + 200 < xMin || Y.x1 - 200 > xMax) continue;
+            if (!Y || Y.x2 + 220 < xMin || Y.x1 - 220 > xMax) continue;
             const lead = TID_YARD.lead;
-            // はしご状の取付線: 本線の転てつ器から、いちばん外の着発線の端へ
-            [[Y.x1, -1], [Y.x2, 1]].forEach(([xe, s]) => {
-                const xm = xe + s * (lead + 22);                    // 本線の転てつ器
+            /* 上り着発線・下り着発線のまとまりを、色の違う地で分けて示す
+               (上り = 青み / 下り = 橙み。左に「上り着発線」「下り着発線」の札) */
+            Y.groups.forEach(g => {
+                const pad = 8;
+                ctx.fillStyle = g.dir === 1 ? "rgba(60,110,210,0.16)" : "rgba(230,130,40,0.16)";
+                ctx.fillRect(Y.x1 - 4, g.yTop - pad, (Y.x2 - Y.x1) + 8, (g.yBot - g.yTop) + pad * 2);
+                tag(Y.x1 - lead - 30, (g.yTop + g.yBot) / 2, g.dir === 1 ? "上り着発線" : "下り着発線",
+                    g.dir === 1 ? "#2F5FB8" : "#C06A14");
+            });
+            // はしご状の取付線: 帯の線路の転てつ器から、いちばん外の着発線の端へ
+            [[Y.x1, -1, "L"], [Y.x2, 1, "R"]].forEach(([xe, s, sideName]) => {
+                const xm = xe + s * (lead + 22);                    // 帯の線路の転てつ器
                 const xf = xe + s * 8;                              // いちばん外の着発線の端
-                line(xm, Y.mainY, xf, Y.farY);
+                const linked = Y.lanes.filter(ln => ln.stub !== sideName);
+                if (!linked.length) return;
+                const farLinked = linked.reduce((a, b) => Math.abs(b.y - Y.mainY) > Math.abs(a.y - Y.mainY) ? b : a);
+                line(xm, Y.mainY, xf, farLinked.y);
                 tidDrawTurnoutBox(ctx, xm, Y.mainY);
-                // それぞれの着発線を、はしごにつなぐ
-                Y.lanes.forEach(ln => {
-                    const r = (ln.y - Y.mainY) / (Y.farY - Y.mainY);
+                linked.forEach(ln => {
+                    const r = (ln.y - Y.mainY) / (farLinked.y - Y.mainY || 1);
                     const xl = xm + (xf - xm) * r;
                     line(xe, ln.y, xl, ln.y);
                     tidDrawTurnoutBox(ctx, xl, ln.y);
                 });
             });
-            // E&S の荷役ホーム (下り着発線と上り着発線のあいだ)
+            // ホーム (E&S 荷役ホーム・コンテナホーム・荷役ホーム)
             if (this.show.platform) {
-                ctx.fillStyle = "rgba(170,178,196,0.55)";
-                ctx.fillRect(Y.x1 + 6, Y.dockY - 4, (Y.x2 - Y.x1) - 12, 8);
+                Y.docks.forEach(d => {
+                    ctx.fillStyle = "rgba(150,158,176,0.85)";
+                    ctx.fillRect(Y.x1 + 6, d.y - 4, (Y.x2 - Y.x1) - 12, 8);
+                });
             }
-            // 着発線
+            // 着発線 (行き止まりの側には車止め)
             Y.lanes.forEach(ln => {
                 tidDrawRail(ctx, Y.x1, Y.x2, ln.y);
-                // 着発線の番号 (左端。列車表示は少し右に寄せて描くので重ならない)
+                if (ln.stub) {
+                    const xs = ln.stub === "L" ? Y.x1 : Y.x2;
+                    ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
+                    ctx.beginPath(); ctx.moveTo(xs, ln.y - 6); ctx.lineTo(xs, ln.y + 6); ctx.stroke();
+                }
+                // 線の番号と種類 (左端)
                 ctx.font = "bold 9px 'Meiryo UI', sans-serif";
                 ctx.fillStyle = "#1B2440";
                 ctx.textAlign = "left"; ctx.textBaseline = "middle";
-                ctx.fillText(ln.label.replace(/[^0-9]/g, ""), Y.x1 + 2, ln.y - 7);
+                ctx.fillText(ln.n + (ln.kind === "着発" ? "" : " " + ln.kind), Y.x1 + 2, ln.y - 7);
             });
             // 構内の名札 (旅客駅の札と同じ形)
             tidDrawPlate(ctx, FREIGHT_TERMINALS[key].plate, Y.cx, Y.plateY);
-            // 吹田タは北方貨物線ともつながる (北方貨物線は本線の上の帯)
-            if (key === "吹田タ") {
-                ctx.font = "bold 9px 'Meiryo UI', sans-serif";
-                ctx.fillStyle = "#1B2440"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                ctx.fillText("北方貨物線とも接続", Y.cx, Y.plateY + Y.sgn * 18);
-            }
         }
+        this.drawHoppoFeatures(ctx, xMin, xMax);
+    }
+
+    /* ------------------------------------------------------------ 北方貨物線の帯の配線
+       配線略図 (683 宮原操 / 695 茨木 / 696 千里丘〜吹田 / 698 塚本) から写したもの。
+       北方貨物線の帯を表示しているときだけ描く。
+         ・千里丘の茨木方と、岸辺の吹田方に、貨物線の上下をつなぐ両渡り (696)
+         ・吹田の先へ続く貨物線 (梅田貨物線) と、城東貨物線 (片町線 神崎川(信)方) (696)
+         ・宮原操 (網干総合車両所宮原支所) の構内は貨物線の北。吹田方に両渡り、
+           構内の吹田方から新大阪方への回送線 (C)、塚本方で D・E の2組に分かれて塚本へ (683/698)
+       茨木の千里丘方で列車線とつながる所は TID_JUNCTIONS["茨木"] が描く (695)。 */
+    drawHoppoFeatures(ctx, xMin, xMax) {
+        const yD = this.trackY["Down_Hoppo"], yU = this.trackY["Up_Hoppo"];
+        if (yD === undefined || yU === undefined) return;
+        const at = (name) => tidStationX(STATION_MAP[name]);
+        const inView = (x) => x > xMin - 400 && x < xMax + 400;
+        // 両渡り
+        [["千里丘", "L"], ["岸辺", "R"]].forEach(([st, sd]) => {
+            const x = tidThroatX(at(st), sd);
+            if (inView(x)) tidDrawCrossover(ctx, x, yD, yU, "x");
+        });
+        // 画面の外へ出る貨物線
+        const stubs = [
+            { st: "吹田", side: "R", from: yU, up: false, label: "梅田貨物線 新大阪・大阪方" },
+            { st: "岸辺", side: "R", from: yD, up: true, label: "城東貨物線 片町線 神崎川(信)方" }
+        ];
+        stubs.forEach((s, k) => {
+            const x = tidThroatX(at(s.st), s.side);
+            if (inView(x)) tidDrawStub(ctx, x, s.from, s.up, s.label, s.side, 0);
+        });
+        // 宮原操 (新大阪の位置) の構内
+        const cx = at("新大阪");
+        if (!inView(cx)) return;
+        const Y = tidMiyaharaYardLayout(cx, yD);
+        const line = (xa, ya, xb, yb, w) => {
+            ctx.strokeStyle = TID_COLORS.railEdge; ctx.lineWidth = (w || 2.5) + 1.5;
+            ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+            ctx.strokeStyle = TID_COLORS.rail; ctx.lineWidth = w || 2.5;
+            ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+        };
+        // 留置線 (本数は構内の線をまとめたもの。構内の在線は【留置】の札で出す)
+        Y.tracks.forEach(y => line(Y.x1, y, Y.x2, y, 1.6));
+        // 吹田方 (画面左) の取付線と両渡り、塚本方 (画面右) の取付線
+        line(Y.x1, Y.bottom, Y.x1 - 34, yD);
+        line(Y.x1, Y.top, Y.x1 - 18, Y.bottom);
+        tidDrawTurnoutBox(ctx, Y.x1 - 34, yD);
+        tidDrawCrossover(ctx, Y.x1 - 70, yD, yU, "x");
+        line(Y.x2, Y.bottom, Y.x2 + 34, yD);
+        line(Y.x2, Y.top, Y.x2 + 18, Y.bottom);
+        tidDrawTurnoutBox(ctx, Y.x2 + 34, yD);
+        // 回送線 (C) と、塚本方の D・E
+        tidDrawStub(ctx, Y.x1 - 10, Y.top, true, "C 回送線 新大阪方", "L", 0);
+        const xDE = tidThroatX(tidStationX(STATION_MAP["新大阪"] - 1), "L");
+        tidDrawStub(ctx, xDE, yD, true, "D 塚本方", "R", 0);
+        ctx.font = "bold 10px 'Meiryo UI', sans-serif";
+        ctx.fillStyle = "#1B2440"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("網干総合車両所宮原支所 (宮原操)", cx, Y.top - 12);
+    }
+
+    /* ------------------------------------------------------------ 駅の引上線 (js/03-stations.js の SIDINGS)
+       駅の のど の外に、行き止まりの短い線として描く。入っている列車も描く。 */
+    sidingGeom(stName) {
+        const sd = SIDINGS[stName];
+        if (!sd) return null;
+        let y;
+        if (stName === "神戸") {
+            if (this.trackY["Down_In"] === undefined || this.trackY["Up_In"] === undefined) return null;
+            y = (this.trackY["Down_In"] + this.trackY["Up_In"]) / 2;         // 電車線の上下のあいだ (704)
+        } else {
+            if (this.trackY["Tozai_Down"] === undefined) return null;
+            y = this.trackY["Tozai_Down"];                                     // 上の線の延長 (727)
+        }
+        const cx = tidStationX(STATION_MAP[stName]);
+        const x0 = tidThroatX(cx, sd.side);
+        const sgn = sd.side === "R" ? 1 : -1;
+        return { x0: x0, x1: x0 + sgn * tidW(BLOCK_WIDTH) * 0.75, y: y, sgn: sgn, cx: cx };
+    }
+
+    drawSidings(ctx, xMin, xMax) {
+        for (const st in SIDINGS) {
+            const G = this.sidingGeom(st);
+            if (!G || Math.max(G.x0, G.x1) < xMin - 200 || Math.min(G.x0, G.x1) > xMax + 200) continue;
+            const a = Math.min(G.x0, G.x1), b = Math.max(G.x0, G.x1);
+            tidDrawRail(ctx, a, b, G.y);
+            ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(G.x1, G.y - 6); ctx.lineTo(G.x1, G.y + 6); ctx.stroke();   // 車止め
+            tidDrawTurnoutBox(ctx, G.x0, G.y);
+            ctx.font = "bold 9px 'Meiryo UI', sans-serif"; ctx.fillStyle = "#1B2440";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(SIDINGS[st].name, (a + b) / 2, G.y - 10);
+        }
+    }
+
+    /** 引上線に居る列車の描く位置 */
+    sidingTrainPos(t) {
+        const st = sidingOfTrack(t.trackId);
+        const G = st ? this.sidingGeom(st) : null;
+        return G ? { x: (G.x0 + G.x1) / 2, y: G.y } : null;
     }
 
     /** 着発線に居る列車の描く位置 (構内を表示していなければ null) */
@@ -980,9 +1134,9 @@ class TidRenderer {
             if (!blks) return;
             const b = blks[t.currBlockIndex];
             if (!b || b.x === -1000) return;
-            // 貨物ターミナルの着発線 (構内の中に描く)
-            if (isFreightTerminalTrack(t.trackId)) {
-                const p = this.freightYardTrainPos(t);
+            // 貨物ターミナルの着発線・駅の引上線 (構内の中に描く)
+            if (isFreightTerminalTrack(t.trackId) || isSidingTrack(t.trackId)) {
+                const p = isSidingTrack(t.trackId) ? this.sidingTrainPos(t) : this.freightYardTrainPos(t);
                 if (!p || p.x < xMin || p.x > xMax) return;
                 const stoppedF = !(t.state === "running");
                 tidDrawOccupyDot(ctx, p.x - tidW(BLOCK_WIDTH) * TID_YARD.halfW + 16, p.y, stoppedF);

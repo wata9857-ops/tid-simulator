@@ -272,3 +272,152 @@ function dutyTime(sec) {
     const h = Math.floor(sec / 3600) % 24, m = Math.floor((sec % 3600) / 60);
     return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
 }
+
+/* ================================================================== 所属の無い編成も引けるようにする
+
+   ■ 何が起きていたか
+     編成検索は在籍表 (js/02-fleet-data.js の EXCEL_VEHICLES) だけを見ていた。
+     在籍表に無い車両 (足りないときの増備・特急の専用編成・貨物の機関車など、
+     所属の欄が無いもの) は、線路図で押しても編成検索に出なかった。
+   ■ いまの形
+     在籍表に加えて、シミュレーションが持っている車両ぜんぶ
+     (編成の在庫・特急編成の在庫・機関車の在庫・いま列車に入っている車両) を引く。
+     所属が無いものは「所属なし」のまとまりに入れる。 */
+function dutyKnownFleets(game) {
+    const g = game || (typeof globalThis !== "undefined" ? globalThis.game : null);
+    const out = [], seen = {};
+    const push = (info) => { if (!info.fullId || seen[info.fullId]) return; seen[info.fullId] = true; out.push(info); };
+    EXCEL_VEHICLES.forEach(v => push({ id: v.i, fullId: (VEHICLE_CODE[v.g] || "") + v.i, type: v.t, cars: v.c,
+                                       base: v.b, group: v.g, notes: v.n, roster: true }));
+    const addV = (v) => {
+        if (!v) return;
+        const fid = v.fullId || v.id;
+        if (!fid || seen[fid]) return;
+        push({ id: v.id, fullId: fid, type: v.type || "", cars: v.cars || 0,
+               base: v.base || "所属なし", group: v.group || "", notes: v.notes || "", roster: false,
+               noBase: !v.base || v.base === "所属なし" });
+    };
+    if (g) {
+        (g.fleet && g.fleet.all || []).forEach(addV);
+        if (typeof ServiceRules !== "undefined") {
+            if (ServiceRules.expressPool) (ServiceRules.expressPool.all || []).forEach(addV);
+            if (ServiceRules.freightPool) (ServiceRules.freightPool.all || []).forEach(addV);
+        }
+        (g.trains || []).forEach(t => (t.vehicles || []).forEach(addV));
+    }
+    return out;
+}
+
+(function () {
+    // 在籍表だけを見ていた検索を、シミュレーションの車両ぜんぶへ広げる
+    const baseFind = dutyFindFleets;
+    dutyFindFleets = function (query, limit, game) {
+        const hit = baseFind(query, limit);
+        const q = dutyNormalizeId(query);
+        if (!q) return hit;
+        const extra = dutyKnownFleets(game).filter(v => !v.roster &&
+            (dutyNormalizeId(v.fullId) === q || dutyNormalizeId(v.id) === q ||
+             dutyNormalizeId(v.fullId).indexOf(q) >= 0));
+        const exact = extra.filter(v => dutyNormalizeId(v.fullId) === q || dutyNormalizeId(v.id) === q);
+        // ちょうど同じ番号の編成は、在籍表の部分一致より前に出す
+        return exact.concat(hit, extra.filter(v => exact.indexOf(v) < 0)).slice(0, limit || 12);
+    };
+    const baseGroups = dutyFleetGroups;
+    dutyFleetGroups = function (filter, game) {
+        const groups = baseGroups(filter);
+        const q = dutyNormalizeId(filter), raw = String(filter || "").trim();
+        const extra = dutyKnownFleets(game).filter(v => !v.roster).filter(v => !q && !raw ||
+            dutyNormalizeId(v.fullId).indexOf(q) >= 0 || (v.type || "").indexOf(raw) >= 0 || (v.base || "").indexOf(raw) >= 0);
+        const bag = {};
+        extra.forEach(v => {
+            const key = (v.noBase ? "所属なし" : v.base) + " " + (v.type || "");
+            (bag[key] = bag[key] || { label: key, group: v.group, type: v.type, items: [] }).items.push(v);
+        });
+        Object.keys(bag).sort().forEach(k => groups.push(bag[k]));
+        return groups;
+    };
+})();
+
+/* ================================================================== 列車ごとの運転の記録
+
+   編成検索の行路表で列車番号を押すと、その列車の
+     ・駅ごとの着発時刻 (停車 / 通過、番線、そのときの遅れ)
+     ・経路 (始発 → 終着、これから通る駅と着く見込み)
+     ・止められた場所と理由 (抑止・信号の停止現示・運転見合わせ・続行・運転再開待ちなど)
+   を出す。すべてシミュレーションで実際に起きたことの記録から作る。 */
+const TRAIN_LOG_MAX = 1500;       // 覚えておく列車の数 (古いものから捨てる)
+
+DutyLog.prototype.trackTrains = function () {
+    const g = this.game, now = g.currentTime;
+    this.trainLog = this.trainLog || {};
+    this.trainOrder = this.trainOrder || [];
+    for (const t of g.trains) {
+        if (t.state === "finished" || t.state === "in_depot" || !t.trainNo) continue;
+        const key = t.trainNo;
+        let L = this.trainLog[key];
+        if (!L || L.trainId !== t.id) {
+            L = this.trainLog[key] = { no: key, trainId: t.id, type: t.type, start: t.startName || "", dest: t.dest,
+                                       firstAt: now, events: [], holds: [], cur: null, hold: null,
+                                       vehicles: (t.vehicles || []).map(v => v.fullId || v.id) };
+            this.trainOrder.push(key);
+            if (this.trainOrder.length > TRAIN_LOG_MAX) delete this.trainLog[this.trainOrder.shift()];
+        }
+        L.type = t.type; L.dest = t.dest; L.lastAt = now; L.delay = t.delayTime || 0;
+        const b = (g.trackMgr.blocks[t.trackId] || [])[t.currBlockIndex];
+        const st = (b && isRealStationBlock(b)) ? blockStationName(b) : null;
+        // 駅に着いた・駅を出た
+        if (st && (!L.cur || L.cur.st !== st)) {
+            if (L.cur && L.cur.dep === null) L.cur.dep = now;
+            L.cur = { st: st, arr: now, dep: null, stop: false,
+                      plat: (typeof trainPlatformLabel === "function" ? trainPlatformLabel(g, t) : null) || "",
+                      delayMin: Math.floor((t.delayTime || 0) / 60) };
+            L.events.push(L.cur);
+        } else if (!st && L.cur && L.cur.dep === null) {
+            L.cur.dep = now;
+        }
+        if (L.cur && st === L.cur.st && ["stopped", "waiting_start", "turning_back"].indexOf(t.state) >= 0) L.cur.stop = true;
+        // 止められている (抑止・信号・見合わせ・続行)
+        const stuck = (t.state === "holding" || t.isManuallySuspended || t.minorTrouble) && t.state !== "turning_back";
+        if (stuck) {
+            const reason = dutyHoldReason(g, t);
+            if (!L.hold || L.hold.reason !== reason) {
+                if (L.hold) L.hold.until = now;
+                L.hold = { at: now, until: null, where: st || commWhere(g, t), reason: reason };
+                L.holds.push(L.hold);
+                if (L.holds.length > 40) L.holds.shift();
+            }
+        } else if (L.hold) {
+            L.hold.until = now;
+            L.hold = null;
+        }
+    }
+};
+
+/** 止められている理由 (画面表示用) */
+function dutyHoldReason(game, t) {
+    if (t.minorTrouble) return "輸送障害・車両の点検" + (t.troubleInfo && t.troubleInfo.cause ? " (" + t.troubleInfo.cause + ")" : "");
+    if (t.recoveryHold) return "運転再開の順番待ち (抑止)";
+    if (t.commIncident) return "指令連絡の応答待ち (抑止)";
+    if (t.isManuallySuspended) return "指令の抑止";
+    if (game.isEmergency) return "防護無線による一斉停止";
+    const ahead = t.turnbackTrack || t.trackId;
+    const nextIdx = t.currBlockIndex + t.dir;
+    if (game.trackMgr.isSuspended(ahead, nextIdx, t)) return "運転見合わせ区間の手前";
+    if (game.signals && game.signals.hasFault(ahead, nextIdx)) return "信号の故障 (停止現示)";
+    const nb = (game.trackMgr.blocks[ahead] || [])[nextIdx];
+    if (nb && nb.lanes && nb.lanes.every(l => l !== null)) return (isRealStationBlock(nb) ? "着発線の満線待ち (" + blockStationName(nb) + ")" : "信号の停止現示 (前の列車)");
+    return "続行間隔の調整・発車待ち";
+}
+
+/** 列車の記録 (無ければ null) */
+DutyLog.prototype.trainRecord = function (no) {
+    return (this.trainLog || {})[no] || null;
+};
+
+(function () {
+    const baseUpdate = DutyLog.prototype.update;
+    DutyLog.prototype.update = function () {
+        this.trackTrains();            // 列車ごとの着発・抑止は毎Tick見る (編成の行路は間引いて見る)
+        return baseUpdate.call(this);
+    };
+})();

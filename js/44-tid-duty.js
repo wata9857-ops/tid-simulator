@@ -63,6 +63,13 @@ class TidDuty {
         });
         // 線路図で選んでいる列車の編成をそのまま引く
         on("tid-duty-cur", "click", () => this.fromSelectedTrain());
+        // 行路表の列車番号を押すと、その列車の運転の記録 (着発・経路・遅れ・抑止) を出す
+        on("tid-duty-body", "click", (e) => {
+            const b = e.target.closest ? e.target.closest("[data-duty-train]") : null;
+            if (b) { this.showTrain(b.getAttribute("data-duty-train")); return; }
+            const back = e.target.closest ? e.target.closest("[data-duty-back]") : null;
+            if (back) { this.trainNo = null; this.render(); }
+        });
     }
 
     toggle(v) {
@@ -77,7 +84,7 @@ class TidDuty {
     fillSelect() {
         const sel = this.el("tid-duty-sel");
         if (!sel) return;
-        const groups = dutyFleetGroups(this.filter);
+        const groups = dutyFleetGroups(this.filter, this.game);
         const keep = this.selected;
         let n = 0;
         let html = '<option value="">' +
@@ -98,8 +105,8 @@ class TidDuty {
         const info = this.el("tid-duty-count");
         if (info) {
             info.textContent = this.filter
-                ? n + " / " + dutyFleetCount() + " 本"
-                : "在籍 " + dutyFleetCount() + " 本";
+                ? n + " / " + dutyKnownFleets(this.game).length + " 本"
+                : "在籍 " + dutyFleetCount() + " 本 ＋ 所属なし・専用編成など " + (dutyKnownFleets(this.game).length - dutyFleetCount()) + " 本";
         }
     }
 
@@ -112,7 +119,7 @@ class TidDuty {
     /** 絞り込んだ一覧のいちばん上を選ぶ (検索ボタン / Enter) */
     pickFirst() {
         this.applyFilter();
-        const groups = dutyFleetGroups(this.filter);
+        const groups = dutyFleetGroups(this.filter, this.game);
         if (!groups.length || !groups[0].items.length) {
             this.selected = null;
             this.setMessage("「" + this.filter + "」に当てはまる編成は在籍表にありません。" +
@@ -121,7 +128,7 @@ class TidDuty {
         }
         /* 絞り込みの文字とちょうど同じ編成があれば、それを優先する。
            (「W1」と入れたときに W1 ではなく W10 が選ばれないように) */
-        const exact = dutyFindFleets(this.filter, 1)[0];
+        const exact = dutyFindFleets(this.filter, 1, this.game)[0];
         this.selected = exact ? exact.fullId : groups[0].items[0].fullId;
         const sel = this.el("tid-duty-sel");
         if (sel) sel.value = this.selected;
@@ -131,10 +138,10 @@ class TidDuty {
     /** 線路図で選んでいる列車の編成を引く */
     fromSelectedTrain() {
         const t = this.game.tidUI ? this.game.tidUI.selected() : null;
-        if (!t || !t.vehicles || !t.vehicles.length) {
-            this.setMessage("線路図で列車を選んでから押してください。");
-            return;
-        }
+        if (!t) { this.setMessage("線路図で列車を選んでから押してください。"); return; }
+        // 編成の付いていない列車も、列車の記録として出す
+        if (!t.vehicles || !t.vehicles.length) { this.showTrain(t.trainNo); return; }
+        this.trainNo = null;
         const id = t.vehicles[0].fullId || t.vehicles[0].id;
         // 一覧から消えていると選べないので、絞り込みを解除してから合わせる
         const q = this.el("tid-duty-q");
@@ -153,18 +160,97 @@ class TidDuty {
     }
 
     /** 1秒ごとに呼ばれる (開いているときだけ描き直す) */
-    tick() { if (this.open && this.selected) this.render(); }
+    tick() { if (this.open && (this.selected || this.trainNo)) this.render(); }
+
+    /** 列車の運転の記録を出す */
+    showTrain(no) {
+        this.trainNo = no;
+        this.render();
+    }
+
+    /* ------------------------------------------------------------ 列車の詳細
+       js/30-duty-log.js の trackTrains が書き留めた記録から作る (作り話はしない)。 */
+    renderTrain(e) {
+        const game = this.game, esc = escapeLogHtml;
+        const no = this.trainNo;
+        const L = game.duty && game.duty.trainRecord ? game.duty.trainRecord(no) : null;
+        const t = game.trains.find(x => x.trainNo === no && x.state !== "finished");
+        const back = '<button class="tid-btn" data-duty-back="1" type="button">← 編成の行路へ戻る</button>';
+        if (!L && !t) { e.innerHTML = back + '<p class="tid-empty">列車 ' + esc(no) + ' の記録はありません。</p>'; return; }
+        const col = TID_TYPE_COLORS[(t || L).type] || {};
+        const now = game.currentTime;
+        let status = "運転を終えています";
+        if (t) {
+            const blk = (game.trackMgr.blocks[t.trackId] || [])[t.currBlockIndex];
+            const where = blk ? (blockStationName(blk) || commWhere(game, t)) : "—";
+            const names = { running: "走行中", stopped: "停車中", holding: "停止 (" + dutyHoldReason(game, t) + ")",
+                            waiting_start: "発車待ち", turning_back: "折り返し中", in_depot: "留置中" };
+            const pl = trainPlatformLabel(game, t);
+            status = esc(where) + " / " + esc(names[t.state] || t.state) + (pl ? " / " + esc(pl) : "");
+        }
+        const delayMin = Math.floor(((t ? t.delayTime : L.delay) || 0) / 60);
+        const evs = L ? L.events : [];
+        const rows = evs.map(ev => "<tr" + (ev.stop ? "" : ' class="is-pass"') + ">" +
+            "<td>" + esc(ev.st) + "</td>" +
+            "<td>" + (ev.stop ? esc(dutyTime(ev.arr)) : "") + "</td>" +
+            "<td>" + (ev.stop ? (ev.dep === null ? "停車中" : esc(dutyTime(ev.dep))) : esc(dutyTime(ev.arr)) + " 通過") + "</td>" +
+            "<td>" + esc(ev.plat || "") + "</td>" +
+            "<td>" + (ev.delayMin ? ev.delayMin + "分延" : "") + "</td></tr>").join("");
+        let ahead = "";
+        if (t && t.state !== "in_depot") {
+            const last = evs.length ? evs[evs.length - 1].st : null;
+            const list = trainStationsAhead(game, t, 30).filter(n => n !== last);
+            const per = (typeof BLOCK_RUN_SEC !== "undefined" && BLOCK_RUN_SEC[t.type]) || 48;
+            let sec = Math.max(0, t.timer || 0), prevIdx = t.currBlockIndex;
+            const blks = game.trackMgr.blocks[t.trackId] || [];
+            ahead = list.map(n => {
+                const b = blks.find(x => x.x !== -1000 && isRealStationBlock(x) && blockStationName(x) === n);
+                if (b) { sec += Math.abs(b.index - prevIdx) * per; prevIdx = b.index; }
+                let stops = false;
+                try {
+                    const stObj = (STATION_MAP[n] !== undefined && STATIONS[STATION_MAP[n]] && STATIONS[STATION_MAP[n]].name === n)
+                        ? STATIONS[STATION_MAP[n]] : { name: n };
+                    stops = n === t.dest || t.shouldStop(stObj);
+                } catch (x) { stops = false; }
+                const at = now + sec;
+                if (stops) sec += 40;
+                return "<tr" + (stops ? "" : ' class="is-pass"') + "><td>" + esc(n) + "</td><td>" +
+                       (stops ? esc(dutyTime(at)) + "頃" : "通過") + "</td><td>" + (n === t.dest ? "終着" : "") + "</td></tr>";
+            }).join("");
+        }
+        const holds = (L ? L.holds : []).slice().reverse().slice(0, 15).map(h =>
+            "<tr><td>" + esc(dutyTime(h.at)) + "</td><td>" + esc(h.where || "") + "</td><td>" + esc(h.reason) + "</td><td>" +
+            (h.until === null ? "継続中 " + Math.round((now - h.at) / 60) + "分" : Math.max(1, Math.round((h.until - h.at) / 60)) + "分") +
+            "</td></tr>").join("");
+        const route = L ? esc(L.start || "—") + " → " + esc((t ? t.dest : L.dest) || "—") : "—";
+        const kv = (k, v) => '<div class="tid-kv"><span>' + k + "</span><b>" + v + "</b></div>";
+        e.innerHTML = back +
+            '<div class="tid-duty-head"><span class="tid-mini" style="background:' + (col.bg || "#666") + ";color:" + (col.text || "#fff") + '">' +
+            esc(no) + "</span><span>" + esc((t || L).type) + "</span><span>" + route + "</span></div>" +
+            kv("現在", status) +
+            kv("遅れ", delayMin ? delayMin + "分" : "定時") +
+            (L && L.vehicles.length ? kv("編成", esc(L.vehicles.join("+"))) : "") +
+            (t && t.serviceChange ? kv("運用の変更", esc(t.serviceChange.at + "で " + t.serviceChange.name + " " + t.serviceChange.dest + "行きに")) : "") +
+            '<div class="tid-station-sub">着発の記録</div>' +
+            (rows ? '<table class="tid-table tid-duty-table"><thead><tr><th>駅</th><th>着</th><th>発</th><th>番線</th><th>遅れ</th></tr></thead><tbody>' + rows + "</tbody></table>"
+                  : '<p class="tid-empty">まだ駅に着いていません。</p>') +
+            (ahead ? '<div class="tid-station-sub">これから (経路と着く見込み)</div><table class="tid-table tid-duty-table"><thead><tr><th>駅</th><th>着く見込み</th><th></th></tr></thead><tbody>' + ahead + "</tbody></table>" : "") +
+            '<div class="tid-station-sub">止められた場所と理由 (抑止・信号・見合わせ)</div>' +
+            (holds ? '<table class="tid-table tid-duty-table"><thead><tr><th>時刻</th><th>場所</th><th>理由</th><th>長さ</th></tr></thead><tbody>' + holds + "</tbody></table>"
+                   : '<p class="tid-empty">止められたことはありません。</p>');
+    }
 
     // ============================================================ 行路表
     render() {
         const e = this.el("tid-duty-body");
         if (!e) return;
+        if (this.trainNo) { this.renderTrain(e); return; }
         if (!this.selected) {
             e.innerHTML = '<p class="tid-empty">上の一覧から編成を選んでください。' +
                 "（絞り込み欄に W / 223系 / 網干 などを入れると一覧が短くなります）</p>";
             return;
         }
-        const info = dutyFindFleets(this.selected, 1)[0];
+        const info = dutyFindFleets(this.selected, 1, this.game)[0];
         if (!info) { this.setMessage("編成が見つかりません。"); return; }
 
         const game = this.game;
@@ -202,10 +288,12 @@ class TidDuty {
             const body = rows.map(r => {
                 const no = r.kind === "depot" ? "（留置）" : (r.no || "—");
                 const col = TID_TYPE_COLORS[r.type] || { bg: "#8A93A8", text: "#fff" };
+                // 列車番号は押せる (その列車の着発・経路・遅れ・抑止を出す)
                 const chip = r.kind === "depot"
                     ? '<span class="tid-mini tid-duty-rest">留置</span>'
-                    : '<span class="tid-mini" style="background:' + col.bg + ";color:" + col.text +
-                      '">' + escapeLogHtml(no) + "</span>";
+                    : '<button type="button" class="tid-mini tid-duty-train" data-duty-train="' + escapeLogHtml(r.no || "") +
+                      '" title="この列車の着発・経路・遅れ・抑止を見る" style="background:' + col.bg + ";color:" + col.text +
+                      '">' + escapeLogHtml(no) + "</button>";
                 const time = dutyTime(r.dep) + " – " + (r.arr === null ? "運転中" : dutyTime(r.arr));
                 return "<tr>" +
                     "<td>" + escapeLogHtml(time) + "</td>" +
@@ -234,7 +322,7 @@ class TidDuty {
             '<div class="tid-duty-head">' +
                 '<b class="tid-duty-id">' + escapeLogHtml(info.fullId) + "</b>" +
                 "<span>" + escapeLogHtml(info.type) + " " + info.cars + "両</span>" +
-                "<span>" + escapeLogHtml(info.base) + "</span>" +
+                "<span>" + escapeLogHtml(info.base || "所属なし") + "</span>" +
             "</div>" +
             '<div class="tid-kv"><span>現在</span><b>' + now + "</b></div>" +
             (info.notes ? '<div class="tid-note">' + escapeLogHtml(info.notes) + "</div>" : "") +

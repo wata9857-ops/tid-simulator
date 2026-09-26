@@ -264,6 +264,16 @@ class Renderer {
         // --- 線路の横線
         TRACKS.forEach(trk => {
             if (trk.type === "freight_terminal") return;      // 貨物ターミナルの構内は下で描く
+            if (trk.type === "siding") {                      // 駅の引上線: 駅の外側の短い線
+                const sd = SIDINGS[trk.siding];
+                const sx = 100 + sd.pos * BLOCK_WIDTH, y = tY[trk.id];
+                if (sx < xMin - 100 || sx > xMax + 100) return;
+                ctx.strokeStyle = CONFIG.lineMain; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(sx - 55, y); ctx.lineTo(sx + 55, y); ctx.stroke();
+                ctx.fillStyle = "#fff"; ctx.font = "10px 'Meiryo UI', sans-serif"; ctx.textAlign = "center";
+                ctx.fillText(trk.siding + " 引上線", sx, y - 16);
+                return;
+            }
             const y = tY[trk.id];
             ctx.strokeStyle = CONFIG.lineMain;
             ctx.lineWidth = 3;
@@ -329,8 +339,9 @@ class Renderer {
             if (st.name === "向日町操") {
                 ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
                 ctx.font = "bold 12px 'Meiryo UI', 'Yu Gothic', sans-serif";
-                ctx.fillText(st.name, x, tY["Up_Out"] - 35);
-                ctx.fillText(st.name, x, tY["Down_Out"] + 35);
+                // 旅客駅ではない (吹田総合車両所京都支所の出入口)。着発線 (上り2・下り2) だけを描く
+                ctx.fillText("京都支所 出入口 (向日町操)", x, tY["Up_Out"] - 35);
+                ctx.fillText("京都支所 出入口 (向日町操)", x, tY["Down_Out"] + 35);
                 this.drawStationTracksStatic(ctx, x, tY["Up_Out"], tY["Up_In"], tY["Down_In"], tY["Down_Out"], st.name);
                 return;
             }

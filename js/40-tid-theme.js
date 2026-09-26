@@ -203,7 +203,7 @@ function tidGroupStationMap(group) {
     if (group === "本線") {
         const m = {};
         // 播州赤穂の位置は赤穂線だけ (本線の線路はそこに無い)
-        STATIONS.forEach((s, i) => { if (!s.branchOnly) m[i] = s.name; });
+        STATIONS.forEach((s, i) => { if (!s.branchOnly) m[i] = s.name; });   // 向日町操 (車両所の出入口) も札の高さを取っておく
         return m;
     }
     if (group === "赤穂線") return AKO_STATIONS_MAP;
@@ -239,8 +239,8 @@ function tidGroupReserveAt(group, i) {
         const name = tidGroupStationMap(group)[i];
         if (!name || group === "北方貨物線") {
             out = { top: TID_LABEL_RESERVE, bot: TID_LABEL_RESERVE };
-            if (group === "本線") {
-                const fy = tidFreightYardExtent(i);
+            if (group === "本線" || group === "北方貨物線") {
+                const fy = tidFreightYardExtent(i, group);
                 out = { top: Math.max(out.top, fy.top), bot: Math.max(out.bot, fy.bot) };
             }
         } else {
@@ -260,7 +260,7 @@ function tidGroupReserveAt(group, i) {
             };
             // 貨物ターミナルの構内 (本線の上か下に張り出す)
             if (group === "本線") {
-                const fy = tidFreightYardExtent(i);
+                const fy = tidFreightYardExtent(i, group);
                 out = { top: Math.max(out.top, fy.top), bot: Math.max(out.bot, fy.bot) };
             }
         }
@@ -272,66 +272,108 @@ function tidGroupReserveAt(group, i) {
 /* ------------------------------------------------------------------ 貨物ターミナルの構内
 
    貨物ターミナル (js/03-stations.js の FREIGHT_TERMINALS) は、旅客駅とは別の場所
-   (駅と駅のあいだ) に、本線の上 (side "top") か下 ("bottom") へ張り出して描く。
-     本線 ─ 転てつ器 ─ はしご状の取付線 ─ 着発線 (下り着発線・上り着発線) ─ 取付線 ─ 本線
-   着発線のあいだに E&S の荷役ホーム (灰色の帯) を置く。
+   (駅と駅のあいだ) に、帯 (本線 / 北方貨物線) の上 (side "top") か下 ("bottom") へ張り出して描く。
+     帯の線路 ─ 転てつ器 ─ はしご状の取付線 ─ 着発線 ─ 取付線 ─ 帯の線路
+   線の並び・ホームの位置・行き止まりの側は配線略図を写した yard のとおり。
+   上り着発線と下り着発線は色の違う地の上にまとめて描き、左に「上り」「下り」の札を付ける。
    縦の寸法は下の値。線区のあいだの間隔 (tidGroupReserveAt) にも同じ値を使うので、
    構内がとなりの線区・駅名札に重ならない。 */
 const TID_YARD = {
-    offset: 70,     // 本線から、いちばん近い着発線まで [px]
-    gap: 22,        // 着発線どうしの間隔 [px]
-    halfW: 0.36,    // 着発線の長さの半分 (閉塞の長さに対する割合)
+    offset: 70,     // 帯の線路から、いちばん近い着発線まで [px]
+    gap: 20,        // 着発線どうしの間隔 [px]
+    dock: 12,       // ホーム (E&S 荷役ホーム・コンテナホーム) の分だけ足す間隔 [px]
+    groupGap: 12,   // 上りのまとまりと下りのまとまりのあいだに足す間隔 [px]
+    halfW: 0.38,    // 着発線の長さの半分 (閉塞の長さに対する割合)
     lead: 30,       // 取付線の横の長さ [px]
     plateGap: 26    // いちばん外の着発線から、構内の名札まで [px]
 };
 
-/** 構内の着発線の並び (上から順ではなく、本線に近い順ではなく「下り着発線 → 上り着発線」の順) */
-function tidFreightYardLanes(key) {
-    const ft = FREIGHT_TERMINALS[key];
-    const out = [];
-    for (let l = 0; l < ft.lanes.down; l++) out.push({ trackId: freightTerminalTrack(key, -1), lane: l });
-    for (let l = 0; l < ft.lanes.up; l++)   out.push({ trackId: freightTerminalTrack(key, 1), lane: l });
-    return out;
+/** 構内がつながる帯の線路 (その帯を表示していなければ trackY に無い) */
+function tidFreightYardRowId(ft) {
+    if (ft.band === "hoppo") return (ft.side === "top") ? "Down_Hoppo" : "Up_Hoppo";
+    return (ft.side === "top") ? "Down_Out" : "Up_Out";
+}
+
+/** 構内の縦の大きさ (いちばん上の線からいちばん下の線まで) */
+function tidFreightYardSpan(ft) {
+    let h = 0, prev = null;
+    ft.yard.forEach(r => {
+        if (r.dock) { h += TID_YARD.dock; return; }
+        if (prev) h += TID_YARD.gap + (prev.dir !== r.dir ? TID_YARD.groupGap : 0);
+        prev = r;
+    });
+    return h;
 }
 
 /**
- * 構内の形。mainY … 構内がつながる本線の縦位置 (下なら上り外、上なら下り外)
- *   { cx, x1, x2, side, lanes:[{trackId, lane, y, label}], farY, plateY, dockY }
+ * 構内の形。mainY … 構内がつながる帯の線路の縦位置
+ *   { cx, x1, x2, side, sgn, mainY, lanes:[{trackId, lane, y, n, dir, kind, stub, label}],
+ *     docks:[{y, label}], groups:[{dir, yTop, yBot}], farY, nearY, plateY }
  */
 function tidFreightYardLayout(key, mainY) {
     const ft = FREIGHT_TERMINALS[key];
     const cx = tidX(100 + ft.pos * BLOCK_WIDTH);
     const hw = tidW(BLOCK_WIDTH) * TID_YARD.halfW;
     const sgn = (ft.side === "top") ? -1 : 1;
-    const list = tidFreightYardLanes(key);
-    const n = list.length;
-    const lanes = list.map((e, k) => {
-        // 画面の上から 下り着発線 → 上り着発線 の順に並ぶように置く
-        const y = (sgn === 1) ? mainY + TID_YARD.offset + k * TID_YARD.gap
-                              : mainY - TID_YARD.offset - (n - 1 - k) * TID_YARD.gap;
-        return { trackId: e.trackId, lane: e.lane, y: y, label: freightTerminalLaneLabel(e.trackId, e.lane) };
+    const span = tidFreightYardSpan(ft);
+    // 画面でいちばん上の線の高さ
+    const top = (sgn === 1) ? mainY + TID_YARD.offset : mainY - TID_YARD.offset - span;
+    const lanes = [], docks = [];
+    const seen = { 1: 0, "-1": 0 };
+    let y = top, prev = null, pendingDock = null;
+    ft.yard.forEach(r => {
+        if (r.dock) { pendingDock = r.dock; y += TID_YARD.dock; return; }
+        if (prev) y += TID_YARD.gap + (prev.dir !== r.dir ? TID_YARD.groupGap : 0);
+        if (pendingDock && prev) docks.push({ y: (prev._y + y) / 2, label: pendingDock });
+        const lane = seen[r.dir]++;
+        const trackId = freightTerminalTrack(key, r.dir);
+        const e = { trackId: trackId, lane: lane, y: y, n: r.n, dir: r.dir, kind: r.kind,
+                    stub: r.stub || null, label: freightTerminalLaneLabel(trackId, lane) };
+        r._y = y;
+        lanes.push(e);
+        prev = r; pendingDock = null;
+    });
+    const groups = [];
+    lanes.forEach(l => {
+        const g = groups[groups.length - 1];
+        if (g && g.dir === l.dir) g.yBot = l.y; else groups.push({ dir: l.dir, yTop: l.y, yBot: l.y });
     });
     const ys = lanes.map(l => l.y);
     const farY = (sgn === 1) ? Math.max.apply(null, ys) : Math.min.apply(null, ys);
     const nearY = (sgn === 1) ? Math.min.apply(null, ys) : Math.max.apply(null, ys);
-    const dockY = (lanes[ft.lanes.down - 1].y + lanes[ft.lanes.down].y) / 2;
     return { key: key, cx: cx, x1: cx - hw, x2: cx + hw, side: ft.side, sgn: sgn, mainY: mainY,
-             lanes: lanes, farY: farY, nearY: nearY, dockY: dockY,
+             lanes: lanes, docks: docks, groups: groups, farY: farY, nearY: nearY,
              plateY: farY + sgn * TID_YARD.plateGap };
 }
 
-/** 駅インデックス i の位置で、本線の上・下に構内が張り出す幅 (線区の間隔の計算に使う) */
-function tidFreightYardExtent(i) {
+/* 宮原操 (網干総合車両所宮原支所) の構内。北方貨物線の北 (Super-TID では帯の上) に描く (683)。
+   留置線の本数は構内の線をまとめて8本で示す (1本ずつの在線は【留置】の札の構内図で見る)。 */
+const TID_MIYAHARA = { offset: 46, gap: 9, n: 8, halfW: 0.9 };
+function tidMiyaharaYardLayout(cx, yDownHoppo) {
+    const hw = tidW(BLOCK_WIDTH) * TID_MIYAHARA.halfW;
+    const bottom = yDownHoppo - TID_MIYAHARA.offset;
+    const tracks = [];
+    for (let k = 0; k < TID_MIYAHARA.n; k++) tracks.push(bottom - k * TID_MIYAHARA.gap);
+    return { x1: cx - hw, x2: cx + hw, bottom: bottom, top: tracks[tracks.length - 1], tracks: tracks };
+}
+
+/** 駅インデックス i の位置で、帯 (group) の上・下に構内が張り出す幅 (線区の間隔の計算に使う) */
+function tidFreightYardExtent(i, group) {
     const out = { top: 0, bot: 0 };
     if (typeof FREIGHT_TERMINALS === "undefined") return out;
+    const band = (group === "北方貨物線") ? "hoppo" : "main";
     for (const k in FREIGHT_TERMINALS) {
         const ft = FREIGHT_TERMINALS[k];
+        if ((ft.band || "main") !== band) continue;
         const at = ft.pos / UNITS_PER_STATION;
         if (Math.abs(at - i) >= 1) continue;          // となりの駅とのあいだにある構内だけ
-        const n = ft.lanes.up + ft.lanes.down;
-        const need = TID_YARD.offset + (n - 1) * TID_YARD.gap + TID_YARD.plateGap +
-                     TID_GEO.plateH / 2 + TID_PLATE_MARGIN;
+        const need = TID_YARD.offset + tidFreightYardSpan(ft) + TID_YARD.plateGap +
+                     TID_GEO.plateH / 2 + TID_PLATE_MARGIN + 14;
         if (ft.side === "top") out.top = Math.max(out.top, need); else out.bot = Math.max(out.bot, need);
+    }
+    // 宮原操の構内と札 (北方貨物線の帯の上)
+    if (band === "hoppo" && Math.abs(i - STATION_MAP["新大阪"]) <= 1) {
+        out.top = Math.max(out.top, TID_MIYAHARA.offset + (TID_MIYAHARA.n - 1) * TID_MIYAHARA.gap + 60);
     }
     return out;
 }
@@ -1240,13 +1282,17 @@ const TID_JUNCTIONS = {
     /* ★吹田 — 東淀川 (画面右) 側に **下り内↔上り内 の両渡り** がある
        (スクリーンショット(696).png を拡大して確認)。
        これが吹田で方転できる根拠。総点検の1回目で読み落としていた。 */
-    "吹田":   { crossovers: [["Down_In", "Up_In", "x", "R"]],
-                // 吹田貨物ターミナルは岸辺方の下。独立した構内として描く (FREIGHT_TERMINALS)
-                junctions: [["Up_Out", "Up_Hoppo", "in"], ["Down_Out", "Down_Hoppo", "out"]] },
+    /* ★吹田 — 本線と貨物線はここではつながっていない (696)。貨物線 (北方貨物線・梅田貨物線) は
+         吹田の本線の南を並んで通るだけで、本線とつながるのは茨木の千里丘方 (695)。
+         以前は吹田に北方貨物線の合流・分岐を描いていた。吹田貨物ターミナルは北方貨物線の帯に描く。 */
+    "吹田":   { crossovers: [["Down_In", "Up_In", "x", "R"]] },
     "岸辺":   { stubs: [{ side: "R", from: "Up_Out", up: false, label: "吹田総合車両所・吹田機関区" }] },
-    // 茨木 — 内外の渡り線は2組とも千里丘 (画面右) 側。貨物線は上へ出る。
+    /* 茨木 — 内外の渡り線は2組とも千里丘 (画面右) 側。
+       ★千里丘方で列車線から貨物線 (北方貨物線の帯) が分かれ、貨物線から大阪貨物ターミナル方
+         (城東貨物線) が本線を越えて出る (695)。以前は大阪貨物ターミナル方を本線から出していた。 */
     "茨木":   { crossovers: [["Up_Out", "Up_In", "x", "R"], ["Down_In", "Down_Out", "r", "R"]],
-                stubs: [{ side: "R", from: "Down_Out", up: true, label: "大阪貨物ターミナル方" }] },
+                junctions: [["Up_Out", "Up_Hoppo", "in", "R"], ["Down_Out", "Down_Hoppo", "out", "R"]],
+                stubs: [{ side: "R", from: "Down_Hoppo", up: true, label: "大阪貨物ターミナル方" }] },
     // 高槻 — 電留線 (高槻派出所) は島本 (画面左) 側、本線の下
     "高槻":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
                 stubs: [{ side: "L", from: "Up_Out", up: false, label: "明石支所高槻派出所" }] },
@@ -1261,6 +1307,9 @@ const TID_JUNCTIONS = {
     "向日町操": { stubs: [{ side: "R", from: "Down_Out", up: true, label: "吹田総合車両所京都支所" }] },
     "向日町": { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]] },
     // 西大路 — 京都貨物 (梅小路) は京都 (画面左) 側、本線の下。独立した構内として描く (FREIGHT_TERMINALS)
+    /* ★甲子園口 — 折返線 (2番) が下り内と上り内のあいだにあり、立花 (画面左) 方で下り内から入り、
+         上り内へ出る。西宮方は行き止まり (698)。下り外はホームの無い通過線。 */
+    "甲子園口": { crossovers: [["Down_In", "Up_In", "l", "L"]] },
     /* 京都 — 渡り線は 上り外〜上り内 と 下り内〜下り外 の2組。
        ★上り電車線と下り電車線を直接つなぐ渡り線も入れてみたが、
          京都止まりの上り列車がホームで折り返すようになり、

@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>JR西日本 輸送指令 Super TID</title>
-<link rel="stylesheet" href="css/header-log.css?v=5775d90e">
-<link rel="stylesheet" href="css/depot-view.css?v=5775d90e">
-<link rel="stylesheet" href="css/tid.css?v=5775d90e">
+<link rel="stylesheet" href="css/header-log.css?v=34a912c9">
+<link rel="stylesheet" href="css/depot-view.css?v=34a912c9">
+<link rel="stylesheet" href="css/tid.css?v=34a912c9">
 </head>
 <body class="tid-body">
 
@@ -118,6 +118,13 @@
 </div>
 
 <!-- ===================================================== 下段: 指令パッドと情報 -->
+<!-- 指令卓の高さを変える取っ手 (下げる・上げる・ドラッグ)。線路図を広く見たいときに指令卓を下へ寄せる -->
+<div id="tid-dock-bar" title="ドラッグして指令卓の高さを変えられます">
+    <span class="tid-dock-grip">≡</span>
+    <button id="tid-dock-down" class="tid-tab" type="button" title="指令卓を下げて、線路図を広くします">▼ 下げる</button>
+    <button id="tid-dock-up" class="tid-tab" type="button" title="指令卓を上げます">▲ 上げる</button>
+    <span id="tid-dock-state" class="tid-dock-state"></span>
+</div>
 <div id="tid-dock">
 
     <section class="tid-panel tid-panel-comm">
@@ -337,49 +344,50 @@
 </div>
 
 <!-- シミュレーション本体。index.html とまったく同じ順序で読み込む。 -->
-<script src="js/01-config.js?v=5775d90e"></script>
-<script src="js/02-fleet-data.js?v=5775d90e"></script>
-<script src="js/03-stations.js?v=5775d90e"></script>
-<script src="js/04-depots.js?v=5775d90e"></script>
-<script src="js/05-track-manager.js?v=5775d90e"></script>
-<script src="js/06-fleet.js?v=5775d90e"></script>
-<script src="js/07-spawner-core.js?v=5775d90e"></script>
-<script src="js/08-spawner-mainline.js?v=5775d90e"></script>
-<script src="js/09-spawner-branch.js?v=5775d90e"></script>
-<script src="js/10-timetable.js?v=5775d90e"></script>
-<script src="js/11-train-core.js?v=5775d90e"></script>
-<script src="js/12-train-move.js?v=5775d90e"></script>
-<script src="js/13-train-hold.js?v=5775d90e"></script>
-<script src="js/14-train-turnback.js?v=5775d90e"></script>
-<script src="js/15-train-depot.js?v=5775d90e"></script>
-<script src="js/16-train-adjust.js?v=5775d90e"></script>
-<script src="js/17-renderer.js?v=5775d90e"></script>
-<script src="js/18-ui-core.js?v=5775d90e"></script>
-<script src="js/19-ui-log.js?v=5775d90e"></script>
-<script src="js/20-ui-cmd.js?v=5775d90e"></script>
-<script src="js/21-ui-board.js?v=5775d90e"></script>
-<script src="js/22-depot-view.js?v=5775d90e"></script>
-<script src="js/23-game.js?v=5775d90e"></script>
-<script src="js/24-service-rules.js?v=5775d90e"></script>
-<script src="js/25-signals.js?v=5775d90e"></script>
-<script src="js/26-incidents.js?v=5775d90e"></script>
-<script src="js/27-operations.js?v=5775d90e"></script>
-<script src="js/28-dispatch.js?v=5775d90e"></script>
-<script src="js/29-sim-bus.js?v=5775d90e"></script>
-<script src="js/30-duty-log.js?v=5775d90e"></script>
-<script src="js/31-comms.js?v=5775d90e"></script>
-<script src="js/32-records.js?v=5775d90e"></script>
-<script src="js/33-incident-scenarios.js?v=5775d90e"></script>
-<script src="js/34-freight-terminals.js?v=5775d90e"></script>
+<script src="js/01-config.js?v=34a912c9"></script>
+<script src="js/02-fleet-data.js?v=34a912c9"></script>
+<script src="js/03-stations.js?v=34a912c9"></script>
+<script src="js/04-depots.js?v=34a912c9"></script>
+<script src="js/05-track-manager.js?v=34a912c9"></script>
+<script src="js/06-fleet.js?v=34a912c9"></script>
+<script src="js/07-spawner-core.js?v=34a912c9"></script>
+<script src="js/08-spawner-mainline.js?v=34a912c9"></script>
+<script src="js/09-spawner-branch.js?v=34a912c9"></script>
+<script src="js/10-timetable.js?v=34a912c9"></script>
+<script src="js/11-train-core.js?v=34a912c9"></script>
+<script src="js/12-train-move.js?v=34a912c9"></script>
+<script src="js/13-train-hold.js?v=34a912c9"></script>
+<script src="js/14-train-turnback.js?v=34a912c9"></script>
+<script src="js/15-train-depot.js?v=34a912c9"></script>
+<script src="js/16-train-adjust.js?v=34a912c9"></script>
+<script src="js/17-renderer.js?v=34a912c9"></script>
+<script src="js/18-ui-core.js?v=34a912c9"></script>
+<script src="js/19-ui-log.js?v=34a912c9"></script>
+<script src="js/20-ui-cmd.js?v=34a912c9"></script>
+<script src="js/21-ui-board.js?v=34a912c9"></script>
+<script src="js/22-depot-view.js?v=34a912c9"></script>
+<script src="js/23-game.js?v=34a912c9"></script>
+<script src="js/24-service-rules.js?v=34a912c9"></script>
+<script src="js/25-signals.js?v=34a912c9"></script>
+<script src="js/26-incidents.js?v=34a912c9"></script>
+<script src="js/27-operations.js?v=34a912c9"></script>
+<script src="js/28-dispatch.js?v=34a912c9"></script>
+<script src="js/29-sim-bus.js?v=34a912c9"></script>
+<script src="js/30-duty-log.js?v=34a912c9"></script>
+<script src="js/31-comms.js?v=34a912c9"></script>
+<script src="js/32-records.js?v=34a912c9"></script>
+<script src="js/33-incident-scenarios.js?v=34a912c9"></script>
+<script src="js/34-freight-terminals.js?v=34a912c9"></script>
+<script src="js/35-sidings.js?v=34a912c9"></script>
 <!-- Super-TID 画面 -->
-<script src="js/40-tid-theme.js?v=5775d90e"></script>
-<script src="js/41-tid-render.js?v=5775d90e"></script>
-<script src="js/42-tid-ui.js?v=5775d90e"></script>
-<script src="js/43-tid-zoom.js?v=5775d90e"></script>
-<script src="js/44-tid-duty.js?v=5775d90e"></script>
-<script src="js/45-tid-comms.js?v=5775d90e"></script>
-<script src="js/46-tid-station.js?v=5775d90e"></script>
-<script src="js/49-tid-boot.js?v=5775d90e"></script>
+<script src="js/40-tid-theme.js?v=34a912c9"></script>
+<script src="js/41-tid-render.js?v=34a912c9"></script>
+<script src="js/42-tid-ui.js?v=34a912c9"></script>
+<script src="js/43-tid-zoom.js?v=34a912c9"></script>
+<script src="js/44-tid-duty.js?v=34a912c9"></script>
+<script src="js/45-tid-comms.js?v=34a912c9"></script>
+<script src="js/46-tid-station.js?v=34a912c9"></script>
+<script src="js/49-tid-boot.js?v=34a912c9"></script>
 
 <!-- ===================================================== 版の食い違いの見張り
      GitHub Pages は js を `Cache-Control: max-age=600` で配るので、

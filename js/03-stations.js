@@ -68,12 +68,12 @@ const STATION_PLATFORM_RULES = {
     "須磨海浜公園": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "鷹取": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "新長田": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "兵庫": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "神戸": { labels:["5","4","3","2","1"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] },
     "灘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "六甲道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "住吉": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摂津本山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "甲南山手": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
-    "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","2","1","下外"], lanes:[true,true,true,true,false] },
+    "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","1","2","下外"], lanes:[true,true,true,true,false] },
     "立花": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "尼崎": { labels:["9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true] }, "塚本": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "大阪": { labels:["8","9","10","11","7","6","5","4","3"], lanes:[true,true,true,true,true,true,true,true,true] },
     "新大阪": { labels:["上通","10","9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true,true,true] }, "東淀川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "吹田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "岸辺": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "千里丘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "茨木": { labels:["上待","4","3","2","1","下待"], lanes:[false,true,true,true,true,false] }, "JR総持寺": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "摂津富田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "高槻": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "島本": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "山崎": { labels:["4","3","2","1","下待"], lanes:[true,true,true,true,false] }, "長岡京": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
-    "向日町": { labels:["1","2","3","4","下待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["発1","発2"], lanes:[true,true], type:"freight_term" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    "向日町": { labels:["1","2","3","4","下待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["上外","上り着発1","上り着発2","上内","下内","下外","下り着発1","下り着発2"], lanes:[false,false,false,false,false,false,false,false], type:"yard" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "京都": { labels:["下通","0","2","3","4","5","6","7"], lanes:[false,true,true,true,true,true,true,true] },
     "山科": { labels:["上通","3","2","下通"], lanes:[false,true,true,false] }, "大津": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "膳所": { labels:["1","2","3","4","上待","下待"], lanes:[true,true,true,true,false,false] }, "石山": { labels:["4","3","2","1","上待","下待"], lanes:[true,true,true,true,false,false] }, "瀬田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "南草津": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "草津": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "栗東": { labels:["2","1"], lanes:[true,true] }, "守山": { labels:["2","1"], lanes:[true,true] }, "野洲": { labels:["3","2","1"], lanes:[true,true,true] },
@@ -214,8 +214,38 @@ const TRACKS = [
     { id: "Frt_Suita_Up", label: "吹田タ 上り着発線", dir: 1, type: "freight_terminal", terminal: "吹田タ" },
     { id: "Frt_Suita_Down", label: "吹田タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "吹田タ" },
     { id: "Frt_Kyoto_Up", label: "京都タ 上り着発線", dir: 1, type: "freight_terminal", terminal: "京都タ" },
-    { id: "Frt_Kyoto_Down", label: "京都タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "京都タ" }
+    { id: "Frt_Kyoto_Down", label: "京都タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "京都タ" },
+    // 駅の引上線 (SIDINGS)。折り返す列車が待ちのあいだ入る
+    { id: "Sid_Kobe", label: "神戸 引上線", dir: 0, type: "siding", siding: "神戸" },
+    { id: "Sid_Matsuiyamate", label: "松井山手 引上線", dir: 0, type: "siding", siding: "松井山手" }
 ];
+
+/* ------------------------------------------------------------------ 駅の引上線
+
+   ■ なぜ持つか
+     神戸の網干方・松井山手の大住 (木津) 方には引上線がある。折り返す列車は
+     ホームで降車を済ませると引上線に入り、発車の少し前にホームへ戻って客扱いをする。
+     以前は引上線を持っておらず、折り返しはホームでそのまま行っていたので、
+     「いま引上線にどの列車がいるか」を出せなかった (利用者の指摘)。
+   ■ 配線 (配線略図を拡大して読んだもの)
+     神戸     (704) … 網干 (兵庫) 方、電車線の上下のあいだに引上線1線。電車線から出入りする
+     松井山手 (727) … 大住 (木津) 方、上の線が駅の先で行き止まりになる引上線1線
+     pos     … 引上線のブロック番号 (駅の外側の閉塞の位置)
+     side    … Super-TID でどちら側に描くか ("L" 米原方 / "R" 姫路方)
+     from    … 引上線へ入れる番線の線路 (折り返しの待ちに入ったときの線路)
+     lanes   … 引上線の本数 */
+const SIDINGS = {
+    "神戸":     { id: "Kobe", name: "引上線 (網干方)", pos: STATION_MAP["神戸"] * UNITS_PER_STATION - 1, side: "R",
+                  from: ["Up_In", "Down_In"], lanes: 1, ref: "(704)" },
+    "松井山手": { id: "Matsuiyamate", name: "引上線 (大住方)", pos: STATION_MAP["松井山手"] * UNITS_PER_STATION + 1, side: "L",
+                  from: ["Tozai_Up", "Tozai_Down"], lanes: 1, ref: "(727)" }
+};
+function isSidingTrack(trackId) { return /^Sid_/.test(trackId || ""); }
+function sidingOfTrack(trackId) {
+    const trk = TRACKS.find(t => t.id === trackId);
+    return trk && trk.siding ? trk.siding : null;
+}
+function sidingTrackId(stName) { return SIDINGS[stName] ? "Sid_" + SIDINGS[stName].id : null; }
 
 /* ------------------------------------------------------------------ 単線区間
 
@@ -319,59 +349,127 @@ const FREIGHT_STATION_LABEL = {};
 /* ------------------------------------------------------------------ 貨物ターミナル
 
    ■ 以前の形と、何が問題だったか
-     神戸タは鷹取、京都タは西大路、姫路タはひめじ別所という「旅客駅の一部」として持ち、
-     旅客駅の外側線に2本目のレーン (貨物の待避線) を足して着発線の代わりにしていた。
-     吹田タも北方貨物線の上の、吹田駅と同じ位置のブロックだった。
-     そのため貨物列車は旅客駅の番線に着き、旅客駅の在線表に貨物列車が並んでいた。
+     (1回目) 神戸タは鷹取、京都タは西大路、姫路タはひめじ別所という「旅客駅の一部」だった。
+     (2回目) 旅客駅から切り離したが、着発線の本数を「上下3本ずつ・吹田タは5本ずつ」と
+             決め打ちにしていた。吹田タも本線の構内のように描き、本線から直接出入りしていた。
 
-   ■ いまの形
-     貨物ターミナルは旅客駅とは別の場所 (駅と駅のあいだの閉塞の位置) に、
-     専用の線路 (Frt_<id>_Up / Frt_<id>_Down) と着発線を持つ。
-     配線略図 (スクリーンショット) で読んだ位置と向き
-       姫路タ … ひめじ別所の曽根方、本線の上側 (706)。着発線 上下3本ずつ
-       神戸タ … 須磨海浜公園〜鷹取のあいだ、本線の下側 (704)。着発線 上下3本ずつ
-       吹田タ … 吹田〜岸辺のあいだ、本線の下側 (696)。東海道本線と北方貨物線の両方につながる。
-                 規模が大きいので着発線は上下5本ずつ
-       京都タ … 西大路〜京都のあいだ (梅小路)、本線の下側 (680)。着発線 上下3本ずつ
-     着発線は本線と同じ位置のブロックとして持ち、そこから本線 (links) へ横に出入りする。
-     本線の閉塞・信号・進路の判定をそのまま使えるので、ターミナルの線路は
-     「線路図に描いただけの線」ではなく、実際に列車が着いて・待って・発車する線路になる。
+   ■ いまの形 (★2026-09 の5回目)
+     着発線の本数・並び・つながりは、配線略図をそのまま写す (yard)。
+     本数を決め打ちにしない。上り・下りの本数は yard から数える。
+
+       吹田タ (696 を拡大して読んだもの。左 = 千里丘方、右 = 吹田方)
+         ・構内は本線の南で、つながっているのは本線ではなく貨物線 (北方貨物線と、
+           千里丘方へ続く貨物線)。本線とは茨木の千里丘方・塚本 (北方貨物線の端) でしかつながらない。
+         ・E&S 荷役ホームが2面。北側のホームの北に3線、2面のあいだに1線、
+           南側のホームの南に3線 (計7線)。西 (吹田方) にコンテナホーム。
+         ・東 (千里丘方) は貨物線から、はしご状に構内へ入る。
+           西 (吹田方) は構内の線がまとまって上がり、北方貨物線 (宮原方へ本線を越える) と、
+           吹田の先へ続く貨物線 (梅田貨物線) につながる。
+       神戸タ (704。左 = 鷹取方、右 = 須磨海浜公園方)
+         ・コンテナホーム1面。ホームに面した線が北と南に1線ずつ (E&S)、
+           その外に両端でつながる留置線が1線ずつ、さらに外に着発線が1線ずつ (計6線)。
+       姫路タ (706。左 = 曽根方、右 = 姫路方)
+         ・本線の北。本線に近い側に着発線2線 (両端の両渡りでつながる)、
+           荷役ホームに頭端式の荷役線5線 (曽根方から入る)、その外を回る線2線 (計9線)。
+       京都タ (680。左 = 京都方、右 = 西大路方。★図は西大路方で切れている)
+         ・本線の南。荷役ホームに頭端式の荷役線5線 (京都方から入る)、
+           その南に西大路方へ続く着発線4線 (計9線)。図の範囲で読める線だけを持つ。
+
+     ★上り・下りの割り当て … 配線略図には向きが書かれていない。構内は本線の片側にあるので、
+       本線に近い側のまとまりを「その側の本線」の向き (Super-TID で本線の下に描く構内なら上り、
+       上に描く構内なら下り) とし、ホームなどで区切られた反対側のまとまりを逆向きにした。
+       同じ向きの線は必ず1つのまとまりに並べ、上りと下りを画面で分けて示す。
+
+     yard の1行 = 1線。画面の上から下の順 (Super-TID に描く順)。
+       n     … 線の番号 (構内の番線)
+       dir   … 1 = 上り着発線 / -1 = 下り着発線
+       kind  … "着発" (着いて・発車する線) / "E&S" (着発線荷役) / "荷役" (頭端式の荷役線) / "留置"
+       stub  … 行き止まりの側 ("L" / "R")。無ければ両端がつながっている
+     { dock: "..." } の行は、線と線のあいだのホーム (E&S 荷役ホーム・コンテナホーム)。
 
      pos       … 着発線のあるブロック番号 (駅と駅のあいだ)
-     side      … Super-TID で本線の上側 ("top") / 下側 ("bottom") のどちらに描くか
-     lanes     … 着発線の本数 { up, down }
-     links     … 本線のどの線路から入れるか (向きごと)
-     exits     … 発車して本線へ出るときの線路 (向きごと。先に書いたほうから使う)
+     band      … Super-TID のどの帯に描くか ("main" 本線 / "hoppo" 北方貨物線)
+     side      … その帯の上側 ("top") / 下側 ("bottom") のどちらに張り出すか
+     links     … どの線路から入れるか (向きごと)
+     exits     … 発車してどの線路へ出るか (向きごと。先に書いたほうから使う)
      dwell     … 着いてから次の列車として出るまで [秒] (荷役・機回し・入換)
      stopSec   … 通過する貨物列車の停車 (乗務員交代・待避) [秒]
-     cargo     … 荷役の方式 (E&S = 着発線荷役。着発線に着いたまま、コンテナを積み下ろしする) */
+     cargo     … 荷役の方式 */
 const FREIGHT_TERMINALS = {
     "姫路タ": { id: "Himeji", name: "姫路貨物駅", plate: "姫路貨物",
-               pos: STATION_MAP["ひめじ別所"] * UNITS_PER_STATION + 1, side: "top", near: "ひめじ別所",
-               lanes: { up: 3, down: 3 },
+               pos: STATION_MAP["ひめじ別所"] * UNITS_PER_STATION + 1, band: "main", side: "top", near: "ひめじ別所",
+               yard: [
+                   { n: 1, dir: 1, kind: "着発" },
+                   { n: 2, dir: 1, kind: "着発" },
+                   { dock: "荷役ホーム" },
+                   { n: 3, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 4, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 5, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 6, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 7, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 8, dir: -1, kind: "着発" },
+                   { n: 9, dir: -1, kind: "着発" }
+               ],
                links: { up: ["Up_Out"], down: ["Down_Out"] },
                exits: { up: ["Up_Out"], down: ["Down_Out"] },
-               dwell: [1800, 3600], stopSec: 420, cargo: "E&S", ref: "(706)" },
+               dwell: [1800, 3600], stopSec: 420, cargo: "荷役ホーム", ref: "(706)" },
     "神戸タ": { id: "Kobe", name: "神戸貨物ターミナル", plate: "神戸(タ)",
-               pos: STATION_MAP["須磨海浜公園"] * UNITS_PER_STATION + 2, side: "bottom", near: "鷹取",
-               lanes: { up: 3, down: 3 },
+               pos: STATION_MAP["須磨海浜公園"] * UNITS_PER_STATION + 2, band: "main", side: "bottom", near: "鷹取",
+               yard: [
+                   { n: 1, dir: 1, kind: "着発" },
+                   { n: 2, dir: 1, kind: "留置" },
+                   { n: 3, dir: 1, kind: "E&S" },
+                   { dock: "コンテナホーム (E&S)" },
+                   { n: 4, dir: -1, kind: "E&S" },
+                   { n: 5, dir: -1, kind: "留置" },
+                   { n: 6, dir: -1, kind: "着発" }
+               ],
                links: { up: ["Up_Out", "Up_In"], down: ["Down_Out", "Down_In"] },
                exits: { up: ["Up_Out"], down: ["Down_Out"] },
                dwell: [1800, 3600], stopSec: 420, cargo: "E&S", ref: "(704)" },
     "吹田タ": { id: "Suita", name: "吹田貨物ターミナル", plate: "吹田(タ)",
-               pos: STATION_MAP["吹田"] * UNITS_PER_STATION + 2, side: "bottom", near: "岸辺",
-               lanes: { up: 5, down: 5 },
-               links: { up: ["Up_Out", "Up_In", "Up_Hoppo"], down: ["Down_Out", "Down_In", "Down_Hoppo"] },
-               // 発車は北方貨物線へ (以前の吹田貨と同じ。茨木・塚本の先で列車線に合流する)
-               exits: { up: ["Up_Hoppo", "Up_Out"], down: ["Down_Hoppo", "Down_Out"] },
+               pos: STATION_MAP["吹田"] * UNITS_PER_STATION + 2, band: "hoppo", side: "top", near: "岸辺",
+               // 北方貨物線の帯の上に、本線から遠い側 (南) を上にして描く
+               yard: [
+                   { n: 1, dir: -1, kind: "E&S" },
+                   { n: 2, dir: -1, kind: "E&S" },
+                   { n: 3, dir: -1, kind: "E&S" },
+                   { dock: "E&S 荷役ホーム (南)" },
+                   { n: 4, dir: 1, kind: "E&S" },
+                   { dock: "E&S 荷役ホーム (北)" },
+                   { n: 5, dir: 1, kind: "E&S" },
+                   { n: 6, dir: 1, kind: "E&S" },
+                   { n: 7, dir: 1, kind: "着発" }
+               ],
+               // 本線からは入れない。北方貨物線・千里丘方の貨物線 (シミュレーションでは北方貨物線の続き) だけ
+               links: { up: ["Up_Hoppo"], down: ["Down_Hoppo"] },
+               exits: { up: ["Up_Hoppo"], down: ["Down_Hoppo"] },
                dwell: [2400, 4800], stopSec: 780, cargo: "E&S", ref: "(696)" },
     "京都タ": { id: "Kyoto", name: "京都貨物駅", plate: "京都貨物",
-               pos: STATION_MAP["西大路"] * UNITS_PER_STATION + 2, side: "bottom", near: "京都",
-               lanes: { up: 3, down: 3 },
+               pos: STATION_MAP["西大路"] * UNITS_PER_STATION + 2, band: "main", side: "bottom", near: "京都",
+               yard: [
+                   { n: 1, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 2, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 3, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 4, dir: 1, kind: "荷役", stub: "R" },
+                   { n: 5, dir: 1, kind: "荷役", stub: "R" },
+                   { dock: "荷役ホーム" },
+                   { n: 6, dir: 1, kind: "着発" },
+                   { n: 7, dir: 1, kind: "着発" },
+                   { n: 8, dir: -1, kind: "着発" },
+                   { n: 9, dir: -1, kind: "着発" }
+               ],
                links: { up: ["Up_Out", "Up_In"], down: ["Down_Out", "Down_In"] },
                exits: { up: ["Up_Out"], down: ["Down_Out"] },
-               dwell: [1800, 3600], stopSec: 420, cargo: "E&S", ref: "(680)" }
+               dwell: [1800, 3600], stopSec: 420, cargo: "荷役ホーム", ref: "(680)" }
 };
+/* yard から、向きごとの線の並び (レーン番号の順) と本数を作る */
+for (const k in FREIGHT_TERMINALS) {
+    const ft = FREIGHT_TERMINALS[k];
+    ft.upTracks = ft.yard.filter(r => r.n && r.dir === 1);
+    ft.downTracks = ft.yard.filter(r => r.n && r.dir === -1);
+    ft.lanes = { up: ft.upTracks.length, down: ft.downTracks.length };
+}
 /* 着発線のブロック番号 → ターミナル */
 const FREIGHT_TERMINAL_AT = {};
 for (const k in FREIGHT_TERMINALS) {
@@ -393,13 +491,20 @@ function freightTerminalTrack(key, dir) {
     const ft = FREIGHT_TERMINALS[key];
     return ft ? "Frt_" + ft.id + (dir === 1 ? "_Up" : "_Down") : null;
 }
-/** 着発線の番線名 (下りが1番から、上りはその続き) */
-function freightTerminalLaneLabel(trackId, lane) {
+/** 着発線の線路・レーン → yard の1行 (線の番号・種類) */
+function freightTerminalYardRow(trackId, lane) {
     const key = freightTerminalOfTrack(trackId);
     const ft = key && FREIGHT_TERMINALS[key];
     if (!ft) return null;
-    const n = /_Up$/.test(trackId) ? ft.lanes.down + lane + 1 : lane + 1;
-    return "着発" + n + "番";
+    const list = /_Up$/.test(trackId) ? ft.upTracks : ft.downTracks;
+    return list[lane] || null;
+}
+/** 着発線の番線名 (配線略図の並びどおりの番号と、上り・下り・線の種類) */
+function freightTerminalLaneLabel(trackId, lane) {
+    const r = freightTerminalYardRow(trackId, lane);
+    if (!r) return null;
+    const kindName = { "着発": "着発線", "E&S": "着発荷役線", "荷役": "荷役線", "留置": "留置線" }[r.kind] || "着発線";
+    return r.n + "番 " + (r.dir === 1 ? "上り" : "下り") + kindName;
 }
 /** 貨物列車の行先が線路図の中の貨物ターミナルなら、その名前 (着発線のブロックの名前と同じ) */
 function freightTerminalStation(dest) {
@@ -473,6 +578,18 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         // 上り (木津方面) 1番 / 下り本線 2番 / 下りの待避線 3番 (島式)
         yPositions = [upOutY, downOutY, downOutY + 30];
     }
+    else if (stationName === "甲子園口") {
+        /* 甲子園口 (配線略図 698 を拡大して読んだもの。左 = 立花方、右 = 西宮方)
+             下り外 … ホームの無い通過線 (駅の外側を回る)          → 「下外」
+             下り内 … 島式ホーム (折返線と共用)                      → 1番
+             折返線 … 下り内と上り内のあいだ。西宮方が行き止まり。
+                       立花方で下り内から入り、立花方で上り内へ出る    → 2番
+             上り内 … 島式ホーム (上り外と共用)                      → 3番
+             上り外 …                                                → 4番
+           ラベルの並びは ["4","3","1","2","下外"] (下り内は本線の1番を先に。線路図が本線をつなぐ番線)。
+           ★以前は4線だけの一般的な形で、「下外」が捨てられ、下り外にホームがある扱いになっていた。 */
+        yPositions = [upOutY, upInY, downInY, downInY - (downInY - upInY) * 0.3, downOutY];
+    }
     else if (stationName === "ひめじ別所") {
         /* 姫路口は複線。ホーム2面を上下線に割り当てる。
            ★以前は貨物の待避線2本もこの駅の番線として持っていたが、
@@ -488,7 +605,12 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
     }
     else if (stationName === "向日町操") {
-        yPositions = [upOutY - 40, downOutY + 40];
+        /* ★向日町操は旅客駅ではない。吹田総合車両所京都支所 (向日町) の出入口で、
+             本線4線のそばに、車両所へ入る・車両所から出る着発線が上り2線・下り2線並ぶ
+             (配線略図 694 を拡大して読んだもの。向日町方で本線と着発線が渡り線でつながり、
+             その先で車両所の留置線に分かれる)。ホームは無い。
+           ラベルの並びは ["上外","上り着発1","上り着発2","上内","下内","下外","下り着発1","下り着発2"]。 */
+        yPositions = [upOutY, upOutY - 30, upOutY - 60, upInY, downInY, downOutY, downOutY + 30, downOutY + 60];
     }
     else if (stationName === "山崎") {
         yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
@@ -764,9 +886,10 @@ function stationMainLaneCount(stName, trackId) {
            下り外は 1・2番のりばの2本。 */
         return (trackId === "Down_Out") ? 2 : 3;
     }
-    /* 向日町操は吹田総合車両所京都支所の構内。発着線が並ぶので
-       4本とも2レーンずつ持つ (js/05-track-manager.js もこの値を使う)。 */
-    if (stName === "向日町操") return 2;
+    /* 向日町操は吹田総合車両所京都支所の出入口 (旅客駅ではない)。
+       本線4線と、外側線のそばの着発線 上り2線・下り2線 (694)。
+       (js/05-track-manager.js もこの値を使う) */
+    if (stName === "向日町操") return (trackId === "Up_Out" || trackId === "Down_Out") ? 3 : 1;
     if (STATION_LANES_2.indexOf(stName) >= 0) return 2;
     if (stName === "能登川" && trackId.indexOf("Up") === 0) return 2;
     if (stName === "近江八幡" && trackId.indexOf("Down") === 0) return 2;
@@ -1035,6 +1158,13 @@ function stationLaneTracks(stationName) {
      京都 … 配線略図 スクリーンショット(693).png / (680).png
 */
 const STATION_ROUTES = {
+    /* 甲子園口 (698)。折返線 (2番) は下り内から入り、上り内へ出る (西宮方は行き止まり)。
+       下り外 (下外) はホームの無い通過線。 */
+    "甲子園口": {
+        arrive: { Down_Out: ["下外"], Down_In: ["1", "2"], Up_In: ["3"], Up_Out: ["4"] },
+        depart: { Down_Out: ["下外"], Down_In: ["1"], Up_In: ["3", "2"], Up_Out: ["4"] }
+    },
+
     /* 尼崎。島式4面8線 ＋ 北側の通過線 (9番)。
          外側線 … 1番 (下り) / 8番 (上り)
          内側線 … 4番 (下り) / 5番 (上り)
@@ -1403,7 +1533,19 @@ function trackDirOf(trackId) {
    ★同じ向きどうしの渡り線 (下り外↔下り内 など) はここに入らない。
      それでは向きを変えられないので、長岡京・向日町・茨木・兵庫・膳所などは
      この表に無い。 */
+/* 行き止まりの番線 (折返線)。その駅で折り返す列車だけが入る。
+   通過・途中停車の列車は入らない (入ると前へ出られない)。 */
+const STATION_STUB_LANES = { "甲子園口": { Down_In: ["2"], deadEnd: -1 } };   // deadEnd … 行き止まりの向き (-1 = 下り方 = 西宮方)
+function isStubLane(stName, trackId, lane) {
+    const def = STATION_STUB_LANES[stName];
+    if (!def || !def[trackId]) return false;
+    const e = stationLaneEntry(stName, trackId, lane);
+    return !!e && def[trackId].indexOf(e.label) >= 0;
+}
+
 const STATION_REVERSE_BY_CROSSOVER = {
+    // 甲子園口 … 折返線 (2番) で下り内から上り内へ折り返す (698)
+    "甲子園口": [["Down_In", "Up_In"]],
     // ---- 山陽本線 姫路より西・赤穂線 (スクリーンショット(723)〜(725).png)
     "上郡":     [["Up_Out", "Down_Out"], ["Up_Out", "Down_Out"]],   // 中線が両端で上下本線につながる
     "相生":     [["Up_Out", "Down_Out"], ["Up_Out", "Down_Out"]],   // 竜野方・有年方の両方に渡り線

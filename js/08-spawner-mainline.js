@@ -86,8 +86,10 @@ Spawner.prototype.spawnTokkyu = function (dirName, forcedType = null) {
                 num = this.tokkyuCounters["はまかぜ"].up; this.tokkyuCounters["はまかぜ"].up += 2;
                 t = {type:"特急", dir:1, trackId:"Up_Out", dest:"大阪", startName:"姫路", name:`はまかぜ${num}号`, serviceChange:{ at:"大阪", type:"回送", dest:"向日町操", name:`回${num+8000}D` }};
             } else if (r < 0.2) { 
+                /* ★こうのとりは福知山線から来る (福知山・城崎温泉 → 新三田で線路図に入る)。
+                     以前は尼崎から湧いていた。停車は 三田・宝塚・尼崎・大阪・新大阪 */
                 num = this.tokkyuCounters["こうのとり"].up; this.tokkyuCounters["こうのとり"].up += 2;
-                t = {type:"特急", dir:1, trackId:"Up_Out", dest:"新大阪", startName:"尼崎", name:`こうのとり${num}号`, serviceChange:{ at:"新大阪", type:"回送", dest:"向日町操", name:`回${num+3000}M` }};
+                t = {type:"特急", dir:1, trackId:"Fukuchi_Up", dest:"新大阪", startName:"新三田", name:`こうのとり${num}号`, serviceChange:{ at:"新大阪", type:"回送", dest:"向日町操", name:`回${num+3000}M` }};
             } else if (r < 0.45) { 
                 num = this.tokkyuCounters["Sはくと"].up; this.tokkyuCounters["Sはくと"].up += 2;
                 // ★デッドロック対策: 京都駅到着後に消滅させる
@@ -112,7 +114,10 @@ Spawner.prototype.spawnTokkyu = function (dirName, forcedType = null) {
             } else if (forcedType === "kounotori" || (forcedType === null && r < 0.2)) {
                 let deadheadNo = "回" + (3000 + Math.floor(Math.random()*100)) + "M";
                 num = this.tokkyuCounters["こうのとり"].down; this.tokkyuCounters["こうのとり"].down += 2;
-                t = {type:"回送", dir:-1, trackId:"Down_Out", dest:"新大阪", startName:"向日町操", name:deadheadNo, serviceChange:{ at:"新大阪", type:"特急", dest:"尼崎", name:`こうのとり${num}号` }};
+                /* ★こうのとりの行先は尼崎ではない。尼崎から福知山線に入り、福知山・城崎温泉へ行く。
+                     線路図の中では 新大阪・大阪・尼崎・宝塚・三田 に停まり、新三田で線路図の外へ出る。 */
+                const kDest = Math.random() < 0.7 ? "福知山" : "城崎温泉";
+                t = {type:"回送", dir:-1, trackId:"Down_Out", dest:"新大阪", startName:"向日町操", name:deadheadNo, serviceChange:{ at:"新大阪", type:"特急", dest:kDest, name:`こうのとり${num}号` }};
             } else if (forcedType === null) { 
                 if (r < 0.45) {
                     num = this.tokkyuCounters["Sはくと"].down; this.tokkyuCounters["Sはくと"].down += 2;
@@ -230,7 +235,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
             if (FREIGHT_TERMINALS[stName]) {
                 const ft = FREIGHT_TERMINALS[stName];
                 const fb = (this.game.trackMgr.blocks[freightTerminalTrack(stName, dir)] || [])[ft.pos];
-                if (!fb || !fb.lanes.some(l => l === null)) continue;
+                if (!fb || freightTerminalLaneFor(fb, "depart") < 0) continue;
                 const exitTid = (dir === 1 ? ft.exits.up : ft.exits.down)[0];
                 const eb = this.game.trackMgr.blocks[exitTid] || [];
                 let clear = true;

@@ -1467,6 +1467,7 @@ class RecoveryControl {
         if (at >= 0) plan.held.splice(at, 1);
         if (t.recoveryHold !== plan.id) return false;
         t.recoveryHold = null;
+        t.recoveryReleased = plan.id;        // この計画で解除した列車は、発車前でも抑止に戻さない
         t.isManuallySuspended = false;
         t.manualSuspendTimer = 0;
         t.hasNotifiedSuspendLong = false;
@@ -1588,6 +1589,7 @@ class RecoveryControl {
                 if (!t.isManuallySuspended) {
                     // 指令卓の「抑止解除」「強制発車」で個別に解いた
                     t.recoveryHold = null;
+                    t.recoveryReleased = plan.id;
                     plan.released++; plan.manualReleased++;
                     plan.lastManualAt = now;
                     if (plan.mode === "prep") plan.mode = "manual";
@@ -1601,6 +1603,7 @@ class RecoveryControl {
                いつまでも平常に戻らない、ということにしない)。 */
             if (now - plan.startedAt < 1800) this.trainsInArea(plan.area, plan.range, 0).forEach(t => {
                 if (t.recoveryHold || t.hasDeparted || t.state !== "waiting_start") return;
+                if (t.recoveryReleased === plan.id) return;   // 指令が解除した列車 (発車前) は抑止に戻さない
                 if (this.holdTrain(t, plan.id)) plan.held.push(t.id);
             });
 

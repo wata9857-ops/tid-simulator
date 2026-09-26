@@ -226,7 +226,8 @@ async function canvasFingerprint(page) {
     console.log('    一覧 ' + (list.options - 1) + ' 本 / 見出し ' + list.groups + ' 組' +
                 ' / 在籍 ' + list.total + ' 本');
     console.log('    見出しの例: ' + list.groupLabels.join(' | '));
-    ok('一覧に在籍中の編成がすべて並んでいる', list.options - 1 === list.total,
+    // 在籍表の編成に加えて、所属の無い車両 (機関車・専用編成・増備) も並ぶ
+    ok('一覧に在籍中の編成がすべて並んでいる', list.options - 1 >= list.total,
        (list.options - 1) + ' / ' + list.total);
     ok('「所属 形式」ごとの見出しでまとまっている', list.groups >= 5, list.groups + ' 組');
 
@@ -282,7 +283,7 @@ async function canvasFingerprint(page) {
     await page.click('#tid-duty-clear');
     await page.waitForTimeout(150);
     ok('「解除」で一覧が元に戻る', (await page.evaluate(() =>
-        document.getElementById('tid-duty-sel').querySelectorAll('optgroup option').length)) === list.total);
+        document.getElementById('tid-duty-sel').querySelectorAll('optgroup option').length)) >= list.total);
     if (running) { await page.selectOption('#tid-duty-sel', running); await page.waitForTimeout(200); }
     await page.screenshot({ path: path.join(OUT, 'tid-duty.png') });
     await page.click('#tid-duty-close');

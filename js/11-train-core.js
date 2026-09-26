@@ -183,7 +183,9 @@ class Train {
            ここで始発を作ると出区待ちの列に並んで5〜10分遅れて発車することになり、
            折り返しの要になる駅の列車が薄くなる。そこは駅の着発線に直接作る。 */
         const depHere0 = DEPOTS[actualStart];
-        if (this.type !== "貨物" && depHere0 && !depHere0.turnbackFirst &&
+        // 線路図の外から入ってくる特急 (新三田から入るこうのとり) は留置場を通さず、線路の上に出す
+        const fromBeyond = this.type === "特急" && this.trainNo && this.trainNo.indexOf("こうのとり") >= 0;
+        if (this.type !== "貨物" && !fromBeyond && depHere0 && !depHere0.turnbackFirst &&
             depHere0.trains.length < depHere0.capacity) {
             let hOfDay = (this.game.currentTime / 3600) % 24;
             // 朝など生成可能な時間帯 (深夜帯はスキップ)
@@ -209,11 +211,23 @@ class Train {
 
         if (startBlock) {
              let lanes = startBlock.lanes;
-             if (actualStart === "向日町操") { for(let l=lanes.length-1; l>=0; l--) if(lanes[l]===null) { freeLane=l; break; } }
+             if (startBlock.freightTerminal) {
+                 // 貨物ターミナル発は、着発線・E&S の線から出る (js/34-freight-terminals.js)
+                 freeLane = freightTerminalLaneFor(startBlock, "depart");
+             } else if (actualStart === "向日町操") { for(let l=lanes.length-1; l>=0; l--) if(lanes[l]===null) { freeLane=l; break; } }
              else {
                  // 進路のつながっている番線から選ぶ (js/13-train-hold.js)
                  freeLane = pickRouteLane(startBlock, actualStart, this.trackId, "depart",
                                           this.type, (this.game.currentTime / 3600) % 24, false);
+                 // 旅客列車の始発は、ホームのある線から (js/13-train-hold.js の「ホームの無い線に旅客列車を停めない」)
+                 if (freeLane >= 0 && PASSENGER_TYPES.indexOf(this.type) >= 0 &&
+                     !laneHasPlatform(actualStart, this.trackId, freeLane)) {
+                     freeLane = -1;
+                     for (let l = 0; l < lanes.length; l++) {
+                         if (lanes[l] === null && laneHasPlatform(actualStart, this.trackId, l) &&
+                             canDepartTo(actualStart, this.trackId, l, this.trackId)) { freeLane = l; break; }
+                     }
+                 }
              }
         }
 
@@ -305,6 +319,8 @@ class Train {
         if (this.state === "finished") return;
         // 貨物ターミナルの着発線にいるあいだは、出ていく本線を決めておく (js/34-freight-terminals.js)
         if (this.terminalWork || isFreightTerminalTrack(this.trackId)) this.syncFreightTerminalExit();
+        // 駅の引上線を使う折り返し (js/35-sidings.js)
+        if (this.turnbackAt || isSidingTrack(this.trackId)) this.sidingStep();
         
         // ★修正: 留置場内での待機・出区処理 (緊急停止等の影響を受けないように最優先で処理)
         if (this.state === "in_depot") {
@@ -838,7 +854,9 @@ class Train {
             // 本線から北方貨物線への進入は「貨物」に限定し、特急間合いの回送が大阪・新大阪をスルーするバグを防止
             if (this.type === "貨物") {
                 if (this.dir===1 && this.trackId==="Up_Out" && blk.stationIdx>=W(36) && blk.stationIdx<=W(37)) this.attemptTrackSwitch("Up_Hoppo", 200);
-                if (this.dir===-1 && this.trackId==="Down_Out" && blk.stationIdx>=W(41) && blk.stationIdx<=W(45)) this.attemptTrackSwitch("Down_Hoppo", 200);
+                /* ★下りが列車線から貨物線 (北方貨物線) へ入るのは茨木 (千里丘方) だけ (配線略図 695/696)。
+                     以前は吹田でも入れていたが、吹田では本線と貨物線はつながっていない。 */
+                if (this.dir===-1 && this.trackId==="Down_Out" && blk.stationIdx === W(44)) this.attemptTrackSwitch("Down_Hoppo", 200);
             }
             // 北方貨物線は idx36-44 のみ実体ブロックを持ち、その先はプレースホルダ(x:-1000)。
             // 端で本線へ復帰させないと不可視区間へ進入し、列車が消滅していた。両端で本線へ戻す。（既に北方貨物線にいる列車が対象）

@@ -83,7 +83,8 @@ Train.prototype.freightTerminalWork = function (stName) {
         const cb = blks ? blks[this.currBlockIndex] : null;
         let lane = -1;
         if (nb && nb.x !== -1000) {
-            for (let l = nb.lanes.length - 1; l >= 0; l--) if (nb.lanes[l] === null) { lane = l; break; }
+            if (nb.freightTerminal) lane = freightTerminalLaneFor(nb, "depart");   // 着発線・E&S の線へ
+            else for (let l = nb.lanes.length - 1; l >= 0; l--) if (nb.lanes[l] === null) { lane = l; break; }
         }
         if (lane >= 0 && cb) {
             freeOwnLane(cb.lanes, this);
@@ -198,6 +199,17 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
                 freeLane = pickRouteLane(startBlock, actualStart, targetTrackId, "depart",
                                          this.depotOutConfig.type,
                                          (this.game.currentTime / 3600) % 24, false);
+                /* 出区してすぐ客扱いをする列車は、ホームのある線に出す
+                   (以前は新大阪の上通・野洲の下待のようなホームの無い線から営業を始めていた) */
+                const outName = blockStationName(startBlock) || actualStart;
+                if (freeLane >= 0 && PASSENGER_TYPES.indexOf(this.depotOutConfig.type) >= 0 &&
+                    !laneHasPlatform(outName, targetTrackId, freeLane)) {
+                    freeLane = -1;
+                    for (let l = 0; l < lanes.length; l++) {
+                        if (lanes[l] === null && laneHasPlatform(outName, targetTrackId, l) &&
+                            canDepartTo(outName, targetTrackId, l, targetTrackId)) { freeLane = l; break; }
+                    }
+                }
             }
 
             // ★追加: 満線(freeLane === -1)の場合のスタック時間加算
@@ -351,7 +363,11 @@ Train.prototype.tryConvertDeadhead = function (stName) {
            すべて宮原操に集まってしまい、手前の電留線が使われなかった。 */
         let targetDest = null;
         {
-            const near = this.game.ops.nearestDepotAhead(this, stName);
+            /* 行き止まりの折返線 (甲子園口の2番) にいる列車は、行き止まりの方へは出られない。
+               車両所は折り返した向き (後ろ) で探す。 */
+            const stub = STATION_STUB_LANES[stName];
+            const onStub = stub && isStubLane(stName, this.trackId, this.lane) && this.dir === stub.deadEnd;
+            const near = this.game.ops.nearestDepotAhead(onStub ? Object.assign(Object.create(this), { dir: -this.dir }) : this, stName);
             if (near) targetDest = near.name;
         }
         if (!targetDest) return false;

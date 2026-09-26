@@ -214,6 +214,24 @@
 }
 /* 「広げる」を押したときの指令卓の高さ (輸送障害・記録を読みやすくする) */
 body.tid-dock-tall #tid-dock { max-height: 62vh; }
+/* 指令卓を下げる: 見出しだけ残す / すっかり隠す (取っ手の帯は残るので、いつでも戻せる) */
+body.tid-dock-low #tid-dock { max-height: 12vh; }
+body.tid-dock-hidden #tid-dock { display: none; }
+/* ドラッグで決めた高さ */
+body.tid-dock-custom #tid-dock { max-height: var(--tid-dock-h, 38vh); height: var(--tid-dock-h, auto); }
+#tid-dock-bar {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+    padding: 2px 8px; background: var(--tid-dark); color: #C9D3EA;
+    cursor: ns-resize; user-select: none; touch-action: none; font-size: 11px;
+}
+#tid-dock-bar .tid-tab { cursor: pointer; }
+.tid-dock-grip { font-size: 14px; letter-spacing: 2px; opacity: .8; }
+.tid-dock-state { margin-left: auto; opacity: .8; }
+/* 編成検索の行路表: 列車番号は押せる (列車の詳細へ) */
+button.tid-duty-train { border: 0; cursor: pointer; text-decoration: underline; font: inherit; }
+.tid-duty-table tr.is-pass td { color: #8A93A8; }
+/* 駅の番線別の表: いま列車が居る行 */
+.tid-pl-t tr.is-here td { background: rgba(90, 150, 255, .14); }
 .tid-panel {
     background: var(--tid-panel);
     border: 1px solid var(--tid-edge);

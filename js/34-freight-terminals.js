@@ -46,6 +46,61 @@ Train.prototype.syncFreightTerminalExit = function () {
     }
 };
 
+/**
+ * 着発線のどのレーンに入るか (配線略図の線の種類で分ける)。空きが無ければ -1。
+ *   through … 通過する列車の乗務員交代・待避 → 着発線・着発荷役線 (E&S) だけ
+ *   dest    … 行先の列車 → 荷役できる線 (E&S・荷役線) を先に、なければ着発線・留置線
+ *   depart  … ターミナル発の列車 → 着発線・E&S を先に
+ */
+function freightTerminalLaneFor(block, intent) {
+    const key = block && block.freightTerminal;
+    const ft = key && FREIGHT_TERMINALS[key];
+    if (!ft) return -1;
+    const rows = (/_Up$/.test(block.trackId) ? ft.upTracks : ft.downTracks);
+    const order = intent === "through" ? ["着発", "E&S"]
+                : intent === "dest" ? ["E&S", "荷役", "着発", "留置"]
+                : ["着発", "E&S", "荷役", "留置"];
+    for (const kind of order) {
+        for (let l = 0; l < block.lanes.length; l++) {
+            if (block.lanes[l] === null && rows[l] && rows[l].kind === kind) return l;
+        }
+    }
+    return -1;
+}
+
+/** この列車が着発線に入る目的 */
+Train.prototype.freightTerminalIntent = function (key) {
+    if (this.dest === key || (key === "吹田タ" && FREIGHT_EXIT_VIA_SUITA.indexOf(this.dest) >= 0)) return "dest";
+    return this.hasDeparted || this.terminalWork ? "through" : "depart";
+};
+
+/**
+ * 吹田タへ入る列車を、手前で北方貨物線 (貨物線) へ入れる。
+ * 吹田タは本線とはつながっておらず、貨物線から出入りする (配線略図 696)。
+ * 貨物線と本線がつながるのは、上り (神戸方から) は塚本、下り (京都方から) は茨木の千里丘方 (695/698)。
+ * そこで貨物線に入れなかった列車も、吹田タの手前までに貨物線へ入れる (行先を通り過ぎない)。
+ * 戻り値: 入る貨物線の線路ID (入らないなら null)
+ */
+Train.prototype.suitaCorridorTrack = function (nextIdx, targetTrackId) {
+    if (this.type !== "貨物") return null;
+    const ft = FREIGHT_TERMINALS["吹田タ"];
+    if (!ft) return null;
+    const needs = this.dest === "吹田タ" || FREIGHT_EXIT_VIA_SUITA.indexOf(this.dest) >= 0;
+    if (!needs) return null;
+    const want = this.dir === 1 ? "Up_Hoppo" : "Down_Hoppo";
+    if (targetTrackId === want || isFreightTerminalTrack(targetTrackId)) return null;
+    if (!/^(Up|Down)_(Out|In)$/.test(targetTrackId)) return null;
+    // 吹田タより手前 (進行方向で) のブロックだけ
+    if ((ft.pos - nextIdx) * this.dir <= 0) return null;
+    const hb = (this.game.trackMgr.blocks[want] || [])[nextIdx];
+    if (!hb || hb.x === -1000) return null;
+    const junction = this.dir === 1 ? STATION_MAP["塚本"] : STATION_MAP["茨木"];
+    const atJunction = hb.stationIdx === junction;
+    // 本来の合流点 (塚本・茨木) か、そこを逃したときは吹田タの2閉塞手前まで
+    const last = Math.abs(ft.pos - nextIdx) <= 2;
+    return (atJunction || last) ? want : null;
+};
+
 /** その貨物ターミナルに入るか (行先・乗務員交代・待避) */
 Train.prototype.wantsFreightTerminal = function (key) {
     if (this.type !== "貨物") return false;
@@ -78,8 +133,8 @@ Train.prototype.freightTerminalEntryTrack = function (nextIdx, targetTrackId) {
     const fb = (this.game.trackMgr.blocks[fTid] || [])[nextIdx];
     if (!fb || fb.x === -1000) return null;
     // 行先がここの列車は、着発線が空くまで本線の手前で待つ (場内信号の手前)
-    const must = this.dest === key || (key === "吹田タ" && FREIGHT_EXIT_VIA_SUITA.indexOf(this.dest) >= 0);
-    if (!must && !fb.lanes.some(l => l === null)) return null;   // 通過列車は、満線なら本線を通る
+    const intent = this.freightTerminalIntent(key);
+    if (intent !== "dest" && freightTerminalLaneFor(fb, "through") < 0) return null;   // 通過列車は、着発線が満線なら本線を通る
     return fTid;
 };
 

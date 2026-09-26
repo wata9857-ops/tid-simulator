@@ -571,7 +571,8 @@ Train.prototype.executeTurnBack = function () {
              (それが実際の入換動作にあたる)。 */
         const canTurnInPlace = !globalThis.__TB_OFF &&
                                (SWITCHABLE_STATIONS.indexOf(stName) >= 0 ||
-                                OVERTAKE_STATIONS.indexOf(stName) >= 0) &&
+                                OVERTAKE_STATIONS.indexOf(stName) >= 0 ||
+                                !!STATION_STUB_LANES[stName]) &&         // 折返線のある駅 (甲子園口)
                                newTrackId !== this.trackId &&
                                !!this.game.trackMgr.blocks[newTrackId] &&
                                /* ★その駅・その番線で、ホームのまま折り返せるか。
@@ -625,6 +626,7 @@ Train.prototype.executeTurnBack = function () {
             this.vehicles = newVehicles;
 
             this.state = "waiting_start"; this.stuckTime = 0;
+            this.turnbackAt = stName;       // 折り返しの待ちに入った駅 (引上線を使う駅なら js/35-sidings.js が引き上げる)
             this.turnbackStall = 0;
             this.hasStoppedAtCurrent = false;
             this.hasDeparted = false;
@@ -724,6 +726,7 @@ Train.prototype.executeTurnBack = function () {
                 this.vehicles = newVehicles;
 
                 this.state = "waiting_start"; this.stuckTime = 0; this.hasStoppedAtCurrent = false;
+                this.turnbackAt = stName;   // 折り返しの待ちに入った駅 (js/35-sidings.js)
                 this.turnbackStall = 0;
                 this.hasDeparted = false;
                 /* ★遅れの引き継ぎ。
@@ -986,6 +989,17 @@ Train.prototype.applyTurnbackDwell = function (stName) {
  */
 const KATAMACHI_TERMINALS = ["四条畷", "松井山手", "京田辺", "同志社前", "木津"];
 Train.prototype.maybeSwitchTozaiType = function (stName, newTrackId) {
+    /* ★尼崎方の折り返し: 尼崎で折り返して JR東西線へ入る快速は、普通にする。
+         JR東西線の快速は JR宝塚線・学研都市線からの直通で、尼崎で折り返して東西線へ戻る列車は
+         ふつう普通 (以前は折り返しでも種別を変えないため、尼崎方で折り返す列車の大半が快速だった)。
+         上りの快速がほとんど走っていないときだけ、快速のまま出す。 */
+    if (stName === "尼崎" && this.dir === 1 && (newTrackId || "").indexOf("Tozai") === 0 && this.type === "快速") {
+        const nR = ttActiveCount(this.game, "tozai", "快速", 1);
+        const nL = ttActiveCount(this.game, "tozai", "普通", 1);
+        if (nR < Math.max(1, nL * 0.25)) return;
+        if (this.canChangeTypeTo("普通", stName)) this.type = "普通";
+        return;
+    }
     if (KATAMACHI_TERMINALS.indexOf(stName) < 0) return;
     if (this.dir !== -1 || (newTrackId || "").indexOf("Tozai") !== 0) return;
     const h = (this.game.currentTime / 3600) % 24;
@@ -996,7 +1010,9 @@ Train.prototype.maybeSwitchTozaiType = function (stName, newTrackId) {
     const outer = ["京田辺", "同志社前", "木津"].indexOf(stName) >= 0;
     const nR = ttActiveCount(this.game, "tozai", "快速", -1);
     const nL = ttActiveCount(this.game, "tozai", "普通", -1);
-    if (!outer && nR >= nL) return;
+    /* 四条畷・松井山手などで折り返す普通は、快速が普通の 4分の3 に満たないときだけ快速にする
+       (以前は快速が普通より少なければ必ず快速にしていて、尼崎方へ向かう普通が薄くなっていた) */
+    if (!outer && nR >= nL * 0.75) return;
     if (!this.canChangeTypeTo("快速", stName)) return;
     this.type = "快速";
 };

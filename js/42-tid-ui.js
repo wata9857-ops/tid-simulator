@@ -111,7 +111,7 @@ class TidUI {
                 ["姫路", "姫路"], ["加古川", "加古川"], ["西明石", "西明石"],
                 ["三ノ宮", "三ノ宮・神戸"], ["芦屋", "芦屋"], ["尼崎", "尼崎(分岐)"],
                 ["大阪", "大阪"], ["新大阪", "新大阪・宮原"], ["高槻", "高槻"],
-                ["向日町操", "向日町操"], ["京都", "京都"], ["山科", "山科(分岐)"],
+                ["向日町操", "京都支所 出入口 (向日町操)"], ["京都", "京都"], ["山科", "山科(分岐)"],
                 ["草津", "草津"], ["野洲", "野洲"], ["米原", "米原"], ["敦賀", "敦賀"],
                 ["近江今津", "湖西線 近江今津"], ["宝塚", "JR宝塚線 宝塚"],
                 ["新三田", "JR宝塚線 新三田"], ["北新地", "JR東西線 北新地"],
@@ -242,6 +242,62 @@ class TidUI {
      * どちらも前回の状態を覚えておく。線路図は大きさが変わると次の描画で
      * キャンバスを作り直す (js/41-tid-render.js の resize)。
      */
+    /**
+     * 指令卓 (指令連絡・列車情報・運転指令・輸送障害/記録の4つの欄) を下へ寄せる。
+     *   段階 … 0 隠す / 1 見出しだけ / 2 ふつう / 3 広げる
+     *   「▼ 下げる」「▲ 上げる」で1段ずつ。取っ手の帯をドラッグすると好きな高さにできる。
+     * 欄の中身・操作はそのまま (隠しても処理は続く。指令連絡の自動処理なども止まらない)。
+     */
+    bindDockHeight(on) {
+        const names = ["隠す", "見出しだけ", "ふつう", "広げる"];
+        const store = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* 続ける */ } };
+        const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+        const body = document.body;
+        const apply = (level, customPx) => {
+            this.dockLevel = Math.max(0, Math.min(3, level));
+            body.classList.toggle("tid-dock-hidden", this.dockLevel === 0);
+            body.classList.toggle("tid-dock-low", this.dockLevel === 1);
+            body.classList.toggle("tid-dock-tall", this.dockLevel === 3);
+            body.classList.toggle("tid-dock-custom", !!customPx);
+            if (customPx) body.style.setProperty("--tid-dock-h", customPx + "px");
+            const g = this.el("tid-dock-grow");
+            if (g) g.textContent = this.dockLevel === 3 ? "⤡ 戻す" : "⤢ 広げる";
+            const st = this.el("tid-dock-state");
+            if (st) st.textContent = "指令卓: " + (customPx ? Math.round(customPx) + "px" : names[this.dockLevel]);
+            store("tid-dock-level", this.dockLevel);
+            store("tid-dock-px", customPx || "");
+            if (this.layoutState) this.layoutState.tall = this.dockLevel === 3;
+            this.relayout();
+        };
+        const px0 = parseFloat(load("tid-dock-px", ""));
+        apply(parseInt(load("tid-dock-level", this.layoutState && this.layoutState.tall ? 3 : 2), 10), px0 > 0 ? px0 : null);
+        on("tid-dock-down", (e) => { e.stopPropagation(); apply(this.dockLevel - 1, null); });
+        on("tid-dock-up", (e) => { e.stopPropagation(); apply(this.dockLevel + 1, null); });
+        // 「⤢ 広げる」は ふつう ⇔ 広げる の切り替え (以前と同じ)
+        const grow = this.el("tid-dock-grow");
+        if (grow) grow.addEventListener("click", () => apply(this.dockLevel === 3 ? 2 : 3, null));
+        // 取っ手の帯をドラッグ (上へ = 高く / 下へ = 低く。一番下まで下げると隠す)
+        const bar = this.el("tid-dock-bar");
+        const dock = this.el("tid-dock");
+        if (bar && dock && bar.addEventListener) {
+            let startY = 0, startH = 0, dragging = false;
+            bar.addEventListener("pointerdown", (e) => {
+                if (e.target && e.target.tagName === "BUTTON") return;
+                dragging = true; startY = e.clientY;
+                startH = this.dockLevel === 0 ? 0 : dock.getBoundingClientRect().height;
+                if (bar.setPointerCapture) bar.setPointerCapture(e.pointerId);
+            });
+            bar.addEventListener("pointermove", (e) => {
+                if (!dragging) return;
+                const h = Math.max(0, Math.min(window.innerHeight * 0.8, startH + (startY - e.clientY)));
+                if (h < 24) apply(0, null); else apply(2, h);
+            });
+            const end = () => { dragging = false; };
+            bar.addEventListener("pointerup", end);
+            bar.addEventListener("pointercancel", end);
+        }
+    }
+
     bindLayout(on) {
         const store = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) { /* 使えなくても続ける */ } };
         const load = (k) => { try { return localStorage.getItem(k) === "1"; } catch (e) { return false; } };
@@ -268,14 +324,12 @@ class TidUI {
         this.layoutState = { collapsed: load("tid-toolbar-collapsed"), tall: load("tid-dock-tall") };
         setBar(this.layoutState.collapsed);
         setTall(this.layoutState.tall);
+        this.bindDockHeight(on);
         on("tid-toolbar-toggle", () => {
             this.layoutState.collapsed = !this.layoutState.collapsed;
             setBar(this.layoutState.collapsed);
         });
-        on("tid-dock-grow", () => {
-            this.layoutState.tall = !this.layoutState.tall;
-            setTall(this.layoutState.tall);
-        });
+        // 「⤢ 広げる」は bindDockHeight が受け持つ (指令卓の高さの段階と一緒に扱う)
     }
 
     /** 配置が変わったあと、線路図の大きさを合わせて描き直す */

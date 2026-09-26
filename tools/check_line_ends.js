@@ -34,6 +34,7 @@ head('線区の端の先に線路の切れ端が無い');
 {
     const stubs = [];
     for (const tid in game.trackMgr.blocks) {
+        if (typeof isSidingTrack === 'function' && isSidingTrack(tid)) continue;   // 駅の引上線は行き止まりの線路そのもの
         const blks = game.trackMgr.blocks[tid];
         // 最後の本物の駅ブロックより先 (上り方向) に、本物のブロックが続いていないか
         let lastSt = -1;
