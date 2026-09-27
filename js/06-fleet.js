@@ -59,8 +59,8 @@ const FLEET_BASES = [
     /* ★網干総合車両所 (網干) を線路図に入れたので、網干の編成は網干に置く。
        姫路の電留線には一部だけ滞泊させる。 */
     { name: "網干",     groups: ["ABOSHI"],                         weight: 30 },
-    { name: "姫路",     groups: ["ABOSHI", "AKASHI"],               weight: 6,
-      weightBy: { AKASHI: 6 } },
+    /* ★明石の207系・321系は西明石より西の運用を持たないので、姫路には置かない */
+    { name: "姫路",     groups: ["ABOSHI"],                         weight: 6 },
     { name: "西明石",   groups: ["ABOSHI", "AKASHI"],               weight: 14 },
     /* ★尼崎・大阪は明石の207系・321系の滞泊地。
        網干の223系・225系をここに置くと、新快速に必要な8両編成が
@@ -86,6 +86,10 @@ const FLEET_BASES = [
        起点の在庫を増やして、線区の所要をまわせるようにする。 */
     { name: "京橋",     groups: ["AKASHI"],                         weight: 6 },
     { name: "放出",     groups: ["AKASHI"],                         weight: 34 },
+    /* ★学研都市線の南の端の滞泊地。祝園の留置線は2本 (7両×2 = 14両まで。maxCars)、
+         奈良支所 (佐保) は木津から出入りする。朝の京橋方面の始発を受け持つ。 */
+    { name: "祝園",     groups: ["AKASHI"],                         weight: 2, maxCars: 14 },
+    { name: "木津",     groups: ["AKASHI"],                         weight: 6 },
     { name: "高槻",     groups: ["ABOSHI", "AKASHI"],               weight: 6 },
     { name: "向日町操", groups: ["ABOSHI", "KYOTO", "AKASHI"],      weight: 10 },
     /* 京都駅の留置線 (配線略図 スクリーンショット(693).png)。
@@ -100,9 +104,12 @@ const FLEET_BASES = [
          当駅止まりに短縮する (実測: 京都→敦賀の普通にキトの編成が
          入っていたのを止めた)。 */
     { name: "京都",     groups: ["ABOSHI", "AKASHI", "KYOTO"],      weight: 5 },
-    { name: "草津",     groups: ["ABOSHI", "AKASHI"],               weight: 5 },
-    { name: "野洲",     groups: ["ABOSHI", "AKASHI"],               weight: 12 },
-    { name: "米原",     groups: ["ABOSHI", "AKASHI"],               weight: 12 },
+    /* ★琵琶湖線の普通は網干の223系・225系 (と宮原の6000番台)。明石の207系・321系は
+         京都より東の運用を持たないので、草津・野洲・米原には滞泊させない
+         (以前は米原に 207系・321系が20本前後溜まっていた)。 */
+    { name: "草津",     groups: ["ABOSHI"],                         weight: 5 },
+    { name: "野洲",     groups: ["ABOSHI", "MIYAHARA"],             weight: 12 },
+    { name: "米原",     groups: ["ABOSHI"],                         weight: 12 },
     { name: "敦賀",     groups: ["ABOSHI"],                         weight: 6 },
     { name: "近江今津", groups: ["KYOTO"],                          weight: 8 }
 ];
@@ -147,9 +154,12 @@ function fleetHomeOf(startName) {
     // 姫路より西は網干総合車両所が受け持つ
     if (["播州赤穂", "坂越", "西相生", "上郡", "有年", "相生", "竜野", "はりま勝原", "英賀保"].indexOf(startName) >= 0) return "網干";
     // 学研都市線の駅から来る列車は放出の電留線が受け持つ
+    if (startName === "祝園" || startName === "木津") return startName;
+    if (["西木津", "下狛"].indexOf(startName) >= 0) return "祝園";
     if (TOZAI_STATIONS_MAP && Object.values(TOZAI_STATIONS_MAP).indexOf(startName) >= 0 &&
         STATION_MAP[startName] > STATION_MAP["放出"]) return "放出";
-    if (KATAMACHI_BEYOND.indexOf(startName) >= 0 || startName === "鴫野") return "放出";
+    if (KATAMACHI_BEYOND.indexOf(startName) >= 0) return "木津";   // 奈良支所 (佐保) は木津から出入り
+    if (startName === "鴫野") return "放出";
     if (startName === "篠山口" || startName === "福知山") return "新三田";
     if (startName === "永原" || startName === "堅田" || startName === "大津京") return "近江今津";
     if (startName === "近江塩津") return "敦賀";
@@ -342,6 +352,8 @@ class FleetManager {
                     ? list.length - cursor
                     : Math.round(list.length * wOf(b) / total);
                 for (let n = 0; n < share && cursor < list.length; n++, cursor++) {
+                    /* 留置線の長さに限りがある所 (祝園) は、入るぶんだけ置く。残りは次の留置場へ */
+                    if (b.maxCars && this.carsAt(b.name) + list[cursor].cars > b.maxCars) break;
                     list[cursor].at = b.name;
                     this.pools[b.name].push(list[cursor]);
                 }
@@ -360,7 +372,7 @@ class FleetManager {
      *   ほかの明石支所の留置場と4両・3両を入れ替えて、組める形にしておく。
      */
     balanceSevenCarBases() {
-        const bases = ["放出", "尼崎", "京橋"];
+        const bases = ["放出", "尼崎", "京橋", "祝園", "木津"];
         const others = FLEET_BASES.filter(b => bases.indexOf(b.name) < 0 &&
                                                b.groups.indexOf("AKASHI") >= 0).map(b => b.name);
         const is207 = (v, cars) => v.group === "AKASHI" && VEH.is207(v) && v.cars === cars;
@@ -399,6 +411,11 @@ class FleetManager {
         const n4 = pool.filter(v => ok(v) && v.cars === 4).length;
         const n3 = pool.filter(v => ok(v) && v.cars === 3).length;
         return n7 + Math.min(n4, n3);
+    }
+
+    /** その留置場に置いてある両数 */
+    carsAt(name) {
+        return (this.pools[name] || []).reduce((s, v) => s + (v.cars || 0), 0);
     }
 
     /** 指定留置場の待機編成 (表示用) */
@@ -760,6 +777,24 @@ class FleetManager {
         return this.assign(stName, type, trackId, dest, trainNo, { noBorrow: true });
     }
 
+    /**
+     * 同じ駅の留置線にいる編成への差し替えを試す。差し替えられなければ元の編成のまま
+     * (元の編成を留置線から引き戻して返す)。reassign は失敗すると元の編成を失うので、
+     * 「差し替えられるなら差し替える」ときはこちらを使う。
+     */
+    tryReassign(stName, type, trackId, dest, trainNo, current) {
+        const keep = (current || []).slice();
+        const got = this.reassign(stName, type, trackId, dest, trainNo, current);
+        if (got && got.length) return got;
+        keep.forEach(v => {
+            for (const k in this.pools) {
+                const i = this.pools[k].indexOf(v);
+                if (i >= 0) { this.pools[k].splice(i, 1); break; }
+            }
+        });
+        return keep;
+    }
+
     // -------------------------------------------------------------- 返却
     /** その編成を受け入れられる留置場のうち、指定地点から最も近いものを返す */
     homeForVehicle(veh, nearName) {
@@ -772,7 +807,10 @@ class FleetManager {
            (どの車両所の運用に入れるかは別の判定 profileFor が見る)。 */
         if (nIdx !== null) {
             for (const b of FLEET_BASES) {
-                if (this.baseIndex[b.name] === nIdx && this.pools[b.name]) return b.name;
+                if (this.baseIndex[b.name] !== nIdx || !this.pools[b.name]) continue;
+                // 留置線の長さに限りがある所 (祝園) は、満線ならほかへ
+                if (b.maxCars && this.carsAt(b.name) + (veh.cars || 0) > b.maxCars) continue;
+                return b.name;
             }
         }
 
@@ -781,6 +819,7 @@ class FleetManager {
         FLEET_BASES.forEach(b => {
             if (b.groups.indexOf(veh.group) < 0) return;
             if (this.baseIndex[b.name] === undefined) return;
+            if (b.maxCars && this.carsAt(b.name) + (veh.cars || 0) > b.maxCars) return;
             const d = (nIdx === null) ? 0 : Math.abs(this.baseIndex[b.name] - nIdx);
             if (d < bestDist) { bestDist = d; best = b.name; }
         });
@@ -799,7 +838,7 @@ class FleetManager {
             // ★特急編成・機関車は専用の在庫へ返す。
             //   以前は返却していなかったため、同じ編成番号が使い捨てになり、
             //   運用中の本数を数えられなくなっていた。
-            if (ServiceRules.giveBack(v)) return;
+            if (ServiceRules.giveBack(v, nearName)) return;
             if (v.isFreight || v.isExpress) return;
             const loc = this.homeForVehicle(v, nearName);
             if (loc && this.pools[loc]) { v.at = loc; this.pools[loc].push(v); }

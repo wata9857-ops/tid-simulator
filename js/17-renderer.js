@@ -188,7 +188,7 @@ class Renderer {
     freightYardGeometry(key) {
         const ft = FREIGHT_TERMINALS[key];
         const tY = this.game.trackMgr.trackY;
-        const cx = 100 + ft.pos * BLOCK_WIDTH;
+        const cx = 100 + (ft.pos + (ft.drawShift || 0)) * BLOCK_WIDTH;
         const top = tY[freightTerminalTrack(key, 1)];
         const gap = 30;
         const rows = Math.max(ft.lanes.up, ft.lanes.down);

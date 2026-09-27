@@ -186,7 +186,7 @@ class TidDuty {
             const names = { running: "走行中", stopped: "停車中", holding: "停止 (" + dutyHoldReason(game, t) + ")",
                             waiting_start: "発車待ち", turning_back: "折り返し中", in_depot: "留置中" };
             const pl = trainPlatformLabel(game, t);
-            status = esc(where) + " / " + esc(names[t.state] || t.state) + (pl ? " / " + esc(pl) : "");
+            status = esc(where) + " / " + esc(trainPrepText(t, now) || names[t.state] || t.state) + (pl ? " / " + esc(pl) : "");
         }
         const delayMin = Math.floor(((t ? t.delayTime : L.delay) || 0) / 60);
         const evs = L ? L.events : [];

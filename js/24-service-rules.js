@@ -102,6 +102,76 @@ const FREIGHT_FLEET = {
              notes: "直流電気機関車。臨時・工臨運用。" }
 };
 
+/* ------------------------------------------------------------------ 工臨・単機回送の機関車
+
+   ■ 何を直したか (利用者の指摘)
+     工事用臨時列車 (工臨) と機関車だけの回送 (単機回送) を、ふつうの電車の
+     「臨時」として走らせていた (通勤形の編成が充てられていた)。
+     実物は機関車が工事用の貨車 (ロングレール輸送のチキ・バラストのホキ) を引くか、機関車だけで走る。
+   ■ 機関車と拠点
+     EF65形 … 下関総合車両所 (JR西日本)。山陽本線から入り、網干・宮原を足場に工臨を引く。
+               下関との行き来は線路図の西の端 (上郡) を通る単機回送になる。
+     DD51形 … 網干総合車両所宮原支所。宮原操を拠点に工臨・単機回送。
+   JR貨物の単機 (吹田機関区の EF210 など) は貨物の機関車の在庫 (FREIGHT_FLEET) を使う。
+   機関車は「いまどこに居るか (at)」を持ち、その場所から出る工臨・単機だけを引く
+   (機関車が線路を走らずに別の場所へ現れることはない)。機番は代表的な番号を振ったもの。 */
+const WORK_LOCO_FLEET = {
+    ef65: { type: "EF65形", base: "下関総合車両所", ids: ["1124", "1128", "1130", "1131"],
+            at: ["網干", "網干", "宮原操", "上郡"],
+            notes: "直流電気機関車 (JR西日本)。工事用臨時列車・単機回送。下関から山陽本線経由で入る。" },
+    dd51: { type: "DD51形", base: "網干総合車両所宮原支所", ids: ["1183", "1191", "1192"],
+            at: ["宮原操", "宮原操", "宮原操"],
+            notes: "ディーゼル機関車。宮原を拠点に工事用臨時列車・単機回送。" }
+};
+/* 工臨の貨車 (機関車に連結する工事用車両)。1本を1組として持つ。 */
+const WORK_CAR_FLEET = {
+    chiki: { type: "チキ5500形", cars: 6, label: "ロングレール輸送", n: 3 },
+    hoki:  { type: "ホキ800形",  cars: 5, label: "バラスト散布", n: 3 }
+};
+
+class WorkLocoPool {
+    constructor() {
+        this.all = [];
+        this.locos = [];
+        this.cars = [];
+        for (const key in WORK_LOCO_FLEET) {
+            const s = WORK_LOCO_FLEET[key];
+            s.ids.forEach((n, i) => {
+                const v = new Vehicle(s.type, s.type.replace("形", "") + "-" + n, 1, s.notes, s.base, "WORK");
+                v.workKey = key; v.isLoco = true; v.at = s.at[i] || s.at[0];
+                this.locos.push(v); this.all.push(v);
+            });
+        }
+        for (const key in WORK_CAR_FLEET) {
+            const s = WORK_CAR_FLEET[key];
+            for (let i = 1; i <= s.n; i++) {
+                const v = new Vehicle(s.type, s.type.replace("形", "") + "-" + i + "組", s.cars,
+                                      s.label + "用の工事用貨車 " + s.cars + "両", "", "WORK");
+                v.workKey = key; v.isWorkCar = true; v.at = null;   // 貨車は機関車と一緒に動く (at は置いた場所)
+                this.cars.push(v); this.all.push(v);
+            }
+        }
+    }
+    /** その場所に居る、その形式の機関車を1両借りる (居なければ null) */
+    takeLoco(key, at) {
+        const i = this.locos.findIndex(v => v.workKey === key && v.at === at);
+        return i >= 0 ? this.locos.splice(i, 1)[0] : null;
+    }
+    /** 工臨の貨車を1組借りる (その場所に置いてあるもの、無ければ保守基地の予備) */
+    takeCars(key, at) {
+        let i = this.cars.findIndex(v => v.workKey === key && v.at === at);
+        if (i < 0) i = this.cars.findIndex(v => v.workKey === key && v.at === null);
+        return i >= 0 ? this.cars.splice(i, 1)[0] : null;
+    }
+    give(veh, at) {
+        if (!veh || !veh.workKey) return false;
+        veh.at = at || veh.at;
+        const list = veh.isLoco ? this.locos : this.cars;
+        if (list.indexOf(veh) < 0) list.push(veh);
+        return true;
+    }
+}
+
 /* ------------------------------------------------------------------ 走行線路の規則
 
    複々線 (西明石〜草津) には、外側線 (列車線) と内側線 (電車線) がある。
@@ -302,9 +372,25 @@ const SERVICE_RULES = [
            (東西線から直通してくる207系/321系は、上の東西線の規則で
             先に判定されるのでここへは来ない) */
         when: (c) => c.isFukuchi,
-        profile: () => ({ groups: ["MIYAHARA", "ABOSHI"],
-                          pred: (v) => VEH.is223(v) || VEH.is225(v),
-                          minCars: 6, label: "宝塚線" })
+        /* ★JR宝塚線の線内の普通 (尼崎〜宝塚・新三田) は、実物では明石の 207系・321系が主力。
+             以前は 223系/225系 に限っていたので、JR東西線から宝塚線へ直通してきた 207系・321系が
+             塚口・宝塚で折り返せず、新三田まで回送になっていた (塚口→新三田 の回送 22本/日)。
+             快速・丹波路快速は宮原・網干の 223系/225系のまま。 */
+        /* 207系・321系を充てるのは、宝塚線の中で折り返す普通 (塚口・宝塚 → 新三田 など) だけ。
+           本線へ直通する普通まで広げると、JR東西線・学研都市線に要る7両編成を取ってしまい、
+           夕方の東西線が薄くなった (実測: 京橋 学研都市線方面 19〜20時 8本 → 3〜4本/時)。 */
+        /* 尼崎も含める: JR東西線から直通してきた 207系・321系を、運転整理で尼崎止まりにしたり
+           塚口止まりの快速にしたりすることがある (実物も同じ編成で折り返す)。 */
+        /* 快速には入れない (「新快速・快速に 207系・321系は使わない」という決まり。JR東西線の中は別の規則) */
+        profile: (c) => (c.type === "普通" &&
+                         (FUKUCHI_PLACES.indexOf(c.startName) >= 0 || c.startName === "尼崎") &&
+                         (FUKUCHI_PLACES.indexOf(c.dest) >= 0 || c.dest === "尼崎"))
+            ? { groups: ["MIYAHARA", "ABOSHI", "AKASHI"],   // 223系・225系を先に。207系・321系は来た編成をそのまま使うときだけ
+                pred: (v) => VEH.is207(v) || VEH.is321(v) || VEH.is223(v) || VEH.is225(v),
+                minCars: 6, label: "宝塚線普通" }
+            : { groups: ["MIYAHARA", "ABOSHI"],
+                pred: (v) => VEH.is223(v) || VEH.is225(v),
+                minCars: 6, label: "宝塚線" }
     },
     {
         id: "rapid",
@@ -334,12 +420,28 @@ const SERVICE_RULES = [
         // 京都より東 (琵琶湖線) は網干の223系/225系が主力、
         // 京都より西 (JR京都線・JR神戸線) は明石の207系/321系が主力。
         // 車両所の優先順だけを区間で入れ替える。
-        profile: (c) => ({
-            groups: (c.startIdx > STATION_MAP["京都"])
-                ? ["ABOSHI", "AKASHI", "MIYAHARA"]
-                : ["AKASHI", "ABOSHI", "MIYAHARA"],
-            pred: (v) => !VEH.isKyoto(v),
-            minCars: 6, label: "都市圏普通" })
+        /* ★明石の207系・321系は JR京都線・JR神戸線 (西明石〜京都) の中だけ。
+             琵琶湖線 (京都より東)・西明石より西へ行く普通には入れない。
+             以前は「始発が西明石〜米原」なら明石の車両も選べたので、207系・321系が
+             草津・野洲・米原まで走り、米原に20本前後が滞泊していた (実物に無い運用)。 */
+        profile: (c) => {
+            const kyo = STATION_MAP["京都"], nak = STATION_MAP["西明石"];
+            const dIdx = (typeof fleetIndexOf === "function" && c.dest) ? fleetIndexOf(c.dest) : null;
+            const inAkashiArea = globalThis.__AKASHI_FREE ? (c.startIdx !== null && c.startIdx >= nak && c.startIdx <= STATION_MAP["米原"]) : c.startIdx !== null && c.startIdx >= nak && c.startIdx <= kyo &&
+                                 (dIdx === null || (dIdx >= nak && dIdx <= kyo));
+            /* ★京都〜米原 (琵琶湖線) の中だけを走る普通には、京都支所の 221系・223系も入れる。
+                 「京都支所の車両は JR京都線・JR神戸線の運用に入れない」という決まりはそのまま
+                 (京都より西へ行く普通には入れない)。実物も琵琶湖線の普通は 221系が多い。 */
+            const biwakoOnly = c.startIdx !== null && c.startIdx >= kyo && dIdx !== null && dIdx >= kyo;
+            if (biwakoOnly) {
+                return { groups: ["ABOSHI", "KYOTO", "MIYAHARA"],
+                         pred: (v) => !VEH.isKyoto(v) || VEH.is221(v) || VEH.is223(v), minCars: 6, label: "琵琶湖線普通" };
+            }
+            const groups = !inAkashiArea ? ["ABOSHI", "MIYAHARA"]
+                : (c.startIdx > kyo) ? ["ABOSHI", "AKASHI", "MIYAHARA"]
+                : ["AKASHI", "ABOSHI", "MIYAHARA"];
+            return { groups: groups, pred: (v) => !VEH.isKyoto(v), minCars: 6, label: "都市圏普通" };
+        }
     },
     {
         id: "local",
@@ -349,6 +451,20 @@ const SERVICE_RULES = [
                           minCars: 6, label: "普通" })
     }
 ];
+
+/**
+ * 明石の 207系・321系が受け持てる区間か (発駅も行先も JR東西線・学研都市線・JR宝塚線、
+ * または JR京都線・JR神戸線の西明石〜京都)。琵琶湖線・西明石より西へは行かない。
+ */
+function akashiRangeOk(c) {
+    const inArea = (name) => {
+        if (!name) return true;
+        if (TOZAI_PLACES.indexOf(name) >= 0 || FUKUCHI_PLACES.indexOf(name) >= 0) return true;
+        const i = (typeof fleetIndexOf === "function") ? fleetIndexOf(name) : null;
+        return i === null || (i >= STATION_MAP["西明石"] && i <= STATION_MAP["京都"]);
+    };
+    return inArea(c.startName) && inArea(c.dest);
+}
 
 /**
  * 編成の組み合わせが、決められた組成のどれかに当てはまるか。
@@ -497,6 +613,28 @@ const ServiceRules = {
     init() {
         this.expressPool = new ExpressFleetPool();
         this.freightPool = new FreightFleetPool();
+        this.workPool = new WorkLocoPool();
+    },
+
+    /**
+     * 工臨・単機回送の編成を組む。loco … "ef65" / "dd51" / "freight"(JR貨物の機関車)。
+     * cars … 工臨の貨車 ("chiki" / "hoki")。単機なら null。組めなければ null。
+     */
+    takeWork(loco, cars, at, dest) {
+        if (!this.workPool) this.init();
+        if (loco === "freight") {
+            const l = this.freightPool.take(at, dest);
+            return l ? [l] : null;
+        }
+        const l = this.workPool.takeLoco(loco, at);
+        if (!l) return null;
+        const out = [l];
+        if (cars) {
+            const c = this.workPool.takeCars(cars, at);
+            if (!c) { this.workPool.give(l, at); return null; }
+            out.push(c);
+        }
+        return out;
     },
 
     /** 線区・種別からこの運用に入れる編成の条件を返す */
@@ -539,8 +677,9 @@ const ServiceRules = {
     },
 
     /** 特急・貨物の編成を返却する。通勤形なら false を返す。 */
-    giveBack(veh) {
+    giveBack(veh, at) {
         if (!veh) return false;
+        if (veh.workKey) return this.workPool ? this.workPool.give(veh, at) : false;
         if (veh.expressKey) return this.expressPool ? this.expressPool.give(veh) : false;
         if (veh.freightKey) return this.freightPool ? this.freightPool.give(veh) : false;
         return false;
@@ -618,7 +757,8 @@ const ServiceRules = {
         if (!vehicles || !vehicles.length) return false;
         const allExpress = vehicles.every(v => !!v.expressKey);
         const allFreight = vehicles.every(v => !!v.freightKey);
-        return allExpress || allFreight;
+        const allWork = vehicles.every(v => !!v.workKey);          // 工臨・単機 (EF65・DD51 と工事用貨車)
+        return allExpress || allFreight || allWork;
     },
 
     /** 表示用: 編成の所属略号つき番号を並べた文字列 */

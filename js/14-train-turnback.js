@@ -238,9 +238,19 @@ Train.prototype.executeTurnBack = function () {
             }
         }
 
-        // ★修正: 22:45以降および深夜帯は、折り返し運転を行わずに入庫(消滅)させるように早める
-        if (hOfDay >= 22.75 || hOfDay < 4.0) {
+        /* 営業の時間 (その線区の終電) を過ぎたら折り返さず、夜の留置に入る。
+           ★以前は 22:45 で一律に打ち切り、その場で列車を消していた。
+             線区ごとの終電 (js/10-timetable.js の TT_SERVICE_END) まで折り返し、
+             そのあとは その駅の留置線 → 近くの車両所への回送 の順で留置する。
+             列車を消すのは、そのどちらもできないときだけ。 */
+        if (!ttInService(ttLineOf(this), hOfDay)) {
             this.nextAction = "depot";
+            this.retiredByBudget = true;         // 折り返しを試させない
+            if (this.type !== "貨物" && this.type !== "特急" && DEPOTS[stName]) {
+                this.enterDepot(stName);
+                return;
+            }
+            if (this.tryConvertDeadhead(stName)) return;
             this.remove();
             return;
         }
@@ -382,9 +392,29 @@ Train.prototype.executeTurnBack = function () {
                     }
                 }
                 
-                if (!trailingToEast && kyotoAroundCount >= 2) {
+                /* ★延長する区間に、いまの編成で入れることが条件。
+                   明石の207系・321系は京都より東の運用を持たない (js/24-service-rules.js)。 */
+                const extDest = (Math.random() < 0.5) ? "米原" : "野洲";
+                /* ★琵琶湖線の上り (京都から先) に普通・快速が3駅以上いないときも延長する。
+                     明石の 207系・321系は京都で折り返すようにしたので (京都より東の運用を持たない)、
+                     琵琶湖線は京都で 223系・225系に乗り換えて続ける列車が要る。 */
+                const bu = this.game.trackMgr.blocks["Up_Out"];
+                const kb = bu ? bu.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === "京都") : null;
+                const gapEast = !!kb && countSameTypeAhead(this.game, "Up_Out", kb.index, 1, "普通", 3, this) +
+                                        countSameTypeAhead(this.game, "Up_Out", kb.index, 1, "快速", 3, this) === 0;
+                if (gapEast) { trailingToEast = false; kyotoAroundCount = Math.max(kyotoAroundCount, 2); }
+                let extOk = this.game.fleet.canServe(this.vehicles, "京都", "普通", this.trackId, extDest) ||
+                            this.game.fleet.canServe(this.vehicles, "京都", "快速", this.trackId, extDest);
+                /* 入れない編成 (明石の207系・321系) は、京都の留置線に置いて、そこにいる
+                   網干の223系・225系に乗り換えて延長する (同じ駅での車両の差し替え)。 */
+                if (!extOk && !trailingToEast && kyotoAroundCount >= 2) {
+                    const sw = this.game.fleet.tryReassign("京都", "普通", this.trackId, extDest, "", this.vehicles);
+                    this.vehicles = sw;
+                    extOk = this.game.fleet.canServe(sw, "京都", "普通", this.trackId, extDest);
+                }
+                if (!trailingToEast && kyotoAroundCount >= 2 && extOk) {
                     this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
-                    this.dest = (Math.random() < 0.5) ? "米原" : "野洲";
+                    this.dest = extDest;
                     // ★追加: 快速へ格上げできるのは、いまの編成が快速の運用条件を満たす場合だけ。
                     //        207系・321系や6000番台は快速に使えないので、その場合は普通のまま延長する。
                     this.type = this.game.fleet.canServe(this.vehicles, "京都", "快速", this.trackId, this.dest)
@@ -447,13 +477,26 @@ Train.prototype.executeTurnBack = function () {
                     else action = "depot";
                 }
 
+                /* ★延長してよいのは、いまの編成で西明石より西の普通に入れて (明石の 207系・321系は入れない)、
+                     延長先の区間 (西明石〜加古川) に下りの列車が詰まっていないときだけ。
+                     以前は編成も前方も見ずに 大久保・加古川・姫路 へ延長していたので、
+                     西明石〜大久保で普通が団子になり (利用者の指摘)、207系が大久保まで走っていた。 */
+                let extendDest = ["大久保", "加古川", "姫路"];
+                const extPick = extendDest[Math.floor(Math.random() * extendDest.length)];
+                if (action === "extend") {
+                    const okStock = this.game.fleet.canServe(this.vehicles, stName, this.type, this.trackId, extPick, null);
+                    const aheadBusy = countSameTypeAhead(this.game, this.trackId, this.currBlockIndex, -1, this.type, 3, this) +
+                                      countSameTypeAhead(this.game, this.trackId, this.currBlockIndex, -1, "快速", 3, this) >= 2;
+                    if (!okStock || aheadBusy) action = "depot";
+                }
                 if (action === "depot") {
+                    const depN = DEPOTS["西明石"];
                     this.game.ui.updateBanner(`【運転整理】西明石駅 上り線飽和予測のため、${this.trainNo}は当駅で運転を打ち切り入庫します。`, "banner-orange");
-                    this.remove();
+                    if (depN && this.type !== "貨物" && this.type !== "特急") this.enterDepot("西明石");
+                    else this.remove();
                     return;
                 } else if (action === "extend") {
-                    let extendDest = ["大久保", "加古川", "姫路"];
-                    this.dest = extendDest[Math.floor(Math.random() * extendDest.length)];
+                    this.dest = extPick;
                     this.nextAction = "turnback"; 
                     this.state = "running";
                     this.hasDeparted = true;
@@ -488,7 +531,7 @@ Train.prototype.executeTurnBack = function () {
              1. その駅に留置場があれば入区して運用を終える
              2. 無ければ、前方でいちばん近い「方転できる駅」まで延長運転する
              3. それも無ければ車両所へ回送する / 運用を終える          */
-        if (!canReverseAt(stName)) {
+        if (!canReverseAtDir(stName, this.dir)) {
             const hh = (this.game.currentTime / 3600) % 24;
             const dep = DEPOTS[stName];
             if (this.type !== "貨物" && this.type !== "特急" &&
@@ -599,10 +642,7 @@ Train.prototype.executeTurnBack = function () {
             this.turnbackTrack = newTrackId;      // 発車のときに入る線路
             this.maybeSwitchTozaiType(stName, newTrackId);
             if (!["回送", "貨物", "臨時", "特急"].includes(this.type)) {
-                this.dest = this.game.spawner.getDestination(this.type, this.dir, stName, newTrackId);
-                if (this.dest === stName) {   // 折り返す駅そのものが行先になったとき
-                    this.dest = this.game.spawner.fallbackTerminal(this.dir, stName, newTrackId);
-                }
+                this.dest = this.pickServableDest(stName, newTrackId);
                 // 近江塩津・敦賀からの下り普通は米原行きとする (琵琶湖線経由)
                 if (this.dir === -1 && this.type === "普通" &&
                     ["敦賀", "近江塩津"].includes(stName) && newTrackId.indexOf("Kosei") < 0) {
@@ -611,8 +651,10 @@ Train.prototype.executeTurnBack = function () {
                 this.game.spawner.activeTrainNos.delete(this.trainNo);
                 this.trainNo = this.game.spawner.generateTrainNumber(this.type, this.dir, stName, newTrackId);
                 this.dutyName = this.trainNo;
-                this.updateKoseiRoute();
+                /* ★始発駅を先に更新してから経路を決める。以前は逆の順で、湖西線から来て京都で折り返した
+                     列車の始発駅が近江今津のまま判定され、湖西線経由にならずに大津へ出ていた。 */
                 this.startName = stName || this.startName;
+                this.updateKoseiRoute();
             }
             if (stName === "向日町操" && this.dest === "向日町操") this.dest = (this.dir === 1) ? "京都" : "大阪";
 
@@ -689,10 +731,7 @@ Train.prototype.executeTurnBack = function () {
                 newB.lanes[tl] = this;
                 this.maybeSwitchTozaiType(stName, newTrackId);
                 if (!["回送","貨物","臨時","特急"].includes(this.type)) {
-                    this.dest = this.game.spawner.getDestination(this.type, this.dir, stName, newTrackId);
-                    if (this.dest === stName) {   // 折り返す駅そのものが行先になったとき
-                        this.dest = this.game.spawner.fallbackTerminal(this.dir, stName, this.trackId);
-                    }
+                    this.dest = this.pickServableDest(stName, newTrackId);
                     
                     // ★追加: 近江塩津・敦賀からの下り普通は米原行きとする（琵琶湖線経由）
                     if (this.dir === -1 && this.type === "普通" && ["敦賀", "近江塩津"].includes(stName) && !this.trackId.includes("Kosei")) {
@@ -702,13 +741,13 @@ Train.prototype.executeTurnBack = function () {
                     this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
                     this.trainNo =this.game.spawner.generateTrainNumber(this.type, this.dir, stName, this.trackId);
                     this.dutyName = this.trainNo;   // 一般の営業列車は運用名=列車番号
-                    // 行先が変わったので、湖西線経由かどうかを決め直す
-                    this.updateKoseiRoute();
                     // ★折り返して別の列車になったので、始発駅もこの駅に更新する。
                     //   以前は最初に出区した駅のままだったため、
                     //   「草津発の列車が宝塚線を走っている」ように見え、
                     //   車両の適合判定も間違った線区で行われていた。
                     this.startName = stName || this.startName;
+                    // 行先が変わったので、湖西線経由かどうかを決め直す (始発駅を更新したあとで)
+                    this.updateKoseiRoute();
                 }
                 if (stName === "向日町操" && this.dest === "向日町操") this.dest = (this.dir===1) ? "京都" : "大阪";
                 
@@ -1188,3 +1227,40 @@ Train.prototype.calcTravelTime = function () {
 
         return Math.ceil(adjTime);
 };
+
+/**
+ * 折り返した列車の行先を、いまの編成で走れる行先から選ぶ。
+ *
+ * ★以前は行先を編成と関係なく決め、編成がその行先の運用に入れないときは
+ *   その駅の在庫の編成と取り替えていた (fleet.reassign)。取り替えた編成はその駅に残るので、
+ *   JR宝塚線に直通した 207系・321系は宝塚に、琵琶湖線まで来た 207系は米原に溜まり続けた
+ *   (夜の宝塚に 207系・321系が40本、米原に20本)。実際の運用では、編成はその編成の
+ *   受け持つ線区の中で折り返す (宝塚で折り返す 207系は JR東西線・学研都市線へ戻る)。
+ * 行先の割合 (getDestination) は変えずに何度か引き直し、走れる行先が無いときだけ
+ * これまでどおり取り替えに任せる。
+ */
+Train.prototype.pickServableDest = function (stName, newTrackId) {
+    const sp = this.game.spawner, fleet = this.game.fleet;
+    const fix = (d) => (d === stName) ? sp.fallbackTerminal(this.dir, stName, newTrackId) : d;
+    let first = null;
+    for (let k = 0; k < 10; k++) {
+        const d = fix(sp.getDestination(this.type, this.dir, stName, newTrackId));
+        if (first === null) first = d;
+        if (!this.vehicles || !this.vehicles.length) return d;
+        if (fleet.canServe(this.vehicles, stName, this.type, newTrackId, d, null)) return d;
+    }
+    /* 割合の表に走れる行先が無い: 編成の受け持つ線区の終点から選ぶ */
+    const alt = STOCK_HOME_TERMINALS.filter(d => d !== stName &&
+        this.game.ops.directionFor(stName, d) === this.dir &&
+        fleet.canServe(this.vehicles, stName, this.type, newTrackId, d, null));
+    if (alt.length) return alt[Math.floor(Math.random() * alt.length)];
+    return first;
+};
+
+/* 編成の受け持つ線区の終点 (折り返しの行先の予備の候補)。
+   207系・321系なら JR東西線・学研都市線・JR京都線・JR神戸線の終点が選ばれる。 */
+const STOCK_HOME_TERMINALS = ["西明石", "須磨", "神戸", "尼崎", "大阪", "高槻", "京都",
+    "松井山手", "四条畷", "同志社前", "木津", "京橋", "宝塚", "新三田", "塚口",
+    "姫路", "網干", "加古川", "草津", "野洲", "米原", "近江今津"];
+/* 湖西線の終点 (近江今津) も入れる。京都支所の 221系・223系は、京都で折り返して湖西線へ戻る。
+   (折り返しで始発駅を更新してから経路を決めるので、山科で湖西線へ入る) */

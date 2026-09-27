@@ -302,6 +302,7 @@ function dutyKnownFleets(game) {
         if (typeof ServiceRules !== "undefined") {
             if (ServiceRules.expressPool) (ServiceRules.expressPool.all || []).forEach(addV);
             if (ServiceRules.freightPool) (ServiceRules.freightPool.all || []).forEach(addV);
+            if (ServiceRules.workPool) (ServiceRules.workPool.all || []).forEach(addV);
         }
         (g.trains || []).forEach(t => (t.vehicles || []).forEach(addV));
     }

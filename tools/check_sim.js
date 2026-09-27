@@ -119,7 +119,11 @@ function inspect(t) {
     /* (4) 京都支所の車両は本線(JR京都線/JR神戸線)の営業運用に入れない。
            回送は車両を動かすための列車なので対象外。
            (向日町操 -> 京都 の送り込み回送などは実際にある) */
-    if (isHonsen && t.type !== '回送' && t.type !== '臨時' && vs.some(v => VEH.isKyoto(v))) {
+    //     琵琶湖線 (京都〜米原) の中だけを走る普通は JR京都線・JR神戸線ではないので対象外。
+    const ki = STATION_MAP['京都'];
+    const biwakoOnly = [t.startName, t.dest].every(n => STATION_MAP[n] !== undefined && STATION_MAP[n] >= ki &&
+                                                        !stationBranchLine(n));
+    if (isHonsen && !biwakoOnly && t.type !== '回送' && t.type !== '臨時' && vs.some(v => VEH.isKyoto(v))) {
         violate('京都支所の車両を本線運用に使っていない', t);
     }
     // (5) JR東西線内は 207系/321系 のみ
@@ -129,7 +133,10 @@ function inspect(t) {
         }
     }
     // (6) 宝塚線 (大阪方面直通) は 223系/225系
-    if (isFukuchi && !isTozai) {
+    //     決まりどおり「大阪方面へ直通する列車」だけを見る。宝塚線の中で折り返す普通
+    //     (尼崎・塚口・宝塚〜新三田) には、JR東西線から来た 207系・321系も入る。
+    const toOsakaSide = [t.startName, t.dest].some(n => MAINLINE_EAST_OF_AMAGASAKI.indexOf(n) >= 0);
+    if (isFukuchi && !isTozai && toOsakaSide) {
         if (vs.some(v => !(VEH.is223(v) || VEH.is225(v)))) {
             violate('JR宝塚線(大阪方面)は223系/225系', t);
         }

@@ -461,7 +461,11 @@ const FREIGHT_TERMINALS = {
                ],
                links: { up: ["Up_Out", "Up_In"], down: ["Down_Out", "Down_In"] },
                exits: { up: ["Up_Out"], down: ["Down_Out"] },
-               dwell: [1800, 3600], stopSec: 420, cargo: "荷役ホーム", ref: "(680)" }
+               dwell: [1800, 3600], stopSec: 420, cargo: "荷役ホーム", ref: "(680)",
+               /* 線路図に描く位置だけのずらし (閉塞の数。負 = 画面の右 = 西大路方)。
+                  着発線の閉塞・つながり (pos) は変えない。京都駅の0番のりば・駅名札に
+                  重なっていたので、構内の絵を少し西大路方へ寄せる (利用者の指摘)。 */
+               drawShift: -0.55 }
 };
 /* yard から、向きごとの線の並び (レーン番号の順) と本数を作る */
 for (const k in FREIGHT_TERMINALS) {
@@ -516,20 +520,36 @@ function freightTerminalAt(stName) {
 }
 
 const timeToSec = (h, m, s) => h*3600 + m*60 + s;
+/* 臨時列車 (試運転・工臨・単機回送)。
+   work … 機関車の列車。loco は機関車の形式 (js/24-service-rules.js の WORK_LOCO_FLEET。
+          "freight" は JR貨物の機関車)、cars は工臨の貨車。単機回送は cars なし。
+          機関車はその時刻に始発駅に居るときだけ走る (居場所は前の列車の終着で決まる)。
+   ★以前は工臨・単機も電車の「臨時」として走らせ、通勤形の編成が充てられていた (利用者の指摘)。
+     また 6割を乱数で運休にしていたので、機関車の行き来がつながらなかった。工臨・単機は毎日走らせる。 */
 const EXTRA_TRAINS = [
     { name: "試6780M", start: "吹田貨", dest: "向日町操", time: timeToSec(9,59,0), type: "臨時", dir: 1, hoppo: true },
     { name: "試6781M", start: "向日町操", dest: "吹田貨", time: timeToSec(11,55,0), type: "臨時", dir: -1, hoppo: false },
-    { name: "8862レ", start: "吹田貨", dest: "京都", time: timeToSec(5,8,0), type: "臨時", dir: 1, hoppo: true },
-    { name: "工9384レ", start: "大久保", dest: "向日町操", time: timeToSec(4,23,0), type: "臨時", dir: 1, hoppo: false },
-    { name: "単9160", start: "吹田貨", dest: "西大路", time: timeToSec(6,8,30), type: "臨時", dir: 1, hoppo: true }, 
-    { name: "工9752レ", start: "吹田", dest: "向日町操", time: timeToSec(4,32,0), type: "臨時", dir: 1, hoppo: false },
+    { name: "8862レ", start: "吹田貨", dest: "京都", time: timeToSec(5,8,0), type: "臨時", dir: 1, hoppo: true, work: { loco: "freight" } },
+    // --- 工臨 (EF65・DD51 が工事用貨車を引く)。朝に保守基地へ出て、昼に戻る
+    { name: "工9384レ", start: "網干", dest: "向日町操", time: timeToSec(4,23,0), type: "臨時", dir: 1, hoppo: false, work: { loco: "ef65", cars: "chiki" } },
+    { name: "工9385レ", start: "向日町操", dest: "網干", time: timeToSec(12,40,0), type: "臨時", dir: -1, hoppo: false, work: { loco: "ef65", cars: "chiki" } },
+    { name: "工9752レ", start: "宮原操", dest: "向日町操", time: timeToSec(4,32,0), type: "臨時", dir: 1, hoppo: false, work: { loco: "dd51", cars: "hoki" } },
+    { name: "工9753レ", start: "向日町操", dest: "宮原操", time: timeToSec(10,10,0), type: "臨時", dir: -1, hoppo: false, work: { loco: "dd51", cars: "hoki" } },
+    { name: "工9896", start: "宮原操", dest: "姫路", time: timeToSec(4,52,0), type: "臨時", dir: -1, hoppo: false, work: { loco: "ef65", cars: "hoki" } },
+    { name: "工9897", start: "姫路", dest: "宮原操", time: timeToSec(13,5,0), type: "臨時", dir: 1, hoppo: false, work: { loco: "ef65", cars: "hoki" } },
+    // --- 単機回送
+    { name: "単9160", start: "吹田貨", dest: "西大路", time: timeToSec(6,8,30), type: "臨時", dir: 1, hoppo: true, work: { loco: "freight" } },
+    { name: "単9974レ", start: "吹田貨", dest: "西大路", time: timeToSec(6,15,0), type: "臨時", dir: 1, hoppo: true, work: { loco: "freight" } },
+    { name: "単9401", start: "宮原操", dest: "姫路", time: timeToSec(5,39,0), type: "臨時", dir: -1, hoppo: true, work: { loco: "dd51" } },
+    { name: "単9402", start: "姫路", dest: "宮原操", time: timeToSec(14,20,0), type: "臨時", dir: 1, hoppo: false, work: { loco: "dd51" } },
+    // EF65 の下関との行き来 (線路図の西の端 上郡を通る)
+    { name: "単9391", start: "上郡", dest: "網干", time: timeToSec(15,20,0), type: "臨時", dir: 1, hoppo: false, work: { loco: "ef65" } },
+    { name: "単9390", start: "網干", dest: "上郡", time: timeToSec(21,10,0), type: "臨時", dir: -1, hoppo: false, work: { loco: "ef65" } },
+    // --- 電車の回送・試運転
     { name: "回7781M", start: "西明石", dest: "姫路", time: timeToSec(4,57,0), type: "臨時", dir: -1, hoppo: false },
-    { name: "工9896", start: "新大阪", dest: "向日町操", time: timeToSec(4,52,0), type: "臨時", dir: 1, hoppo: false },
     { name: "試9230D", start: "宮原操", dest: "京都", time: timeToSec(11,18,0), type: "臨時", dir: 1, hoppo: true },
-    { name: "単9974レ", start: "吹田貨", dest: "西大路", time: timeToSec(6,15,0), type: "臨時", dir: 1, hoppo: true },
-    { name: "回9331D", start: "向日町操", dest: "姫路", time: timeToSec(5,15,0), type: "臨時", dir: -1, hoppo: false }, 
+    { name: "回9331D", start: "向日町操", dest: "姫路", time: timeToSec(5,15,0), type: "臨時", dir: -1, hoppo: false },
     { name: "回9751M", start: "向日町操", dest: "吹田貨", time: timeToSec(6,45,0), type: "臨時", dir: -1, hoppo: false },
-    { name: "単9401", start: "宮原操", dest: "姫路", time: timeToSec(5,39,0), type: "臨時", dir: -1, hoppo: true }, 
     { name: "試9161M", start: "向日町操", dest: "宮原操", time: timeToSec(10,59,0), type: "臨時", dir: -1, hoppo: false },
     { name: "試9160M", start: "宮原操", dest: "向日町操", time: timeToSec(11,42,0), type: "臨時", dir: 1, hoppo: true }
 ];
@@ -1457,6 +1477,16 @@ function canTurnBackOnPlatform(stName, trackId, lane, toTrackId) {
     /* ★そもそも方転できない駅では、ホーム折り返しも構内折り返しもできない
        (js/03-stations.js の canReverseAt)。 */
     if (!canReverseAt(stName)) return false;
+    /* 着いたときに渡り線で反対側のホームへ入った列車 (吹田・近江今津など) は、
+       もう発車する線路に居るので、ここでは渡り線を要らない */
+    if (toTrackId && toTrackId === trackId) return true;
+    /* 渡り線が片側ののどにしか無い駅では、着いた向きで決まる (canReverseAtDir) */
+    if (!canReverseAtDir(stName, trackDirOf(trackId))) return false;
+    /* 折返線でしか上下がつながらない駅 (甲子園口) は、その折返線に居る列車だけ */
+    const stubDef = STATION_STUB_LANES[stName];
+    if (stubDef && stubDef.exitTo && !isStubLane(stName, trackId, lane)) {
+        if (!stationDrawUpTracks(stName).length) return false;
+    }
 
     /* --- 渡り線で反対方向の線路につながっているか
 
@@ -1535,7 +1565,7 @@ function trackDirOf(trackId) {
      この表に無い。 */
 /* 行き止まりの番線 (折返線)。その駅で折り返す列車だけが入る。
    通過・途中停車の列車は入らない (入ると前へ出られない)。 */
-const STATION_STUB_LANES = { "甲子園口": { Down_In: ["2"], deadEnd: -1 } };   // deadEnd … 行き止まりの向き (-1 = 下り方 = 西宮方)
+const STATION_STUB_LANES = { "甲子園口": { Down_In: ["2"], deadEnd: -1, exitTo: "Up_In" } };   // exitTo … 折り返して出ていく本線   // deadEnd … 行き止まりの向き (-1 = 下り方 = 西宮方)
 function isStubLane(stName, trackId, lane) {
     const def = STATION_STUB_LANES[stName];
     if (!def || !def[trackId]) return false;
@@ -1679,7 +1709,8 @@ function canCrossArriveAt(stName, dir) {
        発車のときに電車線どうしの渡り線を通る (実物もそう)。
        ここで反対側へ入れると、上り線のホームを長くふさいで
        JR神戸線・JR京都線の本数が落ちた (実測)。 */
-    if (!stationBranchLine(stName) && innerTrackExists(STATION_MAP[stName])) return false;
+    if (!stationBranchLine(stName) && innerTrackExists(STATION_MAP[stName]) &&
+        STATION_CROSS_ARRIVE_QUAD.indexOf(stName) < 0) return false;
     if (STATION_SHARED_LANES[stName] || STATION_ROUTES[stName]) return false;
     if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
     return dir === 1 ? !!c.up : !!c.down;
@@ -1732,6 +1763,66 @@ function canReverseAt(stName) {
     return false;
 }
 
+/* 渡り線でしか方転できない駅で、どちら向きに着いた列車が折り返せるか。
+   STATION_ARRIVAL_CROSSOVER (渡り線がホームのどちら側ののどにあるか) から決まるが、
+   そこに書けない駅 (複々線の中・折返線) はここに書く。
+     up   … 上り列車 (dir=1) が着いて、来た方へ折り返せる
+     down … 下り列車 (dir=-1) が着いて、来た方へ折り返せる
+   甲子園口 … 折返線 (2番) は立花方でしか本線につながらない。下り (立花方から来た列車) だけ (698)
+   吹田     … 東淀川方の下り内↔上り内の両渡り。上り (大阪方から来た列車) が大阪方へ折り返す。
+              上りホーム・下りホームのどちらでも折り返せる (696) */
+const STATION_REVERSE_SIDE = {
+    "甲子園口": { up: false, down: true },
+    "吹田":     { up: true,  down: false }
+};
+
+/* 複々線の中の駅でも、終着の列車が渡り線で反対側のホームに入れる駅。
+   吹田は大阪方ののどに内側線どうしの両渡りがあり、大阪方から来た当駅止まりは
+   下り内側線のホームにも入ってそのまま大阪方へ折り返せる (696)。 */
+const STATION_CROSS_ARRIVE_QUAD = ["吹田"];
+
+/**
+ * その駅に dir の向きで着いた列車が、配線の上で来た方へ折り返せるか。
+ * canReverseAt() は「その駅のどこかで向きを変えられるか」だけを見るので、
+ * 渡り線がホームの片側にしか無い駅 (甲子園口・吹田・須磨など) では向きまで見る必要がある。
+ *   引上線・車両基地・単線上の1線の駅 … どちら向きでも折り返せる
+ *   渡り線だけの駅 … 渡り線が「着いた側ののど」にあるときだけ
+ */
+function canReverseAtDir(stName, dir) {
+    if (!canReverseAt(stName)) return false;
+    if (!dir) return true;
+    if (STATION_REVERSE_SINGLE_LINE[stName] || STATION_REVERSE_BY_DRAWUP[stName]) return true;
+    if (typeof stationDrawUpTracks === "function" && stationDrawUpTracks(stName).length) return true;
+    if (typeof DEPOTS !== "undefined" && DEPOTS[stName]) return true;
+    if (typeof SIDINGS !== "undefined" && SIDINGS[stName]) return true;
+    const side = STATION_REVERSE_SIDE[stName] || STATION_ARRIVAL_CROSSOVER[stName];
+    if (!side) return true;
+    return dir === 1 ? !!side.up : !!side.down;
+}
+
+/**
+ * 列車が終点として止まれる駅 (その向きに着いて折り返せる・入区できる・線区の端) の一覧。
+ * 指令の行先変更の候補と、輸送障害のときの打ち切り駅を、決め打ちの表ではなく
+ * 線路の定義 (渡り線・引上線・車両基地) から作る。
+ *   dir を省くと、どちらかの向きで終点にできる駅すべて。
+ */
+function terminableStations(dir) {
+    const out = [];
+    const seen = {};
+    const push = (n) => { if (n && !seen[n]) { seen[n] = true; out.push(n); } };
+    const names = STATIONS.map(s => s.name)
+        .concat(Object.values(KOSEI_STATIONS_MAP))
+        .concat(Object.values(FUKUCHI_STATIONS_MAP))
+        .concat(Object.values(TOZAI_STATIONS_MAP))
+        .concat(Object.values(AKO_STATIONS_MAP));
+    names.forEach(n => {
+        const st = STATIONS[STATION_MAP[n]];
+        if (st && st.name === n && st.isSeparateLine) return;     // 向日町操は駅ではない (下で別に足す)
+        if (dir ? canReverseAtDir(n, dir) : canReverseAt(n)) push(n);
+    });
+    return out;
+}
+
 /**
  * いまの位置から進行方向の前方で、いちばん近い「方転できる駅」。
  * 方転できない駅で折り返しを作らないための代わりの行先に使う。
@@ -1744,7 +1835,7 @@ function nextReversibleAhead(stName, dir) {
         const n = STATIONS[i].name;
         if (STATIONS[i].isSeparateLine) continue;   // 向日町操などは本線の駅ではない
         if (STATIONS[i].branchOnly) continue;       // 播州赤穂は赤穂線だけの位置
-        if (canReverseAt(n)) return n;
+        if (canReverseAtDir(n, dir)) return n;
     }
     return null;
 }

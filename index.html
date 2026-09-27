@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JR West Super TID</title>
-<link rel="stylesheet" href="css/style.css?v=34a912c9">
-<link rel="stylesheet" href="css/header-log.css?v=34a912c9">
-<link rel="stylesheet" href="css/depot-view.css?v=34a912c9">
+<link rel="stylesheet" href="css/style.css?v=7cb1eae1">
+<link rel="stylesheet" href="css/header-log.css?v=7cb1eae1">
+<link rel="stylesheet" href="css/depot-view.css?v=7cb1eae1">
 </head>
 <body>
 
@@ -84,36 +84,7 @@
         <div class="cmd-row"><label>行先変更</label>
             <select id="cmd-dest" onchange="game.ui.updateCmdActionOptions()">
                 <option value="">変更なし</option>
-                <option value="京都">京都</option><option value="大阪">大阪</option>
-                <option value="西明石">西明石</option><option value="姫路">姫路</option>
-                <option value="網干">網干</option><option value="野洲">野洲</option>
-                <option value="米原">米原</option><option value="草津">草津</option>
-                <option value="高槻">高槻</option><option value="尼崎">尼崎</option>
-                <option value="神戸">神戸</option><option value="敦賀">敦賀</option>
-                <option value="須磨">須磨</option><option value="芦屋">芦屋</option>
-                <option value="近江今津">近江今津</option><option value="長浜">長浜</option>
-                <option value="城崎温泉">城崎温泉</option><option value="鳥取">鳥取</option>
-                <option value="東京タ">東京タ</option><option value="福岡タ">福岡タ</option>
-                <option value="大阪タ">大阪タ</option><option value="吹田タ">吹田タ</option>
-                <option value="百済タ">百済タ</option><option value="名古屋タ">名古屋タ</option>
-                <option value="富山タ">富山タ</option><option value="広島タ">広島タ</option>
-                <option value="岡山タ">岡山タ</option><option value="高松タ">高松タ</option>
-                <option value="安治川タ">安治川タ</option>
-                <option value="宮原操">宮原操</option><option value="向日町操">向日町操</option>
-                <option value="大久保">大久保</option><option value="御着">御着</option>
-                <option value="土山">土山</option>
-                <option value="東加古川">東加古川</option><option value="加古川">加古川</option>
-                <option value="吹田">吹田</option>
-                <option value="篠山口">篠山口</option><option value="福知山">福知山</option>
-                <option value="豊岡">豊岡</option><option value="城崎温泉">城崎温泉</option>
-                <option value="木津">木津</option><option value="同志社前">同志社前</option>
-                <option value="京田辺">京田辺</option><option value="奈良">奈良</option>
-                <option value="四条畷">四条畷</option><option value="松井山手">松井山手</option>
-                <option value="長尾">長尾</option><option value="放出">放出</option>
-                <option value="塚口">塚口</option>
-                <option value="相生">相生</option><option value="上郡">上郡</option>
-                <option value="播州赤穂">播州赤穂</option><option value="竜野">竜野</option>
-                <option value="住道">住道</option><option value="祝園">祝園</option>
+                <!-- 候補は js/28-dispatch.js の dispatchDestinationCandidates() から作る (UIManager.fillDestSelect) -->
             </select>
         </div>
         <div class="cmd-row">
@@ -331,42 +302,43 @@
 
 
 <!-- 読み込み順に意味があります。データ定義 -> クラス本体 -> prototype への追加 -> 起動 -->
-<script src="js/01-config.js?v=34a912c9"></script>
-<script src="js/02-fleet-data.js?v=34a912c9"></script>
-<script src="js/03-stations.js?v=34a912c9"></script>
-<script src="js/04-depots.js?v=34a912c9"></script>
-<script src="js/05-track-manager.js?v=34a912c9"></script>
-<script src="js/06-fleet.js?v=34a912c9"></script>
-<script src="js/07-spawner-core.js?v=34a912c9"></script>
-<script src="js/08-spawner-mainline.js?v=34a912c9"></script>
-<script src="js/09-spawner-branch.js?v=34a912c9"></script>
-<script src="js/10-timetable.js?v=34a912c9"></script>
-<script src="js/11-train-core.js?v=34a912c9"></script>
-<script src="js/12-train-move.js?v=34a912c9"></script>
-<script src="js/13-train-hold.js?v=34a912c9"></script>
-<script src="js/14-train-turnback.js?v=34a912c9"></script>
-<script src="js/15-train-depot.js?v=34a912c9"></script>
-<script src="js/16-train-adjust.js?v=34a912c9"></script>
-<script src="js/17-renderer.js?v=34a912c9"></script>
-<script src="js/18-ui-core.js?v=34a912c9"></script>
-<script src="js/19-ui-log.js?v=34a912c9"></script>
-<script src="js/20-ui-cmd.js?v=34a912c9"></script>
-<script src="js/21-ui-board.js?v=34a912c9"></script>
-<script src="js/22-depot-view.js?v=34a912c9"></script>
-<script src="js/23-game.js?v=34a912c9"></script>
-<script src="js/24-service-rules.js?v=34a912c9"></script>
-<script src="js/25-signals.js?v=34a912c9"></script>
-<script src="js/26-incidents.js?v=34a912c9"></script>
-<script src="js/27-operations.js?v=34a912c9"></script>
-<script src="js/28-dispatch.js?v=34a912c9"></script>
-<script src="js/29-sim-bus.js?v=34a912c9"></script>
-<script src="js/30-duty-log.js?v=34a912c9"></script>
-<script src="js/31-comms.js?v=34a912c9"></script>
-<script src="js/32-records.js?v=34a912c9"></script>
-<script src="js/33-incident-scenarios.js?v=34a912c9"></script>
-<script src="js/34-freight-terminals.js?v=34a912c9"></script>
-<script src="js/35-sidings.js?v=34a912c9"></script>
-<script src="js/39-boot.js?v=34a912c9"></script>
+<script src="js/01-config.js?v=7cb1eae1"></script>
+<script src="js/02-fleet-data.js?v=7cb1eae1"></script>
+<script src="js/03-stations.js?v=7cb1eae1"></script>
+<script src="js/04-depots.js?v=7cb1eae1"></script>
+<script src="js/05-track-manager.js?v=7cb1eae1"></script>
+<script src="js/06-fleet.js?v=7cb1eae1"></script>
+<script src="js/07-spawner-core.js?v=7cb1eae1"></script>
+<script src="js/08-spawner-mainline.js?v=7cb1eae1"></script>
+<script src="js/09-spawner-branch.js?v=7cb1eae1"></script>
+<script src="js/10-timetable.js?v=7cb1eae1"></script>
+<script src="js/11-train-core.js?v=7cb1eae1"></script>
+<script src="js/12-train-move.js?v=7cb1eae1"></script>
+<script src="js/13-train-hold.js?v=7cb1eae1"></script>
+<script src="js/14-train-turnback.js?v=7cb1eae1"></script>
+<script src="js/15-train-depot.js?v=7cb1eae1"></script>
+<script src="js/16-train-adjust.js?v=7cb1eae1"></script>
+<script src="js/17-renderer.js?v=7cb1eae1"></script>
+<script src="js/18-ui-core.js?v=7cb1eae1"></script>
+<script src="js/19-ui-log.js?v=7cb1eae1"></script>
+<script src="js/20-ui-cmd.js?v=7cb1eae1"></script>
+<script src="js/21-ui-board.js?v=7cb1eae1"></script>
+<script src="js/22-depot-view.js?v=7cb1eae1"></script>
+<script src="js/23-game.js?v=7cb1eae1"></script>
+<script src="js/24-service-rules.js?v=7cb1eae1"></script>
+<script src="js/25-signals.js?v=7cb1eae1"></script>
+<script src="js/26-incidents.js?v=7cb1eae1"></script>
+<script src="js/27-operations.js?v=7cb1eae1"></script>
+<script src="js/28-dispatch.js?v=7cb1eae1"></script>
+<script src="js/29-sim-bus.js?v=7cb1eae1"></script>
+<script src="js/30-duty-log.js?v=7cb1eae1"></script>
+<script src="js/31-comms.js?v=7cb1eae1"></script>
+<script src="js/32-records.js?v=7cb1eae1"></script>
+<script src="js/33-incident-scenarios.js?v=7cb1eae1"></script>
+<script src="js/34-freight-terminals.js?v=7cb1eae1"></script>
+<script src="js/35-sidings.js?v=7cb1eae1"></script>
+<script src="js/36-special-events.js?v=7cb1eae1"></script>
+<script src="js/39-boot.js?v=7cb1eae1"></script>
 
 <!-- ===================================================== 版の食い違いの見張り
      詳しくは tid.html の同じ部分を参照。古い js がキャッシュから使われている

@@ -14,6 +14,15 @@ Train.prototype.remove = function () {
         if (currBlk && (currBlk.isStation || currBlk.hoppoStationName)) {
             stName = currBlk.hoppoStationName || STATIONS[currBlk.stationIdx].name;
         }
+        /* 留置場の中にいる列車は、その留置場に編成を置く。
+           ★以前は線路の上の位置 (出区したことの無い列車では意味の無い値) か行先で決めていたので、
+             夜に留置場で休ませた編成が行先の近くの車両所へ瞬間移動していた。 */
+        if (this.state === "in_depot" && this.startName) stName = depotKeyOf(this.startName);
+        /* 行先の車両所 (宮原操・向日町操など) に、線路図の上では隣の駅の位置で着いたときは、
+           その車両所に置く (宮原操は新大阪の位置で本線につながる) */
+        else if (this.dest && stName !== this.dest && fleetIndexOf(this.dest) !== null &&
+                 fleetIndexOf(this.dest) === fleetIndexOf(stName) && FLEET_BASES.some(b => b.name === this.dest)) stName = this.dest;
+        else if (this.dest === "宮原操" && fleetIndexOf(stName) === fleetIndexOf("宮原操")) stName = "宮原操";
 
         // ★修正: 以前は「駅インデックスが近い留置場」へ機械的に返していたため、
         //        東西線の207系が高槻へ、宝塚線の車両が西明石へ流れ込むなど、
@@ -37,6 +46,8 @@ Train.prototype.enterDepot = function (stName) {
 
         this.state = "in_depot";
         this.startName = stName;
+        this.preparing = null;
+        this.prepLead = 0;
         this.timer = -1; 
         this.depotOutConfig = null;
         let oldNo = this.trainNo;
@@ -124,7 +135,7 @@ function platformOrLane(t) {
 }
 
     // ★追加: 留置場からの出区を試行するメソッド
-Train.prototype.tryDepotOut = function (depotName, force = false) {
+Train.prototype.tryDepotOut = function (depotName, force = false, prepSec = 0) {
         /* ★留置場の名前は別名で渡ってくることがある (網干=姫路電留線 など)。
            以前はここで DEPOTS["網干"] が見つからずそのまま返っていたため、
            姫路電留線に入った編成が出区できないまま枠を占め続けていた。 */
@@ -193,7 +204,17 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
         if (startBlock) {
             let freeLane = -1;
             let lanes = startBlock.lanes;
-            if (actualStart === "向日町操") { for(let l=lanes.length-1; l>=0; l--) if(lanes[l]===null) { freeLane=l; break; } }
+            const prepDef = prepSec > 0 ? (depot.prep || null) : null;
+            if (prepDef) {
+                /* 出区の準備: 着発線 (本線ではない線) にだけ据え付ける。keepFree 本は空けておく */
+                const yardLanes = [];
+                for (let l = 0; l < lanes.length; l++) {
+                    const e = stationLaneEntry(actualStart, targetTrackId, l);
+                    if (e && prepDef.lanes.test(e.label || "")) yardLanes.push(l);
+                }
+                const free = yardLanes.filter(l => lanes[l] === null);
+                if (free.length > (prepDef.keepFree || 0)) freeLane = free[free.length - 1];
+            } else if (actualStart === "向日町操") { for(let l=lanes.length-1; l>=0; l--) if(lanes[l]===null) { freeLane=l; break; } }
             else {
                 // 進路のつながっている番線から選ぶ (js/13-train-hold.js)
                 freeLane = pickRouteLane(startBlock, actualStart, targetTrackId, "depart",
@@ -239,6 +260,8 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
                 }
                 
                 if (isForced) safeToOut = true;
+                /* 準備で着発線へ据え付けるだけなら、本線の様子は発車のときに見る */
+                if (prepDef) safeToOut = true;
 
                 if (!safeToOut) {
                     this.depotStuckTime += 30;
@@ -295,10 +318,24 @@ Train.prototype.tryDepotOut = function (depotName, force = false) {
                     this.hasDeparted = false;
                     this.delayTime = 0;
                     this.isFinalStop = false; // ★修正: 留置場出区時のフラグリセット
-                    this.game.ui.updateBanner(`【出区】${depotName}留置場より ${this.trainNo}(${this.type}) ${this.dest}行き が出区しました。`, "banner-orange");
+                    this.prepLead = 0;
+                    if (prepDef) {
+                        const lbl = (stationLaneEntry(actualStart, targetTrackId, freeLane) || {}).label || "着発線";
+                        this.timer = Math.round(prepSec / CONFIG.TICK_SEC) * CONFIG.TICK_SEC;
+                        this.preparing = { at: actualStart, lane: lbl, since: this.game.currentTime,
+                                           until: this.game.currentTime + this.timer };
+                        this.game.ui.updateBanner(`【出区準備】${depotName} ${lbl}に ${this.trainNo}(${this.type}) ${this.dest}行き を据え付けました。` +
+                            `車両点検・ブレーキ試験のあと、約${Math.round(this.timer / 60)}分後に発車します。`, "banner-orange");
+                    } else {
+                        this.preparing = null;
+                        this.game.ui.updateBanner(`【出区】${depotName}留置場より ${this.trainNo}(${this.type}) ${this.dest}行き が出区しました。`, "banner-orange");
+                    }
                 } else {
                     this.timer = 30; // 本線に列車が接近している場合は30秒後にリトライ
                 }
+            } else if (prepDef) {
+                // 着発線が空いていない。準備は発車の時刻になってから通常の出区で行う
+                return;
             } else {
                 this.depotStuckTime += 30;
                 // 本線満線の場合、消滅させずに長期待機させる
@@ -401,14 +438,19 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         }
         this.deadheadWait = 0;
 
-        this.game.ui.updateBanner(
-            `【運転整理】${stName}駅で折り返せないため、${this.trainNo} を ` +
-            `${targetDest} 行きの回送に変更して入区させます。`, "banner-orange");
+        /* 入区を兼ねた営業列車 (普通) にできるなら、そうする (js/27-operations.js の asRevenue)。
+           例) 塚口 → 新三田、西明石 → 姫路 の入区は、回送ではなく普通として走る。 */
+        const rev = { type: "回送", dir: nextDir, startName: stName, dest: targetDest, vehicles: this.vehicles };
+        const asRev = (this.dir === nextDir) && this.game.ops.asRevenue(rev);
+        this.game.ui.updateBanner(asRev
+            ? `【運転整理】${stName}駅で折り返せないため、${this.trainNo} を ${targetDest} 行きの普通 (入区を兼ねる) として延長運転します。`
+            : `【運転整理】${stName}駅で折り返せないため、${this.trainNo} を ` +
+              `${targetDest} 行きの回送に変更して入区させます。`, "banner-orange");
 
         this.game.spawner.activeTrainNos.delete(this.trainNo);
-        this.type = "回送";
+        this.type = asRev ? "普通" : "回送";
         this.dest = targetDest;
-        this.trainNo = this.game.ops.deadheadNo();
+        this.trainNo = asRev ? rev.name : this.game.ops.deadheadNo();
         this.dutyName = this.trainNo;
         this.game.spawner.activeTrainNos.add(this.trainNo);
         this.nextAction = "depot";
@@ -420,10 +462,12 @@ Train.prototype.tryConvertDeadhead = function (stName) {
              京都 → 向日町操 の回送が内側線 (電車線) を走っていた。
              ここで発車前に外側線へ移す。移れないときは
              rerouteToOuter が次の駅で試し直す。 */
-        this.rerouteToOuter = true;
-        if (!/Kosei|Fukuchi|Tozai|Hoppo/.test(this.trackId) &&
-            this.trackId.indexOf("In") >= 0) {
-            this.attemptTrackSwitch(this.trackId.replace("In", "Out"), 20, true);
+        if (!asRev) {   // 営業列車にした場合は、ふだんの普通と同じ線路を走る
+            this.rerouteToOuter = true;
+            if (!/Kosei|Fukuchi|Tozai|Hoppo/.test(this.trackId) &&
+                this.trackId.indexOf("In") >= 0) {
+                this.attemptTrackSwitch(this.trackId.replace("In", "Out"), 20, true);
+            }
         }
 
         if (this.dir === nextDir) {
@@ -442,3 +486,14 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         this.hasDeparted = false;
         return true;
 };
+
+/**
+ * 出区の準備中 (車両所の着発線に据え付けて発車を待っている) なら、その説明。
+ * そうでなければ null。列車情報・行路表の「状態」に出す。
+ */
+function trainPrepText(t, now) {
+    const p = t && t.preparing;
+    if (!p || t.state !== "waiting_start" || t.hasDeparted) return null;
+    const left = Math.max(0, Math.ceil((p.until - now) / 60));
+    return `出区準備中 (${p.at} ${p.lane}・点検・ブレーキ試験 / 発車まで約${left}分)`;
+}

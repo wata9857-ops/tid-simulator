@@ -379,11 +379,25 @@ Train.prototype.move = function () {
                 // 通常移動の場合
                 targetLane = this.findFreeLane(nextBlock);
                 actualNextBlock = nextBlock;
+                /* 自分の線路の番線が埋まっているときは、渡り線でつながる同じ向きの線路
+                   (外側線 ⇔ 内側線) の空いている番線に入れる (siblingPlatformEntry)。 */
+                if (targetLane === -1) {
+                    const sib = this.siblingPlatformEntry(nextBlock);
+                    if (sib) { targetTrackId = sib.trackId; targetLane = sib.lane; actualNextBlock = sib.block; }
+                }
             }
         }
 
         // 移動の確定（ブロックとレーンが確実に確保できた場合のみ実行）
         if (targetLane !== -1) {
+            {
+                // 駅を発車した記録 (始発の続行間隔 js/16-train-adjust.js の originHeadwayHold)
+                const cb0 = blks[this.currBlockIndex];
+                if (cb0 && isRealStationBlock(cb0) && blockStationName(actualNextBlock) !== blockStationName(cb0) &&
+                    typeof noteStationDeparture === "function") {
+                    noteStationDeparture(this.game, blockStationName(cb0), this.dir, this);
+                }
+            }
             freeOwnLane(blks[this.currBlockIndex].lanes, this);
             // 折り返し後の転線が済んだので、印を消す
             if (this.turnbackTrack && targetTrackId === this.turnbackTrack) this.turnbackTrack = null;
@@ -538,7 +552,11 @@ Train.prototype.move = function () {
                 this.hasStoppedAtCurrent = true;
                 if (["貨物","臨時"].includes(this.type)) {
                     this.timer = (st.name==="吹田貨")?780:(["姫路","神戸","京都","ひめじ別所","鷹取","西大路"].includes(st.name)?420:300);
-                } else this.timer = st.stopTime;
+                } else {
+                    this.timer = st.stopTime;
+                    // 催しの旅客で乗り降りが増える駅は、停車時分を延ばす (js/36-special-events.js)
+                    if (this.game.events) this.timer += this.game.events.dwellExtra(st.name, this);
+                }
 
                 // 快速列車の場合、降格チェックを実行
                 if (this.type === "快速") {
@@ -664,4 +682,56 @@ Train.prototype.shouldStop = function (st) {
             return ["姫路", "明石", "三ノ宮", "大阪", "新大阪", "京都", "敦賀"].includes(st.name);
         }
         return false;
+};
+
+/**
+ * 自分の線路の番線が埋まっているとき、同じ向きのもう1本の線路 (外側線 ⇔ 内側線) の番線に入れるか。
+ *
+ * ■ 利用者の指摘
+ *   西明石の3番 (下り内側線) のように、転てつ器があって入れる番線なのに、
+ *   新快速 (下り外側線) は外側線の番線が空くまで手前で止まっていた。
+ * ■ どの駅で使えるか
+ *   複々線の中で、外側線と内側線をつなぐ渡り線のある駅 (SWITCHABLE_STATIONS。配線略図で確かめた
+ *   「転線できる駅」)。進路の表 (STATION_ROUTES) を持つ駅はそちらで決めるので使わない。
+ * ■ 条件
+ *   ・入る先の番線に、入る線路から進路がつながっていること (canArriveAt)
+ *   ・その駅で停まる列車は、ホームのある線であること
+ *   ・入る先の線路の後続 (すぐ手前の2閉塞) に列車が迫っていないこと (相手の番線を奪わない)
+ *   ・入る先に空きが2本以上あるか、入る先の線路の後続がいないこと
+ * 戻り値 { trackId, block, lane } / null
+ */
+Train.prototype.siblingPlatformEntry = function (nextBlock) {
+    if (globalThis.__NO_SIBLING) return null;
+    if (!nextBlock || !isRealStationBlock(nextBlock)) return null;
+    if (!/^(Up|Down)_(In|Out)$/.test(this.trackId)) return null;
+    if (["貨物"].indexOf(this.type) >= 0) return null;
+    const st = blockStationName(nextBlock);
+    if (!st || STATION_ROUTES[st] || STATION_SHARED_LANES[st]) return null;
+    if (SWITCHABLE_STATIONS.indexOf(st) < 0 || !innerTrackExists(nextBlock.stationIdx)) return null;
+    const sibId = this.trackId.indexOf("In") >= 0 ? this.trackId.replace("In", "Out") : this.trackId.replace("Out", "In");
+    const sb = (this.game.trackMgr.blocks[sibId] || [])[nextBlock.index];
+    if (!sb || sb.x === -1000 || blockStationName(sb) !== st) return null;
+    const stops = typeof this.passengerStopsAt === "function" ? this.passengerStopsAt(st) : true;
+    const free = [];
+    for (let l = 0; l < sb.lanes.length; l++) {
+        if (sb.lanes[l] !== null) continue;
+        if (!canArriveAt(st, sibId, l)) continue;
+        if (stops && !laneHasPlatform(st, sibId, l)) continue;
+        free.push(l);
+    }
+    if (!free.length) return null;
+    /* 入る先の線路の列車の番線を奪わない。
+       ・入る先には、入ったあとも空いている番線が1本以上残ること (free が2本以上)
+       ・入る先の線路の後ろ1駅ぶんに、その駅へ向かって来る列車がいないこと
+       ★以前はこの2つを緩くしていたので、西明石で新快速が下り内側線の番線を取り、
+         内側線から来る普通が手前で待って、西明石〜加古川で団子になった (実測 種3: 241 → 597 Tick)。 */
+    if (free.length < 2) return null;
+    const sblks = this.game.trackMgr.blocks[sibId];
+    for (let k = 1; k <= UNITS_PER_STATION; k++) {
+        const b = sblks[nextBlock.index - this.dir * k];
+        if (b && b.lanes.some(l => l && l.dir === this.dir)) return null;
+    }
+    this.game.siblingStats = this.game.siblingStats || {};
+    this.game.siblingStats[st] = (this.game.siblingStats[st] || 0) + 1;
+    return { trackId: sibId, block: sb, lane: free[free.length - 1] };
 };

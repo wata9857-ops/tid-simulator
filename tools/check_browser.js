@@ -220,7 +220,10 @@ async function checkSharedState(browser, base) {
 
     // Super-TID 側で抑止 -> 旅客向け側にも反映されるか
     const target = await p2.evaluate(() => {
-        const t = game.trains.find(x => x.state !== 'finished' && x.state !== 'in_depot');
+        /* すぐ運転を終える列車 (回送・工臨・終着間際) を選ぶと、反映を見る前に消えることがあるので、
+           走っている普通・快速を選ぶ */
+        const t = game.trains.find(x => x.state === 'running' && ['普通', '快速'].indexOf(x.type) >= 0 && x.dest !== x.startName) ||
+                  game.trains.find(x => x.state !== 'finished' && x.state !== 'in_depot');
         if (!t) return null;
         game.tidUI.selectTrain(t.id);
         game.tidUI.cmdHold(false);

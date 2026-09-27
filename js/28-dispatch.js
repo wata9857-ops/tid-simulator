@@ -42,12 +42,12 @@ function dispatchTurnbackPlan(game, t, newDest) {
     if (here && wantDir === -t.dir) {
         // 当駅: 反対方向の線路へ、いまの番線から渡れるか
         const opp = sameSideTrackFor(t.trackId, -t.dir, b.stationIdx);
-        if (canTurnBackOnPlatform(here, t.trackId, t.lane, opp) || canReverseAt(here)) at = here;
+        if (canTurnBackOnPlatform(here, t.trackId, t.lane, opp) || canReverseAtDir(here, t.dir)) at = here;
     }
     if (!at && !here) {
         // 駅間にいるときは、次に着く駅そのもので折り返せるか (例: 守山〜野洲間 → 野洲で折り返し)
         const nxt = trainStationsAhead(game, t, 1)[0];
-        if (nxt && canReverseAt(nxt) && game.ops.directionFor(nxt, newDest) === -t.dir) at = nxt;
+        if (nxt && canReverseAtDir(nxt, t.dir) && game.ops.directionFor(nxt, newDest) === -t.dir) at = nxt;
     }
     if (!at) {
         // 前方で最初に折り返せる駅 (そこから新しい行先へ向きを変えて行けること)
@@ -76,6 +76,53 @@ function dispatchTurnbackPlan(game, t, newDest) {
         t.timer = Math.max(30, t.timer || 0);
     }
     return { at: at, text: `${at}で折り返し、${t.serviceChange.name} ${newDest}行きとする` };
+}
+
+/* 線路図の外にある行先 (そこへ向かう列車は線路図の端で消える)。
+   旅客列車の行先の候補に足す。貨物列車は貨物駅の行先を別に持つ。 */
+const DISPATCH_OFF_DIAGRAM_DESTS = ["篠山口", "福知山", "豊岡", "城崎温泉", "奈良", "鳥取", "岡山"];
+const DISPATCH_FREIGHT_DESTS = ["吹田タ", "大阪タ", "百済タ", "安治川タ", "東京タ", "名古屋タ", "富山タ",
+                                "福岡タ", "広島タ", "岡山タ", "高松タ"];
+
+/**
+ * 指令の行先変更に出す候補。
+ * 決め打ちの表ではなく、線路の定義 (渡り線・引上線・車両基地・線区の端) から作る
+ * (js/03-stations.js の terminableStations)。甲子園口 (折返線の2番)・吹田 (大阪方の両渡り) も入る。
+ * 並びは線区ごと・線路図の順。
+ */
+function dispatchDestinationCandidates() {
+    const list = terminableStations();
+    ["宮原操", "向日町操"].forEach(n => { if (list.indexOf(n) < 0) list.push(n); });
+    const lineOrder = { main: 0, ako: 1, fukuchi: 2, tozai: 3, kosei: 4 };
+    list.sort((a, b) => {
+        const la = lineOrder[routeLineOf(a)] || 0, lb = lineOrder[routeLineOf(b)] || 0;
+        if (la !== lb) return la - lb;
+        return (routePosOf(a) || 0) - (routePosOf(b) || 0);
+    });
+    return list.concat(DISPATCH_OFF_DIAGRAM_DESTS.filter(n => list.indexOf(n) < 0));
+}
+
+/**
+ * その列車をその駅止まりにできるか (指令の行先変更の前に確かめる)。
+ * 前方の駅を終点にするときは、その向きに着いて折り返せる・入区できることが条件。
+ *   例) 吹田は大阪方からの上り列車だけ折り返せる。京都方から来た下り列車は吹田止まりにできない。
+ * 戻り値 null = できる / 文字列 = できない理由
+ */
+function dispatchTerminateProblem(game, t, dest) {
+    if (!t || !dest) return null;
+    if (["貨物", "回送"].indexOf(t.type) >= 0) return null;
+    if (DISPATCH_OFF_DIAGRAM_DESTS.indexOf(dest) >= 0) return null;
+    if (STATION_MAP[dest] === undefined) return null;
+    const refSt = trainStationsAhead(game, t, 1)[0] || t.startName;
+    const d = game.ops.directionFor(refSt, dest);
+    // 後ろの駅は、折り返したあとの向きで着くことになる
+    const arriveDir = (d === -t.dir) ? -t.dir : t.dir;
+    if (canReverseAtDir(dest, arriveDir) || DEPOTS[dest]) return null;
+    if (canReverseAt(dest)) {
+        return `${dest}駅は${arriveDir === 1 ? "上り" : "下り"}列車が着いても折り返せない配線です` +
+               `（渡り線は${arriveDir === 1 ? "下り" : "上り"}列車の側ののどにあります）。`;
+    }
+    return `${dest}駅には上下をつなぐ渡り線・引上線・車両基地が無く、折り返せません。`;
 }
 
 const DISPATCH = {
@@ -115,6 +162,18 @@ const DISPATCH = {
         const inc = game.recovery.triggerMajor(cmd.kind === "snow" ? "snow" : "rain");
         return inc ? { ok: true, msg: `${inc.place}で${inc.type.name}を発生させました (訓練)。` }
                    : { ok: false, msg: "発生させる区間が見つかりませんでした。" };
+    },
+
+    /** 多客の催しの臨時輸送を開く / 閉じる (js/36-special-events.js) */
+    specialEvent(game, cmd) {
+        if (!game.events) return { ok: false, msg: "使えません。" };
+        if (cmd.close) {
+            return game.events.close(cmd.id) ? { ok: true, msg: "臨時輸送を終了しました。" }
+                                             : { ok: false, msg: "その催しは開かれていません。" };
+        }
+        const ev = game.events.open(cmd.id, undefined, "指令");
+        if (!ev) return { ok: false, msg: "その催しはすでに開かれているか、見つかりません。" };
+        return { ok: true, msg: `${ev.def.name} (${ev.def.at}) の臨時輸送を始めました。開演 ${tidLikeClock(ev.showFrom)}。` };
     },
 
     /** 即時抑止 / 指定駅で抑止 */
@@ -212,6 +271,8 @@ const DISPATCH = {
             changed.push("種別を" + cmd.type + "に変更");
         }
         if (cmd.dest) {
+            const why = dispatchTerminateProblem(game, t, cmd.dest);
+            if (why) return { ok: false, msg: `${t.trainNo} を ${cmd.dest} 止まりにできません。${why}` };
             const oldDest = t.dest, oldFinal = t.isFinalStop;
             t.dest = cmd.dest;
             t.isFinalStop = false;

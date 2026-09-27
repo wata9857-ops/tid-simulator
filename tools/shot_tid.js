@@ -54,6 +54,17 @@ function startServer() {
     let zoom = 1;
     const zi = args.indexOf('--zoom');
     if (zi >= 0) { zoom = parseFloat(args[zi + 1]); args.splice(zi, 2); }
+    // --canvas … 画面に見えている範囲ではなく、キャンバス全体 (縦の下の行まで) を保存する
+    const whole = args.indexOf('--canvas') >= 0;
+    if (whole) args.splice(args.indexOf('--canvas'), 1);
+    // --hours N … 保存する前に走らせる時間 (既定 3時間 = 7時)
+    let hours = 3;
+    const hri = args.indexOf('--hours');
+    if (hri >= 0) { hours = parseFloat(args[hri + 1]); args.splice(hri, 2); }
+    // --top Y … 線路図を縦に Y px 下へ送ってから保存する (下の線区を写すとき)
+    let top = 0;
+    const ti = args.indexOf('--top');
+    if (ti >= 0) { top = parseFloat(args[ti + 1]); args.splice(ti, 2); }
     const stations = args.length ? args : ['大津', '山科', '京都', '向日町操'];
 
     fs.mkdirSync(OUT, { recursive: true });
@@ -72,7 +83,7 @@ function startServer() {
     await page.waitForFunction('typeof game !== "undefined" && game.tidRenderer && game.trains.length > 0', { timeout: 20000 });
     // 輸送障害で画面が乱れないように止め、列車を十分に走らせる
     await page.evaluate(() => { game.incidents.clearAll('検証'); game.incidents.nextAt = Infinity; });
-    await page.evaluate(() => { for (let i = 0; i < 3 * 3600 / CONFIG.TICK_SEC; i++) game.update(); });
+    await page.evaluate(h => { for (let i = 0; i < h * 3600 / CONFIG.TICK_SEC; i++) game.update(); }, hours);
 
     if (area !== 'main') {
         await page.evaluate(a => { game.tidRenderer.applyArea(a); }, area);
@@ -85,16 +96,22 @@ function startServer() {
 
     for (const st of stations) {
         const info = await page.evaluate(s => {
-            game.tidRenderer.scrollToStation(s);
+            game.tidRenderer.scrollToStation(s[0]);
+            if (s[1]) game.tidRenderer.scroll.scrollTop = s[1];
             game.tidRenderer.draw();
             const r = game.tidRenderer;
             return { w: r.canvas.width, h: r.canvas.height, rows: r.rows().length,
                      scroll: game.scrollContainer ? game.scrollContainer.scrollLeft : -1 };
-        }, st);
+        }, [st, top]);
         await page.waitForTimeout(120);
         const el = await page.$('#tid-canvas');
         const file = path.join(OUT, st + (zoom !== 1 ? '-z' + zoom : '') + '.png');
-        await el.screenshot({ path: file });
+        if (whole) {
+            const url = await page.evaluate(() => game.tidRenderer.canvas.toDataURL('image/png'));
+            fs.writeFileSync(file, Buffer.from(url.split(',')[1], 'base64'));
+        } else {
+            await el.screenshot({ path: file });
+        }
         console.log('  ' + st + ' -> ' + file + '  canvas=' + info.w + 'x' + info.h +
                     ' rows=' + info.rows + ' scrollLeft=' + info.scroll);
     }

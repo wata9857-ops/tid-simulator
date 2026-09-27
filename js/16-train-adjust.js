@@ -163,6 +163,63 @@ Train.prototype.shouldHoldForConvoy = function () {
     return true;
 };
 
+/* ------------------------------------------------------------------ 始発の続行間隔
+
+   ■ 何が起きていたか (利用者の指摘: 西明石・大久保で普通が詰まる)
+     始発駅 (留置場の出区・パターンダイヤの始発・折り返し) から出る列車は、
+     それぞれ別の仕組みが出していて、互いの発車を見ていなかった。
+     同じ駅から同じ向きの列車が1〜2分おきに続けて出ると、次の駅の手前で
+     閉塞が詰まり、団子になって後ろの駅まで止まる (西明石→大久保・加古川など)。
+     測ると、6〜22時に始発駅から2分未満で続けて発車したのが 45回あった。
+   ■ どうするか
+     駅ごと・向きごとに「最後に発車した時刻」を持ち、始発の列車は
+     種別ごとの最小の間隔 (ORIGIN_HEADWAY) が空くまで発車を待つ。
+     ただし待つのは ORIGIN_HOLD_MAX 秒まで (待たせすぎると番線がふさがって詰まる)。
+     どの仕組みから出た列車も発車の判定 (checkHold) は同じなので、ここ1か所で効く。 */
+const ORIGIN_HEADWAY = { "普通": 180, "快速": 150, "新快速": 150, "特急": 120 };
+const ORIGIN_HOLD_MAX = 300;
+
+/** 駅を発車したことを記録する (js/12-train-move.js の move が呼ぶ) */
+function noteStationDeparture(game, stName, dir, t) {
+    if (!stName) return;
+    game.lastDepart = game.lastDepart || {};
+    game.lastDepart[stName + "|" + dir] = { t: game.currentTime, type: t.type, no: t.trainNo };
+}
+
+Train.prototype.originHeadwayHold = function () {
+    if (globalThis.__NO_ORIGIN_HOLD) return false;
+    const need = ORIGIN_HEADWAY[this.type];
+    if (!need) return false;
+    if (this.forceStart || this.isManuallySuspended) return false;
+    if (this.stuckTime >= ORIGIN_HOLD_MAX) return false;
+    if (this.timer > 0) return false;                 // まだ発車時刻になっていない
+    const blks = this.game.trackMgr.blocks[this.trackId];
+    const here = blks ? blks[this.currBlockIndex] : null;
+    if (!here || !isRealStationBlock(here)) return false;
+    const st = blockStationName(here);
+    const rec = this.game.lastDepart && this.game.lastDepart[st + "|" + this.dir];
+    if (!rec || rec.no === this.trainNo) return false;
+    return (this.game.currentTime - rec.t) < need;
+};
+
+/**
+ * 快速から普通に変えた下り列車の行先が西明石より西なら、西明石止まりにする (上りの草津と同じ扱い)。
+ * ★行先を変えないまま普通として網干・加古川まで走らせていたので、西明石〜加古川で
+ *   普通が団子になっていた (利用者の指摘: 大久保付近の詰まり。実測では団子の半分以上がこの列車)。
+ * 変えたら元の行先を返す。
+ */
+Train.prototype.shortenDowngradedWest = function () {
+    if (this.dir !== -1 || !isMainlineTrip(this)) return null;
+    const d = STATION_MAP[this.dest];
+    if (d === undefined || d >= STATION_MAP["西明石"]) return null;
+    const cur = (this.game.trackMgr.blocks[this.trackId] || [])[this.currBlockIndex];
+    if (cur && cur.stationIdx !== undefined && cur.stationIdx <= STATION_MAP["西明石"]) return null;
+    const old = this.dest;
+    this.dest = "西明石";
+    this.isFinalStop = false;
+    return old;
+};
+
 Train.prototype.checkRapidDowngrade = function (stationName) {
         let stIdx = STATION_MAP[stationName];
         if (stIdx !== undefined && stIdx >= STATION_MAP["京都"]) {
@@ -198,7 +255,9 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                     this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
                     this.dutyName = this.trainNo;
                     this.startName = stationName;   // ★ここから始まる列車になる
-                    this.game.ui.updateBanner(`【種別変更】高槻駅にて快速列車の近接(3連続)を検知。${this.trainNo}(普通)に変更しました(行先変更なし)。`, "banner-orange");
+                    const cut = this.shortenDowngradedWest();
+                    this.game.ui.updateBanner(`【種別変更】高槻駅にて快速列車の近接(3連続)を検知。${this.trainNo}(普通)に変更しました` +
+                        (cut ? `。行先を${cut}から西明石に変更しました。` : `(行先変更なし)。`), "banner-orange");
                     return;
                 }
             }
@@ -220,6 +279,8 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                     this.dest = "草津";
                     extraMsg = ` 行先を${oldDest}から${this.dest}に変更しました。`;
                 }
+                const cutW = this.shortenDowngradedWest();
+                if (cutW) extraMsg = ` 行先を${cutW}から西明石に変更しました。`;
 
                 this.game.ui.updateBanner(`【種別変更】快速列車の近接(3連続)を検知。${stationName}駅にて ${this.trainNo}(普通) に変更しました。${extraMsg}`, "banner-orange");
             }
@@ -264,7 +325,7 @@ Train.prototype.checkLocalThinning = function (stationName) {
                         // ★改善③: 行先候補を拡張し、到着予想時刻と上り列車の到達予測から最も安全に折り返せる駅を選択する
                         // ★候補はすべて方転できる駅 (念のためここでも確かめる)
                         let candidates = ["大阪", "尼崎", "芦屋", "神戸", "須磨"].filter(st => {
-                            if (!canReverseAt(st)) return false;
+                            if (!canReverseAtDir(st, this.dir)) return false;
                             let idx = STATION_MAP[st];
                             // 現在地より先(西)にあり、現在の目的地より手前(東)にある駅を候補とする
                             return idx !== undefined && idx < stIdx && (currentDestIdx === undefined || currentDestIdx < idx);
@@ -365,7 +426,7 @@ Train.prototype.checkCongestionAndAdjust = function (stationName) {
                 
                 // trainCountの条件を厳格化(10以上)、かつ30%の確率で発動
                 // ★方転できる駅でしか間引き (折り返し) はできない
-                if (trainCount >= 10 && Math.random() < 0.3 && canReverseAt(stationName)) {
+                if (trainCount >= 10 && Math.random() < 0.3 && canReverseAtDir(stationName, this.dir)) {
                     let oldDest = this.dest;
                     this.dest = stationName;
                     this.nextAction = "turnback"; 
@@ -552,7 +613,8 @@ Train.prototype.checkLateNightDestination = function () {
             let minEtaDiff = 9999; 
             
             // 留置場有無を問わず主要駅を候補とする
-            const MAJOR_STATIONS = [...new Set([...SWITCHABLE_STATIONS, ...OVERTAKE_STATIONS])];
+            // 候補は線路の定義から (この向きに着いて折り返せる駅。js/03-stations.js の terminableStations)
+            const MAJOR_STATIONS = terminableStations(this.dir);
             
             // 各列車種別における「普段の終着駅」リスト
             const ALLOWED_TERMINALS = {
@@ -598,7 +660,7 @@ Train.prototype.checkLateNightDestination = function () {
                 if (!this.shouldStop(stInfo)) continue;
                 /* ★打ち切る駅は、方転できるか留置場があるかのどちらか。
                    どちらも無い駅を終点にすると、実物では不可能な折り返しになる。 */
-                if (!canReverseAt(stName) && !DEPOTS[stName]) continue;
+                if (!canReverseAtDir(stName, this.dir) && !DEPOTS[stName]) continue;
 
                 let b = cand;
                 let distToCand = (b.index - this.currBlockIndex) * this.dir;

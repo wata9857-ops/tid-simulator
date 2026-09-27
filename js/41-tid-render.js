@@ -679,6 +679,9 @@ class TidRenderer {
                以前は tidShape()/tidSide() で左右を入れ替えていたため、
                4つめに側を書いた渡り線が画面の反対側に、
                片渡りが逆向きに描かれていた (説明とも食い違っていた)。 */
+            /* 折返線を通って上下がつながるもの (甲子園口の2番) は、折返線の取付線として
+               drawStationLanes が描く。ここで上下の本線を直接つなぐ斜めの線は引かない。 */
+            if (c[4] && c[4].viaStub) return;
             const shape = c[2];
             // 4つめの指定が無いときの既定 (両渡りは両側、片渡りは画面の左)
             const want = c[3] ? c[3] : (c[2] === "x" ? "B" : "L");
@@ -784,7 +787,7 @@ class TidRenderer {
            行き止まりの向き -1 (下り方) は画面の右、1 (上り方) は画面の左。 */
         const stubDef = (typeof STATION_STUB_LANES !== "undefined") ? STATION_STUB_LANES[stName] : null;
         const lanes = L.slots.map((sl, i) => ({
-            y: L.ys[i], home: L.homeYs[i], label: sl.label, plat: sl.platform,
+            y: L.ys[i], home: L.homeYs[i], label: sl.label, plat: sl.platform, track: sl.track,
             stubSide: (stubDef && stubDef[sl.track] && stubDef[sl.track].indexOf(sl.label) >= 0)
                       ? (stubDef.deadEnd === -1 ? "R" : "L") : null
         }));
@@ -808,6 +811,18 @@ class TidRenderer {
             if (Math.abs(ln.y - ln.home) > 1.2) {
                 if (ln.stubSide !== "L") { line(x1, ln.y, x1 - lead, ln.home); tidDrawTurnoutBox(ctx, x1 - lead, ln.home); }
                 if (ln.stubSide !== "R") { line(x2, ln.y, x2 + lead, ln.home); tidDrawTurnoutBox(ctx, x2 + lead, ln.home); }
+            }
+            /* 折返線の出口。甲子園口の2番は、立花方で下り内から入り、同じ立花方で上り内へ出る (698)。
+               取付線は下り内だけでなく、上り内の本線にもつなぐ (上下の本線を直接つなぐ渡り線は無い)。 */
+            if (ln.stubSide && stubDef.exitTo) {
+                const ex = lanes.find(o => o.track === stubDef.exitTo && Math.abs(o.y - o.home) <= 1.2) ||
+                           lanes.find(o => o.track === stubDef.exitTo);
+                if (ex) {
+                    const xo = ln.stubSide === "R" ? x1 : x2;
+                    const xl = ln.stubSide === "R" ? x1 - lead : x2 + lead;
+                    line(xo, ln.y, xl, ex.home);
+                    tidDrawTurnoutBox(ctx, xl, ex.home);
+                }
             }
             if (ln.stubSide) {
                 const xs = ln.stubSide === "R" ? x2 : x1;
@@ -897,10 +912,76 @@ class TidRenderer {
         });
     }
 
+    /**
+     * 駅に付いた小さな留置線 (祝園の2本) を線路図に描き、1本ずつの在線を出す。
+     * 配線略図 (728) のとおり、下の番線 (2番) から京田辺方 (画面の右) で分かれ、
+     * 西木津方 (画面の左) が行き止まり。在線は構内図と同じ割り当て (assignDepotSlots) を使う。
+     */
+    drawDepotYard(ctx, name, xMin, xMax) {
+        const dep = DEPOTS[name];
+        const lay = (typeof DEPOT_LAYOUTS !== "undefined") ? DEPOT_LAYOUTS[name] : null;
+        if (!dep || !dep.yardDraw || !lay) return false;
+        const branch = stationBranchLine(name);
+        const rowId = dep.line === "Tozai" ? "Tozai_Up" : "Up_Out";
+        const refY = this.trackY[rowId];
+        if (refY === undefined) return false;
+        const cx = tidStationX(STATION_MAP[name]);
+        if (cx < xMin - 300 || cx > xMax + 300) return true;
+        const L = tidStationLayout(name, refY, !!branch);
+        const bottom = Math.max.apply(null, L.ys);
+        const boxW = tidStationBoxW(), lead = tidLeadW();
+        const x1 = cx - boxW / 2, x2 = cx + boxW / 2;
+        const placed = (typeof assignDepotSlots === "function" && typeof collectDepotItems === "function")
+            ? assignDepotSlots(lay, collectDepotItems(name)) : { tracks: [], overflow: [] };
+        const tracks = placed.tracks.length ? placed.tracks
+            : lay.groups[0].tracks.map(t => ({ label: t.label, items: [] }));
+        const line = (xa, ya, xb, yb) => {
+            ctx.strokeStyle = TID_COLORS.railEdge; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+            ctx.strokeStyle = TID_COLORS.rail; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+        };
+        tracks.forEach((tr, k) => {
+            const y = bottom + 30 + k * 22;
+            tidDrawRail(ctx, x1, x2, y);
+            line(x2, y, x2 + lead, bottom);                       // 京田辺方で2番につながる
+            tidDrawTurnoutBox(ctx, x2 + lead, bottom);
+            ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;     // 西木津方は車止め
+            ctx.beginPath(); ctx.moveTo(x1, y - 6); ctx.lineTo(x1, y + 6); ctx.stroke();
+            ctx.font = "bold 9px 'Meiryo UI', sans-serif"; ctx.textBaseline = "middle";
+            ctx.fillStyle = "#1B2440"; ctx.textAlign = "left";
+            ctx.fillText(tr.label, x1 + 4, y - 8);
+            const it = tr.items[0];
+            if (it) {
+                const text = it.label;
+                ctx.font = "bold 10px 'Meiryo UI', sans-serif";
+                const w = ctx.measureText(text).width + 10;
+                ctx.fillStyle = it.kind === "train" ? "#FFE46B" : "#E8ECF8";
+                ctx.fillRect(cx - w / 2, y - 8, w, 16);
+                ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 1; ctx.strokeRect(cx - w / 2 + 0.5, y - 7.5, w - 1, 15);
+                ctx.fillStyle = "#1B2440"; ctx.textAlign = "center";
+                ctx.fillText(text, cx, y + 1);
+            } else {
+                ctx.font = "9px 'Meiryo UI', sans-serif"; ctx.fillStyle = "#4A5A80"; ctx.textAlign = "center";
+                ctx.fillText("空き", cx, y + 1);
+            }
+        });
+        const yPlate = bottom + 30 + tracks.length * 22 + 6;
+        const text = "【留置】" + (dep.display || name) + "  在線" + tracks.filter(t => t.items.length).length + "/" + tracks.length + "本";
+        ctx.font = "bold 11px 'Meiryo UI', sans-serif";
+        const w = ctx.measureText(text).width + 14;
+        ctx.fillStyle = "#2B3550"; ctx.fillRect(cx - w / 2, yPlate - 9, w, 18);
+        ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(text, cx, yPlate + 1);
+        this.hitDepots.push({ name: name, x: cx - w / 2, y: yPlate - 9, w: w, h: 18 });
+        return true;
+    }
+
     /** 留置場 */
     drawDepots(ctx, xMin, xMax) {
         for (const name in DEPOTS) {
             const dep = DEPOTS[name];
+            if (dep.yardDraw && this.drawDepotYard(ctx, name, xMin, xMax)) continue;
             const idx = (name === "宮原操") ? STATION_MAP["新大阪"] : (name === "向日町操") ? STATION_MAP["向日町操"] : STATION_MAP[name];
             if (idx === undefined) continue;
             const x = tidStationX(idx) -
@@ -919,7 +1000,7 @@ class TidRenderer {
 
             const idle = this.game.fleet.poolAt(name).length;
             const wait = dep.trains.length;
-            const text = "【留置】" + name + "  在線" + (idle + wait) + "本";
+            const text = "【留置】" + (dep.plateName || name) + "  在線" + (idle + wait) + "本";
             ctx.font = "bold 11px 'Meiryo UI', sans-serif";
             const w = ctx.measureText(text).width + 14;
             ctx.fillStyle = "#2B3550";

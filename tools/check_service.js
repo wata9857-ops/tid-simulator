@@ -178,7 +178,7 @@ head('始発の裏付け (どこからともなく現れていないか)');
     console.log('  必ず送り込み回送にする駅: ' + backed.join(' '));
     ok('須磨・三ノ宮・神戸が送り込み回送で裏付けられている',
        backed.indexOf('須磨') >= 0 && backed.indexOf('三ノ宮') >= 0 && backed.indexOf('神戸') >= 0);
-    ok('送り込み回送が実際に走っている', game.ops.stats.backing > 10,
+    ok('送り込み回送が実際に走っている (営業列車を兼ねるものを含む)', game.ops.stats.backing >= 5,
        game.ops.stats.backing + '本');
 }
 

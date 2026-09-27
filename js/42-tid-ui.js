@@ -151,13 +151,16 @@ class TidUI {
         // 行先
         const destE = this.el("tid-dest");
         if (destE) {
-            const dests = ["播州赤穂", "上郡", "相生", "網干", "姫路", "加古川", "西明石", "須磨", "神戸", "三ノ宮", "芦屋",
-                "尼崎", "大阪", "新大阪", "高槻", "京都", "草津", "野洲", "米原", "長浜",
-                "近江塩津", "敦賀", "近江今津", "永原", "堅田",
-                "塚口", "宝塚", "新三田", "篠山口", "福知山",
-                "放出", "京橋", "四条畷", "長尾", "松井山手", "京田辺", "同志社前", "木津",
-                "宮原操", "向日町操", "吹田貨"];
+            /* 候補は線路の定義から作る (js/28-dispatch.js の dispatchDestinationCandidates)。
+               折り返せる駅はすべて選べる。貨物列車の行先は後ろにまとめる。 */
+            const dests = dispatchDestinationCandidates().concat(DISPATCH_FREIGHT_DESTS);
             destE.innerHTML = '<option value="">変更なし</option>' + dests.map(n => opt(n)).join("");
+        }
+
+        // 多客の催し (js/36-special-events.js)
+        const evSel = this.el("tid-event-sel");
+        if (evSel && typeof SPECIAL_EVENTS !== "undefined") {
+            evSel.innerHTML = SPECIAL_EVENTS.map(e => opt(e.id, e.name + " (" + e.at + ")")).join("");
         }
 
         // シミュレーション時間の倍率と、ダイヤの曜日
@@ -370,6 +373,8 @@ class TidUI {
             }
             if (act === "hand") this.run({ name: "recoveryHandover", plan: plan });
         });
+        on("tid-btn-event-open", () => { const s = this.el("tid-event-sel"); if (s && s.value) this.run({ name: "specialEvent", id: s.value }); });
+        on("tid-btn-event-close", () => { const s = this.el("tid-event-sel"); if (s && s.value) this.run({ name: "specialEvent", id: s.value, close: true }); });
         on("tid-btn-major-rain", () => this.run({ name: "majorIncident", kind: "rain" }));
         on("tid-btn-major-snow", () => this.run({ name: "majorIncident", kind: "snow" }));
         onCh("tid-speed", () => {
@@ -606,6 +611,18 @@ class TidUI {
         this.renderStation();
         this.refreshDepotSelect();
         this.refreshReport();
+        this.renderEvents();
+    }
+
+    /** 臨時輸送 (催し) の状態 (js/36-special-events.js) */
+    renderEvents() {
+        const e = this.el("tid-event-state");
+        if (!e || !this.game.events) return;
+        const list = this.game.events.summary();
+        const text = list.length
+            ? list.map(x => `${x.name} (${x.at}) ${x.show} … ${x.phase} / 臨時列車 ${x.extras}本・増結 ${x.boosted}本`).join(" ／ ")
+            : "臨時輸送はありません";
+        if (e.textContent !== text) e.textContent = text;
     }
 
     renderHeader() {
@@ -683,6 +700,7 @@ class TidUI {
             running: "走行中", stopped: "停車中", holding: "抑止(信号待ち)",
             waiting_start: "発車待ち", turning_back: "折り返し中", in_depot: "留置中"
         }[t.state] || t.state;
+        const prepText = trainPrepText(t, this.game.currentTime);
 
         e.innerHTML =
             `<div class="tid-tno" style="background:${(TID_TYPE_COLORS[t.type] || {}).bg};color:${(TID_TYPE_COLORS[t.type] || {}).text}">` +
@@ -698,7 +716,7 @@ class TidUI {
                 const plat = isPlatformLane(where, t.trackId, t.lane);
                 return escapeLogHtml(platformText(lbl)) + (plat ? "" : " <em>(側線・待避線)</em>");
             }).call(this)) +
-            row("状態", escapeLogHtml(stateText) + (t.isManuallySuspended ? " <em>抑止中</em>" : "")) +
+            row("状態", escapeLogHtml(prepText || stateText) + (t.isManuallySuspended ? " <em>抑止中</em>" : "")) +
             (t.trackChangeReservation ? row("番線変更", (function (r) {
                 const st = { pending: "予約中", done: "変更済み", failed: "取りやめ", cancelled: "取消" }[r.status] || r.status;
                 return escapeLogHtml(r.stationName + " " + (r.label || "") + " … " + st) +
@@ -709,6 +727,11 @@ class TidUI {
             ((typeof freightTerminalStage === "function" && freightTerminalStage(t, this.game.currentTime))
                 ? row("構内作業", escapeLogHtml(FREIGHT_TERMINALS[freightTerminalOfTrack(t.trackId)].name + " " +
                       (trainPlatformLabel(this.game, t) || "") + " … " + freightTerminalStage(t, this.game.currentTime))) : "") +
+            (t.workTrain ? row("列車の種類", escapeLogHtml(t.workTrain === "工臨"
+                ? "工事用臨時列車 (工臨) … " + (t.vehicles || []).map(v => v.type + (v.isWorkCar ? " " + v.cars + "両" : "")).join(" + ")
+                : "単機回送 … " + ((t.vehicles || [])[0] || {}).type + " (" + (((t.vehicles || [])[0] || {}).base || "") + ")")) : "") +
+            (t.eventTrain ? row("臨時輸送", escapeLogHtml("催しの臨時列車 (" + ((typeof SPECIAL_EVENTS !== "undefined" &&
+                SPECIAL_EVENTS.find(e => e.id === t.eventTrain)) || {}).name + ")")) : "") +
             row("始発", escapeLogHtml(t.startName || "—")) +
             row("編成", (t.vehicles || []).map(v =>
                 `<span class="tid-fleet" style="background:${(TID_FLEET_COLORS[v.group] || {}).bg}">${escapeLogHtml(v.fullId)}</span>`).join(" ") || "—") +

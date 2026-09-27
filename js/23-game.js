@@ -36,6 +36,8 @@ class GameSystem {
            自動の運転整理はそのままで、その上に「連絡 → 指令の判断」を足す。
            答えが無いときは別の指令員が引き取るので、運転は止まらない。 */
         this.comms = new CommSystem(this);
+        /* 多客の催し (花火大会・コンサートなど) の臨時輸送 (js/36-special-events.js) */
+        this.events = (typeof SpecialEventSystem === "function") ? new SpecialEventSystem(this) : null;
         /* 画面どうしで同じシミュレーションを共有する仕組み (js/29-sim-bus.js)。
            同じブラウザで開いた画面のうち1つが本体になり、残りはその状態を映す。 */
         this.bus = null;
@@ -152,9 +154,13 @@ class GameSystem {
                 //        種別を書き換えるとその種別の運用条件を満たさない編成が
                 //        本線に出てしまっていた (新快速が4両になる等)。
                 //        新しい種別・行先で条件を満たすか確認し、駄目なら差し替える。
-                let assigned = this.fleet.reassign(actualStart, config.type, config.trackId,
+                // 差し替えられなければ予備車は元の編成のまま残す (tryReassign)
+                let assigned = this.fleet.tryReassign(actualStart, config.type, config.trackId,
                     config.dest, dutyName, reserveTrain.vehicles);
-                if (!assigned || assigned.length === 0) return false;
+                if (!this.fleet.canServe(assigned, actualStart, config.type, config.trackId, config.dest, dutyName)) {
+                    reserveTrain.vehicles = assigned;
+                    return false;
+                }
                 reserveTrain.vehicles = assigned;
 
                 reserveTrain.type = config.type;
@@ -257,6 +263,7 @@ class GameSystem {
         this.incidents.update();          // 輸送障害の発生・進行・復旧
         this.recovery.update();           // 段階的な運転再開 (区間ごとの開通)
         this.spawner.update(this.currentTime);
+        if (this.events) this.events.update(this.currentTime);   // 催しの臨時輸送
         this.ops.update(this.currentTime); // 出区計画・間隔の穴埋め
         this.comms.update();               // 指令と現場のやりとり
         this.trains = this.trains.filter(t => t.state !== "finished");

@@ -66,6 +66,9 @@ const DEPOT_DUTIES = [
     { depot: "京都", windows: [
         { h: [4.5, 9.0],  every: 1800, dir: -1, via: "京都", as: "普通", dest: ["西明石", "高槻"], ratio: 1.0 },
         { h: [4.5, 9.0],  every: 2700, dir: 1,  via: "京都", as: "普通", dest: ["草津", "野洲"], ratio: 0.8 },
+        /* ★琵琶湖線の普通は京都始発が多い (JR京都線の 207系・321系は京都で折り返し、
+             琵琶湖線は網干の 223系・225系が受け持つ)。昼間も京都の留置線から出す。 */
+        { h: [9.0, 21.0], every: 2400, dir: 1,  via: "京都", as: "普通", dest: ["野洲", "米原", "草津"], ratio: 0.7 },
         { h: [16.0, 22.0], every: 2400, dir: -1, via: "京都", as: "普通", dest: ["西明石", "高槻"], ratio: 0.9 }
     ]},
     /* --- 尼崎駅 電留線 (配線略図 スクリーンショット(709).png)
@@ -73,9 +76,11 @@ const DEPOT_DUTIES = [
            神戸線の下りと、JR東西線の始発を受け持つ。 */
     { depot: "尼崎", windows: [
         { h: [4.5, 9.0],  every: 1500, dir: -1, via: "尼崎", as: "普通", dest: ["西明石", "須磨"], ratio: 1.0 },
-        { h: [4.5, 9.0],  every: 2400, dir: 1,  via: "尼崎", as: "普通", dest: ["放出", "京橋"], ratio: 0.9 },
+        { h: [4.5, 9.0],  every: 2400, dir: 1,  via: "尼崎", as: "普通", dest: ["四条畷", "松井山手", "放出"], ratio: 0.9 },
         { h: [9.0, 16.0], every: 2400, dir: -1, via: "尼崎", as: "普通", dest: ["西明石"], ratio: 0.8 },
-        { h: [9.0, 16.0], every: 2700, dir: 1,  via: "尼崎", as: "普通", dest: ["放出"], ratio: 0.8 },
+        /* ★放出止まりを減らした (利用者の指摘)。京橋から学研都市線へ向かう普通は、
+             実際の時刻表では四条畷・松井山手行きが中心で、放出止まりは少ない。 */
+        { h: [9.0, 16.0], every: 2700, dir: 1,  via: "尼崎", as: "普通", dest: ["四条畷"], ratio: 0.8 },
         { h: [16.0, 22.0], every: 1800, dir: -1, via: "尼崎", as: "普通", dest: ["西明石"], ratio: 0.9 }
     ]},
     // --- 網干総合車両所明石支所 高槻派出所
@@ -112,6 +117,19 @@ const DEPOT_DUTIES = [
              両方から出すと放出の在庫が尽きて、かえって本数が落ちる。 */
         { h: [16.0, 22.0], every: 2400, dir: -1, via: "放出", as: "普通", dest: ["尼崎", "西明石"], ratio: 0.8 },
         { h: [16.0, 22.0], every: 2700, dir: -1, via: "放出", as: "快速", dest: ["宝塚", "新三田"], ratio: 0.8 }
+    ]},
+    /* --- 祝園の留置線・奈良支所 (佐保) (学研都市線の南の端)
+           ★以前は学研都市線の朝の上り (京橋方面) が、すべて放出から回ってくるか、
+             同志社前・木津で折り返す列車だけだった。添付の同志社前駅の時刻表では
+             5:45 区間快速 西明石行き・6:02 西明石行き・6:14 新三田行き … と、
+             南の端で夜を明かした編成が朝いちばんに出ていく。 */
+    { depot: "祝園", windows: [
+        { h: [5.0, 6.6],  every: 1800, dir: -1, via: "祝園", as: "快速", dest: ["西明石", "新三田"], ratio: 1.0 }
+    ]},
+    { depot: "木津", windows: [
+        { h: [4.9, 7.6],  every: 1500, dir: -1, via: "木津", as: "快速", dest: ["新三田", "篠山口", "西明石", "宝塚"], ratio: 0.9 },
+        { h: [5.2, 7.0],  every: 2700, dir: -1, via: "木津", as: "普通", dest: ["京橋", "松井山手"], ratio: 0.7 },
+        { h: [16.0, 20.0], every: 3600, dir: -1, via: "木津", as: "快速", dest: ["新三田", "宝塚"], ratio: 0.5 }
     ]},
     // --- 新三田電留線 (JR宝塚線の始発)
     { depot: "新三田", windows: [
@@ -164,6 +182,7 @@ function dutyLineOf(depotName, w) {
     if (w && w.kosei) return "kosei";
     if (depotName === "新三田") return "fukuchi";
     if (depotName === "放出") return "tozai";
+    if (typeof DEPOTS !== "undefined" && DEPOTS[depotName] && DEPOTS[depotName].line === "Tozai") return "tozai";
     const dests = Array.isArray(w && w.dest) ? w.dest : [(w && w.dest) || ""];
     if (dests.every(d => TOZAI_THROUGH_DESTS.indexOf(d) >= 0)) return "tozai";
     if (dests.every(d => FUKUCHI_THROUGH_DESTS.indexOf(d) >= 0)) return "fukuchi";
@@ -184,6 +203,57 @@ class OperationsManager {
         this.deadheadSeq += 2;
         if (this.deadheadSeq > 9990) this.deadheadSeq = 1000;
         return "回" + this.deadheadSeq + (suffix || "M");
+    }
+
+    /**
+     * 回送を、同じ区間を走る営業列車 (普通) にできるならそうする。
+     *
+     * ■ 利用者の指摘 3.
+     *   長い回送が多すぎる (6〜翌3時で 10駅以上の回送が 120本前後)。車両の送り込み・返却は
+     *   必要でも、昼間に旅客の乗れない列車を長い距離走らせることはふつうしない。
+     *   実際の運用では、送り込みを兼ねた営業列車 (普通) にする。
+     * ■ 営業列車にする条件
+     *   ・営業の時間の中 (5時〜その線区の終電の30分前)
+     *   ・発駅と行先がどちらも旅客駅 (車両所・貨物駅を発着する回送はそのまま)
+     *   ・4駅以上走る (短い入換・引き上げはそのまま)
+     *   ・その編成でその区間の普通に入れる (js/24-service-rules.js。入れなければ回送のまま)
+     *   ・普通の在線が目安を大きく超えていない
+     * cfg (addTrain に渡す設定) を書き換えたら true。
+     */
+    asRevenue(cfg) {
+        if (!cfg || cfg.type !== "回送" || !cfg.vehicles || !cfg.vehicles.length) return false;
+        if (globalThis.__NO_REVENUE_DH) return false;
+        const g = this.game;
+        const h = (g.currentTime / 3600) % 24;
+        const from = cfg.startName, to = cfg.dest;
+        const line = (stationBranchLine(from) === "tozai" || stationBranchLine(to) === "tozai") ? "tozai"
+                   : (stationBranchLine(from) === "fukuchi" || stationBranchLine(to) === "fukuchi") ? "fukuchi" : "main";
+        if (h < 5.0 || !ttInService(line, h + 0.5)) return false;
+        const passenger = (n) => STATION_MAP[n] !== undefined && !/操|貨|タ$/.test(n) &&
+                                 !(STATIONS[STATION_MAP[n]] && STATIONS[STATION_MAP[n]].name === n && STATIONS[STATION_MAP[n]].isSeparateLine);
+        if (!passenger(from) || !passenger(to)) return false;
+        const a = fleetIndexOf(from), b = fleetIndexOf(to);
+        if (a === null || b === null || Math.abs(a - b) < 4) return false;
+        if (cfg.vehicles.some(v => v.expressKey || v.freightKey || v.workKey)) return false;
+        const trackId = DEPOTS[from] ? depotTrackId(from, cfg.dir, "普通") : specialEventTrackId(from, cfg.dir, "普通");
+        const lineOfTrack = /^Tozai/.test(trackId) ? "tozai" : /^Fukuchi/.test(trackId) ? "fukuchi" : /^Kosei/.test(trackId) ? "kosei" : "main";
+        if (ttOverBudget(g, lineOfTrack, "普通", 1.25)) return false;
+        /* 前方 (これから走る区間) に普通が続いているときは回送のまま (回送は列車線を速く走り、
+           普通の間に割り込まない)。普通の間隔が空いている所だけを、送り込みを兼ねた普通で埋める。
+           ★すべて普通にすると、西明石〜姫路で普通が団子になった (実測)。 */
+        {
+            const blks = g.trackMgr.blocks[trackId];
+            const b0 = blks ? blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === from) : null;
+            if (b0 && countSameTypeAhead(g, trackId, b0.index, cfg.dir, "普通", 2, null) > 0) return false;
+        }
+        if (!g.fleet.canServe(cfg.vehicles, from, "普通", trackId, to, null)) return false;
+        cfg.type = "普通";
+        cfg.trackId = trackId;
+        cfg.name = g.spawner.generateTrainNumber("普通", cfg.dir, from, trackId);
+        if (!cfg.dutyName || /^回/.test(cfg.dutyName)) cfg.dutyName = cfg.name;
+        cfg.revenueDeadhead = true;
+        this.stats.revenueDh = (this.stats.revenueDh || 0) + 1;
+        return true;
     }
 
     /** 重み付けのない候補から1つ選ぶ */
@@ -230,6 +300,20 @@ class OperationsManager {
                          n: (b.name === "放出") ? fleet.sevenCarSets(b.name) : fleet.pools[b.name].length }))
             .filter(b => b.n <= 2)
             .sort((a, b) => a.n - b.n);
+        /* ★車両所グループごとの不足も見る。京都の留置線は、編成の数は多くても
+             明石の 207系・321系ばかりになり、琵琶湖線の普通に要る網干の 223系・225系が
+             0本になっていた (223系・225系は野洲・米原へ出たまま戻らない)。
+             その留置場が受け入れるグループのうち網干・宮原の編成が1本以下なら、足りないものとして扱う。 */
+        /* 京都だけで見る (琵琶湖線の普通を京都で受け持つため)。ほかの滞泊地まで見ると、
+           野洲・姫路へ長い回送が増えた (実測 西明石→野洲 11本/日)。 */
+        FLEET_BASES.filter(b => b.name === "京都").forEach(b => {
+            if (!fleet.pools[b.name] || !DEPOTS[b.name] || short.some(x => x.name === b.name)) return;
+            ["ABOSHI"].forEach(g => {
+                if (b.groups.indexOf(g) < 0) return;
+                const n = fleet.pools[b.name].filter(v => v.group === g).length;
+                if (n <= 1 && fleet.pools[b.name].length >= 3) short.push({ name: b.name, groups: [g], n: n, byGroup: g });
+            });
+        });
         if (!short.length) return;
 
         for (const to of short) {
@@ -239,6 +323,7 @@ class OperationsManager {
             const toIdx = fleetIndexOf(to.name);
             const from = FLEET_BASES
                 .filter(b => fleet.pools[b.name] && fleet.pools[b.name].length >= 5)
+                .filter(b => !to.byGroup || fleet.pools[b.name].filter(v => v.group === to.byGroup).length >= 4)
                 .filter(b => b.groups.some(g => to.groups.indexOf(g) >= 0))
                 .filter(b => fleetIndexOf(b.name) !== toIdx)
                 .sort((a, b) => Math.abs(fleetIndexOf(a.name) - toIdx) -
@@ -250,10 +335,12 @@ class OperationsManager {
             const dir = this.dirFromTo(from.name, to.name);
             if (!dir) continue;                       // 方向転換なしには行けない
             const no = this.deadheadNo();
-            const vs = fleet.assign(from.name, "回送",
-                                    depotTrackId(from.name, dir, "回送"),
-                                    to.name, no, { noBorrow: true });
+            let vs = fleet.assign(from.name, to.byGroup ? "普通" : "回送",
+                                  depotTrackId(from.name, dir, to.byGroup ? "普通" : "回送"),
+                                  to.name, no, { noBorrow: true });
             if (!vs || !vs.length) continue;
+            // グループの不足を埋めるときは、そのグループの編成だけを送る
+            if (to.byGroup && vs.some(v => v.group !== to.byGroup)) { fleet.release(from.name, vs); continue; }
             /* 送り先の線区の運用に入れない編成を送っても意味がないので確かめる。
                (東西線に223系を送っても使えない) */
             if (!fleet.canServe(vs, to.name, "普通",
@@ -261,12 +348,14 @@ class OperationsManager {
                 fleet.release(from.name, vs);
                 continue;
             }
-            const ok = this.game.addTrain({
+            const rcfg = {
                 type: "回送", dir: dir,
                 trackId: depotTrackId(from.name, dir, "回送"),
                 dest: to.name, startName: from.name,
                 name: no, dutyName: no, vehicles: vs, nextAction: "depot"
-            });
+            };
+            this.asRevenue(rcfg);          // 返却を兼ねた営業列車にできるなら、そうする
+            const ok = this.game.addTrain(rcfg);
             if (!ok) { fleet.release(from.name, vs); continue; }
             this.stats.rebalance = (this.stats.rebalance || 0) + 1;
             this.game.ui.updateBanner(
@@ -358,6 +447,7 @@ class OperationsManager {
         }
 
         cfg.vehicles = vs;
+        this.asRevenue(cfg);               // 送り込みを兼ねた営業列車にできるなら、そうする
         if (this.game.addTrain(cfg)) {
             this.stats.depotOut++;
             return true;
@@ -435,7 +525,7 @@ class OperationsManager {
                                           config.dest, serviceNo, { noBorrow: true });
         if (!vs || !vs.length) return false;
 
-        const ok = this.game.addTrain({
+        const bcfg = {
             type: "回送", dir: dir,
             trackId: depotTrackId(fromName, dir, "回送"),
             dest: config.startName, startName: fromName,
@@ -443,7 +533,9 @@ class OperationsManager {
             vehicles: vs,
             serviceChange: { at: config.startName, type: config.type,
                              dest: config.dest, name: serviceNo }
-        });
+        };
+        this.asRevenue(bcfg);
+        const ok = this.game.addTrain(bcfg);
         if (!ok) { this.game.fleet.release(fromName, vs); return false; }
         this.stats.backing++;
         return ok;
@@ -497,7 +589,7 @@ class OperationsManager {
                                 serviceNo, { noBorrow: true });
         if (!vs || !vs.length) return false;
 
-        const ok = this.game.addTrain({
+        const scfg = {
             type: "回送", dir: dir,
             trackId: depotTrackId(from, dir, "回送"),
             dest: startName, startName: from,
@@ -505,7 +597,9 @@ class OperationsManager {
             vehicles: vs,
             serviceChange: { at: startName, type: config.type,
                              dest: config.dest, name: serviceNo }
-        });
+        };
+        this.asRevenue(scfg);
+        const ok = this.game.addTrain(scfg);
         if (!ok) { fleet.release(from, vs); return false; }
         this.stats.railIn = (this.stats.railIn || 0) + 1;
         return true;
@@ -745,10 +839,14 @@ class OperationsManager {
             const onTozai = train.trackId.indexOf("Tozai") === 0;
             const onFukuchi = train.trackId.indexOf("Fukuchi") === 0;
             const onKosei = train.trackId.indexOf("Kosei") === 0;
-            if (onTozai && name !== "放出") continue;
-            if (onFukuchi && name !== "新三田") continue;
+            /* ★車両所の面している線区で見る (DEPOTS[x].line)。学研都市線の祝園・奈良支所 (木津) を
+                 足したので、名前を決め打ちにすると本線の列車が「祝園」行きの回送になっていた
+                 (線区が違っても駅の番号は重なるので、番号だけでは見分けられない)。 */
+            const depLine = DEPOTS[name].line || null;
+            if (onTozai && depLine !== "Tozai") continue;
+            if (onFukuchi && depLine !== "Fukuchi") continue;
             if (onKosei) continue;                       // 湖西線内に車両所は置いていない
-            if (!onTozai && !onFukuchi && (name === "放出" || name === "新三田")) continue;
+            if (!onTozai && !onFukuchi && depLine) continue;
             cands.push({ name: name, idx: idx, dist: (idx - hereIdx) * train.dir,
                          ahead: (idx - hereIdx) * train.dir > 0 });
         }
@@ -784,7 +882,7 @@ OperationsManager.prototype.moveToOppositeTrack = function (train, stName, newDi
        以前はここで確かめていなかったので、回送への変更 (tryConvertDeadhead) を
        通ると、坂田のような駅で向きを変えてしまうことがあった。
        移せないときは false を返すので、呼び出し側は前方の車両所へ向かわせる。 */
-    if (!canReverseAt(stName)) return false;
+    if (!canReverseAtDir(stName, -newDir)) return false;
     const blks = this.game.trackMgr.blocks[train.trackId];
     if (!blks) return false;
     const blk = blks[train.currBlockIndex];
@@ -840,8 +938,8 @@ OperationsManager.prototype.directionFor = function (fromName, destName) {
 OperationsManager.prototype.preferTurnback = function (train, stName) {
     const h = (this.game.currentTime / 3600) % 24;
 
-    // 深夜は入区させる (折り返しても走る先が無い)
-    if (h >= 22.0 || h < 4.5) return false;
+    // 終電のあとは入区させる (折り返しても走る先が無い)。線区ごとの終電で見る
+    if (!ttInService(ttLineOf(train), h)) return false;
     // 大きく遅れている列車は運用を切って車両所へ戻す
     if (train.delayTime > 1800) return false;
     /* ★その線区のその種別が目安を大きく（3割）超えているときは折り返さない。
@@ -919,7 +1017,7 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
     /* ★実物の配線で方転できない駅では折り返さない (js/03-stations.js の canReverseAt)。
        車両所へ回送するか、運用を終える。 */
-    if (!canReverseAt(stName)) return false;
+    if (!canReverseAtDir(stName, train.dir)) return false;
 
     const inPlace = !globalThis.__TB_OFF &&
                     canTurnBackOnPlatform(stName, train.trackId, train.lane, newTrackId) &&
@@ -951,13 +1049,31 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     train.turnbackWait = 0;
 
     // 折り返した先の行先を決める
-    let nextDest = this.game.spawner.getDestination(train.type, newDir, stName, newTrackId);
-    if (nextDest === stName) nextDest = this.game.spawner.fallbackTerminal(newDir, stName, newTrackId);
+    /* 行先は、いまの編成で走れるものを引き直して選ぶ (js/14-train-turnback.js の pickServableDest と同じ考え方)。
+       ★京都に着いた 207系・321系に琵琶湖線の行先が当たると、編成を差し替えられずに回送になっていた。 */
+    let nextDest = null;
+    for (let k = 0; k < 10; k++) {
+        let d = this.game.spawner.getDestination(train.type, newDir, stName, newTrackId);
+        if (d === stName) d = this.game.spawner.fallbackTerminal(newDir, stName, newTrackId);
+        if (nextDest === null) nextDest = d;
+        if (!train.vehicles || !train.vehicles.length ||
+            this.game.fleet.canServe(train.vehicles, stName, train.type, newTrackId, d, null)) { nextDest = d; break; }
+        if (k === 9 && typeof STOCK_HOME_TERMINALS !== "undefined") {
+            // 割合の表に走れる行先が無い: 編成の受け持つ線区の終点から選ぶ (京都支所の車両は湖西線・琵琶湖線へ)
+            const alt = STOCK_HOME_TERMINALS.filter(x => x !== stName && this.directionFor(stName, x) === newDir &&
+                this.game.fleet.canServe(train.vehicles, stName, train.type, newTrackId, x, null));
+            if (alt.length) nextDest = alt[Math.floor(Math.random() * alt.length)];
+        }
+    }
 
     // いまの編成でその運用に入れるかを確かめ、駄目なら差し替える
     const nextNo = this.game.spawner.generateTrainNumber(train.type, newDir, stName, newTrackId);
-    const vs = this.game.fleet.reassign(stName, train.type, newTrackId, nextDest, nextNo, train.vehicles);
-    if (!vs || !vs.length) return false;
+    /* ★差し替えられないときに元の編成を失わない (tryReassign)。以前の reassign は失敗すると
+         元の編成を留置線へ返してしまい、そのあと回送になった列車が編成の無いまま走っていた
+         (塚口 → 新三田 の回送が「営業列車にできない」と判定されていた原因)。 */
+    const keep = train.vehicles.slice();
+    const vs = this.game.fleet.tryReassign(stName, train.type, newTrackId, nextDest, nextNo, train.vehicles);
+    if (!this.game.fleet.canServe(vs, stName, train.type, newTrackId, nextDest, nextNo)) { train.vehicles = keep; return false; }
     train.vehicles = vs;
 
     if (inPlace) {

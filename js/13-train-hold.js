@@ -144,6 +144,8 @@ Train.prototype.checkHold = function (isStarting) {
                     ゆるやかに開ける。
                     js/16-train-adjust.js の「団子を作らない」を参照。 */
                  if (!this.hasDeparted && this.shouldHoldForConvoy()) return true;
+                 /* ★始発駅から同じ向きの列車を続けて出さない (js/16-train-adjust.js の originHeadwayHold)。 */
+                 if (!this.hasDeparted && this.originHeadwayHold()) return true;
 
                  // 7分(420秒)以上スタックしている場合は間隔調整を無視して強制発車(デッドロック回避)
                  if (this.stuckTime > 420) return false;
@@ -1296,7 +1298,9 @@ const PLATFORM_OUTSIDE_LANE_DATA = { "山科": ["Up_Out", "Down_Out", "Kosei_Up"
                 nx = nextReversibleAhead(nx, this.dir);
                 if (!nx) break;
                 const nb = (this.game.trackMgr.blocks[tid] || []).find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === nx);
-                if (nb && nb.lanes.some((_, l) => laneHasPlatform(nx, tid, l))) {
+                /* 延長する区間に、いまの編成で入れることも条件 (明石の 207系・321系は西明石より西へ行かない) */
+                if (nb && nb.lanes.some((_, l) => laneHasPlatform(nx, tid, l)) &&
+                    this.game.fleet.canServe(this.vehicles, stName, this.type, tid, nx, null)) {
                     this.game.ui.updateBanner(`【運転整理】${this.trainNo} は${stName}駅の${trackLabelOf(tid)}にホームが無いため、行先を ${nx} に延長します。`, "banner-orange");
                     this.dest = nx;
                     break;

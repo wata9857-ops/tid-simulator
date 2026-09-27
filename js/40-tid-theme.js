@@ -312,7 +312,7 @@ function tidFreightYardSpan(ft) {
  */
 function tidFreightYardLayout(key, mainY) {
     const ft = FREIGHT_TERMINALS[key];
-    const cx = tidX(100 + ft.pos * BLOCK_WIDTH);
+    const cx = tidX(100 + (ft.pos + (ft.drawShift || 0)) * BLOCK_WIDTH);
     const hw = tidW(BLOCK_WIDTH) * TID_YARD.halfW;
     const sgn = (ft.side === "top") ? -1 : 1;
     const span = tidFreightYardSpan(ft);
@@ -365,7 +365,7 @@ function tidFreightYardExtent(i, group) {
     for (const k in FREIGHT_TERMINALS) {
         const ft = FREIGHT_TERMINALS[k];
         if ((ft.band || "main") !== band) continue;
-        const at = ft.pos / UNITS_PER_STATION;
+        const at = (ft.pos + (ft.drawShift || 0)) / UNITS_PER_STATION;
         if (Math.abs(at - i) >= 1) continue;          // となりの駅とのあいだにある構内だけ
         const need = TID_YARD.offset + tidFreightYardSpan(ft) + TID_YARD.plateGap +
                      TID_GEO.plateH / 2 + TID_PLATE_MARGIN + 14;
@@ -1309,7 +1309,7 @@ const TID_JUNCTIONS = {
     // 西大路 — 京都貨物 (梅小路) は京都 (画面左) 側、本線の下。独立した構内として描く (FREIGHT_TERMINALS)
     /* ★甲子園口 — 折返線 (2番) が下り内と上り内のあいだにあり、立花 (画面左) 方で下り内から入り、
          上り内へ出る。西宮方は行き止まり (698)。下り外はホームの無い通過線。 */
-    "甲子園口": { crossovers: [["Down_In", "Up_In", "l", "L"]] },
+    "甲子園口": { crossovers: [["Down_In", "Up_In", "l", "L", { viaStub: true }]] },
     /* 京都 — 渡り線は 上り外〜上り内 と 下り内〜下り外 の2組。
        ★上り電車線と下り電車線を直接つなぐ渡り線も入れてみたが、
          京都止まりの上り列車がホームで折り返すようになり、

@@ -137,14 +137,26 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             timeFactor = 0.60; 
         } else if (h >= 9.5 && h < 10) {
             timeFactor = 0.75;  
+        } else if (h >= 23.25 || h < 1.0) {
+            timeFactor = 1.25;   // 23時台後半〜終電 (京橋 23時台は 普通5本/時)
+        } else if (h >= 21.5) {
+            timeFactor = 0.95;   // 21時台後半〜23時 (京橋 22時台は 6本/時)
         }
+        /* 営業の時間の外 (終電のあと〜始発の前) は出さない (js/10-timetable.js の ttInService)。
+           ★以前は時刻で止めていなかった。そのかわり、放出・新三田の留置場で出区を待つ列車が
+             23時に一律で消されていたので、分岐線の列車が 23時で途切れていた。 */
+        const inSvc = (line) => ttInService(line, h);
 
         // 1. 新三田発 上り (大阪・東西線方面)
+        if (ct >= this.nextFukuchiUp && !inSvc("fukuchi")) this.nextFukuchiUp = ct + 300;
         if (ct >= this.nextFukuchiUp) {
             let isRapid = Math.random() < (65 / 142); 
             let type = isRapid ? "快速" : "普通";
             let destOptions = isRapid ? 
-                [{d:"大阪",w:43}, {d:"新大阪",w:1}, {d:"同志社前",w:21*0.75}, {d:"木津",w:21*0.20}, {d:"奈良",w:21*0.05}] :
+                /* ★学研都市線の南 (同志社前・木津) へ行く快速を増やした。添付の同志社前駅の時刻表では
+                     京橋方面が 4本/時 (ほぼすべて JR宝塚線からの快速・区間快速の折り返し) なのに、
+                     以前は宝塚線の快速の 3分の1 しか東西線へ入らず、同志社前は 1〜2本/時だった。 */
+                [{d:"大阪",w:30}, {d:"新大阪",w:1}, {d:"同志社前",w:26}, {d:"木津",w:8}, {d:"奈良",w:1.5}] :
                 [{d:"高槻",w:32}, {d:"大阪",w:15}, {d:"四条畷",w:12}, {d:"松井山手",w:8}, {d:"長尾",w:4}, {d:"京田辺",w:3}, {d:"木津",w:2}, {d:"放出",w:1}];
             
             // ★追加: 尼崎到着時の3連続被り防止ロジック
@@ -183,6 +195,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
               ★以前は京橋始発にしていたが、実際の東西線の列車はほぼ全て
                 学研都市線から直通してくる。放出の電留線を起点にすることで
                 「どこからともなく京橋に現れる」状態を解消した。 */
+        if (ct >= this.nextTozaiDown && !inSvc("tozai")) this.nextTozaiDown = ct + 300;
         if (ct >= this.nextTozaiDown) {
             let type = (Math.random() < (74 / 160)) ? "快速" : "普通";
             let destOptions = [];
@@ -242,6 +255,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 篠山口・福知山まで行くのは丹波路快速など一部。
                 以前は篠山口・福知山行きしか作っていなかったので、
                 線内の本数が足りず間隔が大きく空いていた。 */
+        if (ct >= this.nextFukuchiDown && !inSvc("fukuchi")) this.nextFukuchiDown = ct + 300;
         if (ct >= this.nextFukuchiDown) {
             let type = Math.random() < 0.35 ? "快速" : "普通";
             let destOptions = (type === "快速")
@@ -274,6 +288,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         }
 
         // 4. 尼崎発 上り (東西線 京橋・四条畷方面)
+        if (ct >= this.nextTozaiUp && !inSvc("tozai")) this.nextTozaiUp = ct + 300;
         if (ct >= this.nextTozaiUp) {
             /* ★尼崎で始発する (尼崎方で折り返す) JR東西線の列車は、ほとんどが普通。
                  JR東西線の快速は JR宝塚線・学研都市線から直通してくるもので
@@ -292,7 +307,10 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
             let type = Math.random() < 0.2 ? "快速" : "普通";
             let destOptions = (type === "快速")
                 ? [{d:"同志社前",w:4 - kizuW}, {d:"木津",w:kizuW}, {d:"松井山手",w:1}]
-                : [{d:"四条畷",w:30}, {d:"松井山手",w:45}, {d:"京田辺",w:5}, {d:"放出",w:20}];
+                : [{d:"四条畷",w:42}, {d:"松井山手",w:45}, {d:"京田辺",w:5}, {d:"放出",w:4}];
+            /* ★放出止まりは少なくした (以前は普通の2割)。折り返しは四条畷の両渡りで行う。
+               夜 (21時半〜) は奈良行きの区間快速 (奈良支所へ入る) を足す (同志社前駅の時刻表 22:32・23:18)。 */
+            if (type === "快速" && hTz >= 21.5) destOptions.push({d:"奈良", w:1.5});
             let dest = this.weightedRandom(destOptions);
 
             let canSpawn = true;

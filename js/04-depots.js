@@ -25,7 +25,13 @@ const DEPOTS = {
     "西明石": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: -40 }, display: "西明石〜明石間" },
     "宮原操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "宮原操" },
     "高槻": { capacity: 4, trains: [], drawOffset: { x: 0.5, y: -40 }, display: "高槻〜島本間" },
-    "向日町操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "向日町操" },
+    /* prep … 出区の準備。発車の lead 秒前 (範囲) に構内の着発線へ据え付け、
+              車両の点検・ブレーキ試験をしてから本線へ出る。据え付けてから発車まで最低 min 秒。
+              着発線は keepFree 本を入区・他の出区のために空けておく。
+       ★以前は発車の15秒前に着発線へ現れ、すぐ本線へ出ていくので、
+         着発線に列車がいるのが一瞬しか見えなかった (利用者の指摘)。 */
+    "向日町操": { capacity: 6, trains: [], drawOffset: { x: 0, y: -120 }, display: "向日町操",
+                  prep: { lead: [1200, 1800], min: 600, keepFree: 1, lanes: /着発/ } },
     /* ★京都駅の留置線・引上線。
        配線略図 (スクリーンショット(693).png / (680).png) のとおり、
        京都駅の南側 (下り線の外側) に、西へ向かって行き止まりの
@@ -55,6 +61,19 @@ const DEPOTS = {
        出区した列車は放出駅の番線に据え付けられ、本線へ向かう列車は
        そこから尼崎方 (下り) へ出る。四条畷方へ出る線路はこの線路図に無い。 */
     "放出": { capacity: 6, trains: [], drawOffset: { x: 0.5, y: 0 }, display: "放出〜徳庵間", line: "Tozai" },
+    /* ★祝園の留置線 (配線略図 スクリーンショット(728).png)。
+       2番のりば (下の線) から京田辺方で分かれ、西木津方が行き止まりの留置線が2本。
+       学研都市線の 207系・321系 (7両) を2本まで置き、朝の京橋方面の始発を受け持つ。
+       ふだんの折り返し列車は入れず、運用を終えた列車だけが入る (turnbackFirst)。 */
+    "祝園": { capacity: 2, trains: [], drawOffset: { x: 0, y: 0 }, display: "祝園 留置線", line: "Tozai",
+              turnbackFirst: true, maxCars: 14, yardDraw: { ref: "(728)" } },
+    /* ★奈良支所 (佐保) — 木津から関西本線を奈良方へ入った所にある車両基地。
+       線路図の外なので、出入りは木津 (学研都市線の終点) で行う。奈良行きの列車は木津から
+       線路図の外へ出て奈良支所に入り、朝は奈良支所を出た列車が木津から学研都市線へ入る。
+       木津で折り返すふだんの列車は入れない (turnbackFirst)。 */
+    "木津": { capacity: 4, trains: [], drawOffset: { x: 0.9, y: 0 }, display: "奈良支所 (佐保) ※木津から関西本線",
+              plateName: "奈良支所 (佐保)",
+              line: "Tozai", turnbackFirst: true, beyond: "奈良" },
     // ★追加: JR宝塚線の始発を受け持つ新三田の電留線
     "新三田": { capacity: 6, trains: [], drawOffset: { x: -0.5, y: 0 }, display: "新三田〜広野間", line: "Fukuchi" }
 };
@@ -148,6 +167,39 @@ function depotPrune() {
 }
 
 const DEPOT_LAYOUTS = {
+    "祝園": {
+        title: "祝園 留置線",
+        owner: "網干総合車両所明石支所",
+        leftLabel: "西木津・木津方 (行き止まり)",
+        rightLabel: "京田辺・松井山手方",
+        note: "配線略図 (スクリーンショット(728).png) のとおり、2番のりば (下の線) から京田辺方で分かれ、" +
+              "西木津方が行き止まりになる留置線が2本ある。7両の編成を1本ずつ置ける。" +
+              "2番のりばは京田辺方の両渡りの先で行き止まりの引上線につながる。",
+        groups: [
+            { name: "留置線", tracks: [
+                { label: "留1", cars: 7, kind: "stabling" },
+                { label: "留2", cars: 7, kind: "stabling" }
+            ]}
+        ]
+    },
+    "木津": {
+        title: "奈良支所 (佐保)",
+        owner: "吹田総合車両所奈良支所",
+        leftLabel: "関西本線 平城山・奈良方",
+        rightLabel: "木津駅 (学研都市線)",
+        note: "木津から関西本線を奈良方へ入った所にある車両基地。線路図の範囲の外にあり、" +
+              "学研都市線の奈良行きはここに入って夜を明かし、朝はここを出た列車が木津から学研都市線へ入る。",
+        groups: [
+            { name: "電留線", tracks: [
+                { label: "電1", cars: 7, kind: "stabling" },
+                { label: "電2", cars: 7, kind: "stabling" },
+                { label: "電3", cars: 7, kind: "stabling" },
+                { label: "電4", cars: 7, kind: "stabling" },
+                { label: "電5", cars: 7, kind: "stabling" },
+                { label: "電6", cars: 7, kind: "stabling" }
+            ]}
+        ]
+    },
     "姫路": {
         title: "姫路駅 電留線",
         owner: "網干総合車両所",

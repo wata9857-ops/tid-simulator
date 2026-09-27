@@ -15,6 +15,7 @@ class UIManager {
         this.logFilter = null;         // 発信元での絞り込み (null = すべて)
         this.logImportantOnly = false; // 重要なログのみ表示
         this.staffFeedIdle = false;    // ヘッダー業務連絡欄が平常表示かどうか
+        if (typeof this.fillDestSelect === "function") this.fillDestSelect();
     }
 }
 

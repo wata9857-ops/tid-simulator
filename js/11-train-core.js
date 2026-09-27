@@ -9,6 +9,7 @@ class Train {
     constructor(config, game) {
         this.game = game;
         this.vehicles = config.vehicles || []; // ★追加
+        this.workTrain = config.workTrain || null;   // "工臨" / "単機" (機関車の列車。js/24-service-rules.js)
         this.id = "t_" + Math.random().toString(36).substr(2, 9); // ★追加: 一意のID
         this.type = config.type;
         this.dir = config.dir; 
@@ -201,6 +202,12 @@ class Train {
                 // ★修正: 出区前のもう少し早い段階から表示するため、基本の待機時間を 5〜8分(300〜480秒) に延ばす
                 // ★待ち時間の上限 (js/14-train-turnback.js と同じ理由)
                 this.timer = Math.max(300 + Math.random() * 180, Math.min(maxTimer + 120, 660)); 
+                /* 出区の準備をする車両所 (向日町操) は、準備の時間ぶん前もって手配する。
+                   手配した時点で着発線に据え付け、20〜30分の点検・ブレーキ試験のあと発車する。 */
+                if (depHere0.prep) {
+                    this.prepLead = depHere0.prep.lead[0] + Math.random() * (depHere0.prep.lead[1] - depHere0.prep.lead[0]);
+                    this.timer = Math.max(this.timer, this.prepLead);
+                }
                 
                 this.depotOutConfig = { type: this.type, dest: this.dest, trainNo: this.trainNo,
                                         dir: this.dir, dutyName: this.dutyName };
@@ -325,8 +332,16 @@ class Train {
         // ★修正: 留置場内での待機・出区処理 (緊急停止等の影響を受けないように最優先で処理)
         if (this.state === "in_depot") {
             let hOfDay = (this.game.currentTime / 3600) % 24;
+            /* 夜の留置。出区の予定が営業の時間 (その線区の終電) のあとになる列車は、
+               出区させずに留置場で朝まで休ませる (編成はその留置場の在庫に戻る)。
+               ★以前は 23時になると出区待ちの列車をすべて消していたので、
+                 放出・新三田から出る学研都市線・JR宝塚線の 23時台の列車が走らなかった。 */
             if (hOfDay >= 23.0 || hOfDay < 4.0) {
-                this.remove(); return;
+                const lineHere = ttDepotLine(depotKeyOf(this.startName));
+                const leaveAt = hOfDay + Math.max(0, this.timer || 0) / 3600;
+                if (!this.depotOutConfig || !ttInService(lineHere, leaveAt)) {
+                    this.remove(); return;
+                }
             }
             if (this.timer > 0) {
                 this.timer -= CONFIG.TICK_SEC;
@@ -339,6 +354,17 @@ class Train {
             /* 出区する運用が決まっている車両だけを出区させる。
                運用の決まっていない予備車 (depotOutConfig が無い) は、
                指令または出区計画が運用を与えるまで留置場で待つ。 */
+            /* 出区の準備をする車両所 (向日町操) では、発車の少し前に着発線へ据え付ける
+               (js/04-depots.js の prep)。据え付けたあとは着発線で発車を待つ。 */
+            const prepDep = DEPOTS[depotKeyOf(this.startName)];
+            const prep = prepDep && prepDep.prep;
+            if (prep && this.depotOutConfig && !this.forceDepotOut) {
+                if (!this.prepLead) this.prepLead = prep.lead[0] + Math.random() * (prep.lead[1] - prep.lead[0]);
+                if (this.timer > 0 && this.timer <= this.prepLead) {
+                    this.tryDepotOut(this.startName, false, Math.max(prep.min, this.timer));
+                    return;
+                }
+            }
             if (this.timer <= 0 && this.depotOutConfig) {
                 // ★改善: 強制出区フラグを引数として渡す
                 this.tryDepotOut(this.startName, this.forceDepotOut);
@@ -403,7 +429,12 @@ class Train {
                  そのため西明石で下り内側線の列車が永久に動かなくなり、
                  その後ろに下り列車が延々と連なっていた。 */
             const deadEnd = !inb || inb.x === -1000;
-            if (si !== undefined &&
+            /* ★行先の駅に着いている列車は動かさない (そこで折り返す・入区する)。
+                 終着の印 (isFinalStop) が付く前にここを通ると、西明石止まりの普通が外側線へ移されて
+                 そのまま西明石を発車し、大久保まで走っていた (207系が西明石より西へ出る原因の1つ)。 */
+            const atDest = !!icb && isRealStationBlock(icb) && blockStationName(icb) === this.dest;
+            if (atDest && !this.serviceChange) this.isFinalStop = true;
+            if (si !== undefined && !atDest &&
                 (deadEnd || si < STATION_MAP["西明石"] || si > STATION_MAP["草津"])) {
                 const outId = this.trackId.replace("In", "Out");
                 const ob = this.game.trackMgr.blocks[outId];
@@ -682,7 +713,7 @@ class Train {
                                        方転できない駅では折り返さず、そのまま
                                        抑止して待つ (下の遅延加算に進む)。 */
                                     const canTurnHere = isRealStationBlock(cb) &&
-                                        canReverseAt(turnName) &&
+                                        canReverseAtDir(turnName, this.dir) &&
                                         this.game.fleet.canServe(this.vehicles, turnName, this.type,
                                             this.trackId, turnName, this.dutyName);
                                     if (congestedTrains >= 3 && canTurnHere && Math.random() < 0.1) {
@@ -739,7 +770,13 @@ class Train {
                         }
                     } else {
                         this.state = "running";
+                        if (!this.hasDeparted && typeof noteStationDeparture === "function") {
+                            // 始発駅を発車した (始発の続行間隔 js/16-train-adjust.js)
+                            const db = (this.game.trackMgr.blocks[this.trackId] || [])[this.currBlockIndex];
+                            if (db && isRealStationBlock(db)) noteStationDeparture(this.game, blockStationName(db), this.dir, this);
+                        }
                         this.hasDeparted = true;
+                        this.preparing = null;     // 出区の準備を終えて本線へ出た
                         this.hasStoppedAtCurrent = false;
                         this.stuckTime = 0;
                         this.forceStart = false; // ★発車できたので強制発車フラグを解除

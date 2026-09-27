@@ -140,6 +140,29 @@ function commAheadStation(game, t, list) {
     return null;
 }
 
+/**
+ * 前方で、その列車を打ち切って折り返せる駅 (入区できる駅を含む)。
+ * ★以前は SWITCHABLE_STATIONS (内側線と外側線を行き来できる駅) から選んでいたため、
+ *   長岡京のように方転できない駅が候補になり、甲子園口 (折返線) や吹田 (大阪方の両渡り) は
+ *   候補にならなかった。線路の定義 (js/03-stations.js の canReverseAtDir) から選ぶ。
+ */
+function commAheadTurnback(game, t) {
+    const blks = game.trackMgr.blocks[t.trackId];
+    if (!blks) return null;
+    for (let k = 1; k <= UNITS_PER_STATION * 8; k++) {
+        const i = t.currBlockIndex + t.dir * k;
+        if (i < 0 || i >= blks.length) break;
+        const b = blks[i];
+        if (!b || b.x === -1000 || !isRealStationBlock(b)) continue;
+        const n = blockStationName(b);
+        if (!n) continue;
+        if (!(canReverseAtDir(n, t.dir) || DEPOTS[n])) continue;
+        if (typeof dispatchTerminateProblem === "function" && dispatchTerminateProblem(game, t, n)) continue;
+        return n;
+    }
+    return null;
+}
+
 /** 運転士の呼び方 (実際の無線と同じく列車番号で呼ぶ) */
 function commCrew(t) { return (t.trainNo || "当該列車") + " 運転士"; }
 
@@ -391,7 +414,7 @@ const COMM_SCENES = [
                 t.nextAction === "turnback");
             if (!c.length) return null;
             const t = commOne(c);
-            const cut = commAheadStation(game, t, SWITCHABLE_STATIONS);
+            const cut = commAheadTurnback(game, t);
             if (!cut || cut === t.dest) return null;
             return { train: t, cut: cut };
         },
@@ -432,7 +455,8 @@ const COMM_SCENES = [
         id: "crowd", level: "minor", cat: "eki", title: "ホーム混雑の報告", limit: 90,
         from: (c) => c.at + "駅 駅長",
         find(game) {
-            const big = ["大阪", "京都", "三ノ宮", "尼崎", "高槻", "新大阪", "西明石", "草津"];
+            const big = ["大阪", "京都", "三ノ宮", "尼崎", "高槻", "新大阪", "西明石", "草津"]
+                .concat(game.events ? game.events.crowdStations() : []);
             const busy = [];
             big.forEach(st => {
                 let n = 0;
@@ -649,7 +673,7 @@ const COMM_SCENES = [
               hint: "旅客を降ろし、車両所へ戻す。",
               reply: "当該列車は打ち切りとします。旅客の案内をお願いします。",
               apply(game, c) {
-                  const at = commAheadStation(game, c.train, SWITCHABLE_STATIONS);
+                  const at = commAheadTurnback(game, c.train);
                   game.applyCommand({ name: "change", trainId: c.train.id,
                                       dest: at || c.train.dest, action: "depot" });
               } }
@@ -1026,7 +1050,7 @@ const COMM_SCENES = [
               reply: "1本を手前で打ち切ります。旅客の案内をお願いします。",
               apply(game, c) {
                   const t = c.train;
-                  const alt = commAheadStation(game, t, SWITCHABLE_STATIONS);
+                  const alt = commAheadTurnback(game, t);
                   if (alt && alt !== c.at) {
                       game.applyCommand({ name: "change", trainId: t.id,
                                           dest: alt, action: "turnback" });
@@ -1172,7 +1196,7 @@ const COMM_SCENES = [
             if (late.length < 4) return null;
             const head = late.slice().sort((a, b) => (b.delayTime || 0) - (a.delayTime || 0))[0];
             return { train: head, late: late, n: late.length,
-                     cut: commAheadStation(game, head, SWITCHABLE_STATIONS) };
+                     cut: commAheadTurnback(game, head) };
         },
         text(game, c) {
             return commOne([
@@ -1220,7 +1244,7 @@ const COMM_SCENES = [
                 ["普通", "快速", "新快速"].indexOf(t.type) >= 0);
             if (!c.length) return null;
             const t = commOne(c);
-            const cut = commAheadStation(game, t, SWITCHABLE_STATIONS);
+            const cut = commAheadTurnback(game, t);
             if (!cut || cut === t.dest) return null;
             return { train: t, cut: cut };
         },

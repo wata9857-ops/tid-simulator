@@ -194,8 +194,25 @@ Spawner.prototype.checkExtraSpawns = function (ct) {
         EXTRA_TRAINS.forEach((data, index) => {
             if (this.spawnedExtras.has(index) || ct < base + data.time) return;
             this.spawnedExtras.add(index);
-            if (Math.random() > 0.4) return; 
             let trackId = data.hoppo ? ((data.dir === 1) ? "Up_Hoppo" : "Down_Hoppo") : ((data.dir === 1) ? "Up_Out" : "Down_Out");
+            if (data.work) {
+                /* 工臨・単機回送: 機関車 (と工事用貨車) を、始発駅に居るものから組む
+                   (js/24-service-rules.js の WORK_LOCO_FLEET)。居なければ運転を取りやめる。 */
+                const vs = ServiceRules.takeWork(data.work.loco, data.work.cars || null, data.start, data.dest);
+                if (!vs) {
+                    this.game.ui.updateBanner("【工臨】" + data.name + " は " + data.start + "に機関車が居ないため運転を取りやめます。", "banner-blue");
+                    return;
+                }
+                const ok = this.game.addTrain({ type: data.type, dir: data.dir, trackId: trackId, dest: data.dest,
+                    startName: data.start, name: data.name, dutyName: data.name, vehicles: vs,
+                    nextAction: "remove", workTrain: data.work.cars ? "工臨" : "単機" });
+                if (!ok) { vs.forEach(v => ServiceRules.giveBack(v, data.start)); return; }
+                const what = data.work.cars ? ("工臨 (" + vs[0].type + " + " + vs[1].type + " " + vs[1].cars + "両)")
+                                            : ("単機回送 (" + vs[0].type + ")");
+                this.game.ui.updateBanner("【工臨】" + data.name + " " + data.start + "→" + data.dest + " " + what + " が発車します。", "banner-blue");
+                return;
+            }
+            if (Math.random() > 0.4) return;
             this.game.addTrain({ type: data.type, dir: data.dir, trackId: trackId, dest: data.dest, startName: data.start, name: data.name, nextAction: "depot" });
         });
 };

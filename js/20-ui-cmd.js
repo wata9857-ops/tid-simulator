@@ -374,3 +374,16 @@ UIManager.prototype.executeDepotOutForce = function () {
         this.updateDepotSelector();
         this.updateTrainSelector();
 };
+
+/**
+ * 指令パッドの「行先変更」の候補を作る。
+ * 決め打ちの表をやめ、線路の定義から折り返せる駅をすべて出す
+ * (js/28-dispatch.js の dispatchDestinationCandidates。Super-TID と同じ候補)。
+ */
+UIManager.prototype.fillDestSelect = function () {
+    const sel = document.getElementById("cmd-dest");
+    if (!sel || typeof dispatchDestinationCandidates !== "function") return;
+    const names = dispatchDestinationCandidates().concat(DISPATCH_FREIGHT_DESTS);
+    sel.innerHTML = '<option value="">変更なし</option>' +
+        names.map(n => `<option value="${escapeLogHtml(n)}">${escapeLogHtml(n)}</option>`).join("");
+};
