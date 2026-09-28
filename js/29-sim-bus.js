@@ -164,6 +164,8 @@ class SimBus {
                 hasStoppedAtCurrent: !!t.hasStoppedAtCurrent,
                 hasDeparted: !!t.hasDeparted,
                 serviceChange: t.serviceChange ? { at: t.serviceChange.at } : null,
+                eventTrain: t.eventTrain || null,
+                eventTrainNo: t.eventTrainNo || null,
                 stuckTime: t.stuckTime,
                 troubleInfo: t.troubleInfo && t.troubleInfo.active ? {
                     active: true, cause: t.troubleInfo.cause,

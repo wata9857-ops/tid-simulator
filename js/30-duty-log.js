@@ -84,7 +84,7 @@ class DutyLog {
         }
         const prev = cur ? this.close(id, now, this.stationOf(t)) : this.last[id];
         const row = {
-            no: no, type: inDepot ? "留置" : (t.type || ""),
+            no: no, type: inDepot ? "留置" : ((typeof eventSpecialTypeLabel === "function") ? eventSpecialTypeLabel(t) : (t.type || "")),
             from: inDepot ? (t.startName || "") : (t.startName || this.stationOf(t) || ""),
             to: inDepot ? (t.startName || "") : (t.dest || ""),
             dep: now, arr: null, kind: kind,
@@ -364,6 +364,8 @@ DutyLog.prototype.trackTrains = function () {
             if (this.trainOrder.length > TRAIN_LOG_MAX) delete this.trainLog[this.trainOrder.shift()];
         }
         L.type = t.type; L.dest = t.dest; L.lastAt = now; L.delay = t.delayTime || 0;
+        // 催しの臨時列車 (js/36-special-events.js)。運転を終えたあとも記録で見分けられるように残す
+        if (typeof isEventSpecialTrain === "function" && isEventSpecialTrain(t)) L.special = eventSpecialName(t) || "催し";
         const b = (g.trackMgr.blocks[t.trackId] || [])[t.currBlockIndex];
         const st = (b && isRealStationBlock(b)) ? blockStationName(b) : null;
         // 駅に着いた・駅を出た

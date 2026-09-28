@@ -224,9 +224,13 @@ class TidDuty {
             "</td></tr>").join("");
         const route = L ? esc(L.start || "—") + " → " + esc((t ? t.dest : L.dest) || "—") : "—";
         const kv = (k, v) => '<div class="tid-kv"><span>' + k + "</span><b>" + v + "</b></div>";
+        // 催しの臨時列車 (js/36-special-events.js)
+        const special = (t && typeof isEventSpecialTrain === "function" && isEventSpecialTrain(t))
+            ? (eventSpecialName(t) || "催し") : (L && L.special) || "";
         e.innerHTML = back +
             '<div class="tid-duty-head"><span class="tid-mini" style="background:' + (col.bg || "#666") + ";color:" + (col.text || "#fff") + '">' +
-            esc(no) + "</span><span>" + esc((t || L).type) + "</span><span>" + route + "</span></div>" +
+            esc(no) + "</span><span>" + esc((special ? "臨時" : "") + (t || L).type) + "</span><span>" + route + "</span></div>" +
+            (special ? kv("列車の種類", esc("臨時 (" + special + ") … 催しの臨時列車 (臨時列車番号 " + no + ")")) : "") +
             kv("現在", status) +
             kv("遅れ", delayMin ? delayMin + "分" : "定時") +
             (L && L.vehicles.length ? kv("編成", esc(L.vehicles.join("+"))) : "") +

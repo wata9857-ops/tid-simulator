@@ -218,7 +218,7 @@ TidUI.prototype.renderStation = function () {
     const esc = escapeLogHtml;
     const chip = (x) => {
         const c = TID_TYPE_COLORS[x.type] || {};
-        return `<span class="tid-mini" style="background:${c.bg};color:${c.text}">${esc(x.trainNo || "—")}</span>`;
+        return `<span class="tid-mini" style="background:${c.bg};color:${c.text}">${(x.train && typeof isEventSpecialTrain === "function" && isEventSpecialTrain(x.train)) ? "臨" : ""}${esc(x.trainNo || "—")}</span>`;
     };
     const MAX_ROWS = 4;
     const row = (x, kind) => {

@@ -500,3 +500,7 @@ body.tid-dock-tall .tid-grow { background: #0E58C8; color: #fff; }
 .tid-report-tools .tid-btn { margin: 0; padding: 3px 10px; font-size: 11px; }
 .tid-report-tools .tid-x { margin-left: 0; }
 .tid-report-body { background: #fff; padding: 6px 4px; }
+
+/* 催しの臨時列車の「臨」の印 (js/36-special-events.js) */
+.tid-rin { display: inline-block; margin-right: 3px; padding: 0 3px; background: #FFC400; color: #000; border-radius: 2px; font-size: 0.85em; }
+

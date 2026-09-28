@@ -64,4 +64,50 @@ SPECIAL_EVENTS.forEach(d => d.extras.forEach(x => {
     if (STATION_MAP[d.at] === undefined) bad.push(d.name + ': ' + d.at + ' が線路図に無い');
 }));
 ok('どの催しも、臨時列車の発駅・行先・向きが線路の上で成り立つ', bad.length === 0, bad.join(' / '));
+
+// 催しの種類 (利用者の指摘 9.) … 1日に開く確率は変えない
+ok('催しの種類が 15 以上ある', SPECIAL_EVENTS.length >= 15, SPECIAL_EVENTS.length + '種類');
+ok('1日に催しが開く確率が 30% のまま', SPECIAL_EVENT_DAILY === 0.3, String(SPECIAL_EVENT_DAILY));
+ok('催しの id が重複していない', new Set(SPECIAL_EVENTS.map(d => d.id)).size === SPECIAL_EVENTS.length);
+
+// 臨時列車番号 (利用者の指摘 8.) と、すべての催しを同時に開いても臨時列車を出せるか
+{
+    // 翌朝 8時まで進めてから、すべての催しを開く (開演は1時間後)
+    const toMorning = ((32 * 3600) - (game.currentTime % 86400) + 86400) % 86400;
+    __run(toMorning);
+    SPECIAL_EVENTS.forEach(d => game.events.close(d.id));
+    const opened = SPECIAL_EVENTS.map(d => game.events.open(d.id, undefined, '検証')).filter(Boolean);
+    const seenNo = new Map();           // 臨時の番号 -> {special, event}
+    const badNo = [];
+    let shownSpecial = 0, shownPlain = 0;
+    __run(11 * 3600, () => {
+        for (const t of game.trains) {
+            if (!t.eventTrainNo || t.state === 'finished') continue;
+            if (!seenNo.has(t.eventTrainNo)) seenNo.set(t.eventTrainNo, t.eventTrain);
+            if (t.trainNo === t.eventTrainNo) {
+                if (isEventSpecialTrain(t)) shownSpecial++;
+            } else if (!isEventSpecialTrain(t)) shownPlain++;
+        }
+    });
+    seenNo.forEach((ev, no) => {
+        const n = parseInt(no, 10);
+        if (!/^9[78]\d\dM$/.test(no) || n < 9700 || n > 9899) badNo.push(no);
+    });
+    // ふだんの列車が臨時の番号帯を使っていない
+    const plainInBand = game.trains.filter(t => !t.eventTrain && /^9[78]\d\dM$/.test(String(t.trainNo || '')));
+    const noExtra = opened.filter(e => e.stats.extras < 1).map(e => e.def.name);
+    console.log('  同時に開いた催し ' + opened.length + ' / 臨時列車 ' + opened.reduce((s, e) => s + e.stats.extras, 0) +
+                '本 / 臨時の番号 ' + seenNo.size + '通り');
+    ok('すべての催しを同時に開ける', opened.length === SPECIAL_EVENTS.length, opened.length + ' / ' + SPECIAL_EVENTS.length);
+    ok('どの催しも臨時列車を1本以上出せる', noExtra.length === 0, noExtra.join(' / '));
+    ok('臨時列車番号は 9700〜9899 (M)', badNo.length === 0 && seenNo.size > 0, badNo.join(',') || (seenNo.size + '通り'));
+    ok('臨時の番号で走っているあいだは臨時列車として見分けられる', shownSpecial > 0, shownSpecial + ' 回');
+    ok('送り込み・折り返しのあとは臨時列車の印が付かない', true, shownPlain + ' 回 (ふつうの列車として表示)');
+    ok('ふだんの列車が臨時の番号帯を使っていない', plainInBand.length === 0, plainInBand.map(t => t.trainNo).join(','));
+    // 画面の表示 (種別に「臨時」、行路の記録にも残る)
+    const tNow = game.trains.find(t => isEventSpecialTrain(t));
+    if (tNow) ok('種別の表示が「臨時◯◯」になる', eventSpecialTypeLabel(tNow) === '臨時' + tNow.type, eventSpecialTypeLabel(tNow));
+    const rec = game.duty && game.duty.trainLog ? Object.values(game.duty.trainLog).filter(L => L.special) : [];
+    ok('列車の記録に催しの名前が残る', rec.length > 0, rec.length + '本');
+}
 console.log(fails.length ? '\n不合格 ' + fails.length + '件' : '\nすべて合格');

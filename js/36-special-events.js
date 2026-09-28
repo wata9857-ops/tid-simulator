@@ -91,6 +91,46 @@ const SPECIAL_EVENTS = [
       showAt: 15.0, showH: 3.0, inH: 1.0, outH: 1.0, weight: 1,
       extras: [
           { when: "out", from: "宝塚", to: "大阪", type: "普通", dir: 1, every: 1800 }
+      ] },
+
+    /* ★利用者の指摘 9. … 催しの種類を増やした (2026-09 の7回目)。
+         1日に催しが開く確率 (SPECIAL_EVENT_DAILY = 30%) は変えていない。重みは「どれが開くか」の割合だけ。
+         場所はどれも線路図の中の駅 (京セラドーム・USJ など線路図の外の会場は入れない)。 */
+    { id: "koshien-day", name: "甲子園球場 高校野球 (デーゲーム)", kind: "野球", at: "甲子園口", also: ["西宮", "尼崎", "大阪"],
+      showAt: 9.0, showH: 8.0, inH: 1.5, outH: 1.5, weight: 2,
+      extras: [
+          { when: "in",  from: "尼崎", to: "西明石", type: "普通", dir: -1, every: 1800 },
+          { when: "out", from: "甲子園口", to: "高槻", type: "普通", dir: 1, every: 1200 }
+      ] },
+    { id: "luminarie", name: "神戸ルミナリエ", kind: "光の催し", at: "元町", also: ["三ノ宮", "神戸"],
+      showAt: 18.0, showH: 3.0, inH: 1.5, outH: 1.5, weight: 2,
+      extras: [
+          { when: "out", from: "神戸", to: "大阪", type: "普通", dir: 1, every: 1200 },
+          { when: "out", from: "神戸", to: "西明石", type: "普通", dir: -1, every: 1800 }
+      ] },
+    { id: "ebisu", name: "西宮神社 十日えびす", kind: "祭り", at: "西宮", also: ["甲子園口", "芦屋"],
+      showAt: 16.0, showH: 5.0, inH: 2.0, outH: 1.5, weight: 1,
+      extras: [
+          { when: "out", from: "須磨", to: "高槻", type: "普通", dir: 1, every: 1500 },
+          { when: "out", from: "尼崎", to: "西明石", type: "普通", dir: -1, every: 1500 }
+      ] },
+    { id: "himeji-oshiro", name: "姫路お城まつり", kind: "祭り", at: "姫路", also: ["英賀保", "御着"],
+      showAt: 13.0, showH: 5.0, inH: 2.0, outH: 1.5, weight: 1,
+      extras: [
+          { when: "in",  from: "西明石", to: "姫路", type: "普通", dir: -1, every: 1800 },
+          { when: "out", from: "姫路", to: "西明石", type: "普通", dir: 1, every: 1500 }
+      ] },
+    { id: "gamba", name: "パナソニックスタジアム吹田 試合", kind: "試合", at: "茨木", also: ["吹田", "高槻", "新大阪"],
+      showAt: 19.0, showH: 2.0, inH: 1.5, outH: 1.25, weight: 2,
+      extras: [
+          { when: "out", from: "高槻", to: "西明石", type: "普通", dir: -1, every: 1200 },
+          { when: "out", from: "高槻", to: "京都", type: "普通", dir: 1, every: 1800 }
+      ] },
+    { id: "sagicho", name: "近江八幡 左義長まつり", kind: "祭り", at: "近江八幡", also: ["野洲", "草津"],
+      showAt: 12.0, showH: 7.0, inH: 2.0, outH: 1.5, weight: 1,
+      extras: [
+          { when: "in",  from: "野洲", to: "米原", type: "普通", dir: 1, every: 2400 },
+          { when: "out", from: "米原", to: "京都", type: "普通", dir: -1, every: 2400 }
       ] }
 ];
 
@@ -170,23 +210,49 @@ class SpecialEventSystem {
         if (this.active.length) this.boostAtOrigins(ct);
     }
 
+    /**
+     * 催しの臨時列車の列車番号。
+     * ★利用者の指摘 8. … 以前は 97xxM で上下とも同じ規則だったうえ、画面では
+     *   ふだんの列車と見分けが付かなかった。実際の臨時列車と同じく 9000番台を使い
+     *   (ふだんの列車は 4999 まで)、上りは偶数・下りは奇数にする。
+     *   9700〜9899 を催しの臨時列車だけに使う (工臨・単機の 93xx とも重ならない)。
+     */
+    specialNo(dir) {
+        const used = (this.game.spawner && this.game.spawner.activeTrainNos) || new Set();
+        let no = "";
+        for (let safe = 0; safe < 100; safe++) {
+            this.seq = (this.seq % 99) + 1;
+            let n = 9700 + this.seq * 2;
+            if (dir === -1) n++;
+            no = n + "M";
+            if (!used.has(no) && !this.game.trains.some(t => t.trainNo === no && t.state !== "finished")) break;
+        }
+        if (used.add) used.add(no);
+        return no;
+    }
+
     /** 臨時列車を1本出す */
     spawnExtra(ev, x) {
         const g = this.game;
         if (!ttInService(stationBranchLine(x.from) === "tozai" ? "tozai" : "main", (g.currentTime / 3600) % 24)) return false;
         const trackId = specialEventTrackId(x.from, x.dir, x.type);
-        this.seq = (this.seq % 89) + 1;
-        const name = "9" + String(700 + this.seq).padStart(3, "0") + (x.dir === 1 ? "M" : "M");
+        const name = this.specialNo(x.dir);
         const cfg = { type: x.type, dir: x.dir, trackId: trackId, dest: x.to, startName: x.from,
                       name: name, dutyName: name, nextAction: "turnback" };
         const before = g.trains.length;
-        if (!g.addTrain(cfg)) return false;
-        // いま作った列車 (送り込みの回送になった場合は、その回送) に印を付ける
+        if (!g.addTrain(cfg)) {
+            if (g.spawner && g.spawner.activeTrainNos) g.spawner.activeTrainNos.delete(name);
+            return false;
+        }
+        /* いま作った列車 (送り込みの回送になった場合は、その回送) に印を付ける。
+           臨時列車として扱うのは、列車番号がこの臨時の番号のあいだだけ
+           (送り込みの回送のあいだ・行先で折り返してふだんの運用に戻ったあとは、ふつうの列車) */
         for (let k = g.trains.length - 1; k >= before; k--) {
             const t = g.trains[k];
             t.eventTrain = ev.def.id;
+            t.eventTrainNo = name;
         }
-        g.ui.updateBanner(`【臨時輸送】${ev.def.name}: 臨時列車 ${name} (${x.type}) ${x.from}→${x.to} を運転します。`, "banner-blue");
+        g.ui.updateBanner(`【臨時輸送】${ev.def.name}: 臨時列車 ${name} (臨時${x.type}) ${x.from}→${x.to} を運転します。`, "banner-blue");
         return true;
     }
 
@@ -273,6 +339,26 @@ class SpecialEventSystem {
             extras: ev.stats.extras, boosted: ev.stats.boosted
         }));
     }
+}
+
+/**
+ * その列車がいま催しの臨時列車として走っているか。
+ * 列車番号が臨時の番号のあいだだけ (送り込みの回送・折り返してふつうの運用に戻ったあとは違う)。
+ */
+function isEventSpecialTrain(t) {
+    return !!(t && t.eventTrain && t.eventTrainNo && t.trainNo === t.eventTrainNo);
+}
+
+/** 臨時列車の催しの名前 (無ければ "") */
+function eventSpecialName(t) {
+    if (!t || !t.eventTrain || typeof SPECIAL_EVENTS === "undefined") return "";
+    const d = SPECIAL_EVENTS.find(e => e.id === t.eventTrain);
+    return d ? d.name : "";
+}
+
+/** 画面に出す種別 (臨時列車は「臨時普通」のように頭に付ける) */
+function eventSpecialTypeLabel(t) {
+    return isEventSpecialTrain(t) ? "臨時" + (t.type || "") : (t ? t.type : "");
 }
 
 /** 重み付きで1つ選ぶ */

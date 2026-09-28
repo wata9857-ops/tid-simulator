@@ -113,7 +113,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 架線・電力 (4)
     {
-        id: "kasen", family: "kasen", name: "架線障害", weight: 1.5, needTrain: false, radio: false,
+        id: "kasen", family: "kasen", name: "架線障害", weight: 1, needTrain: false, radio: false,
         cat: "設備故障", depts: ["電力区"],
         block: { tracks: "parallel", radius: 4 },
         hold: null, suspend: [1200, 2700],
@@ -187,7 +187,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 信号 (5)
     {
-        id: "shingo", family: "shingo", name: "信号設備故障", weight: 2, needTrain: false, radio: false,
+        id: "shingo", family: "shingo", name: "信号設備故障", weight: 1.5, needTrain: false, radio: false,
         cat: "設備故障", depts: ["信号通信区"],
         block: { tracks: "same", radius: 3 }, fault: true,
         hold: null, suspend: [900, 2100],
@@ -258,7 +258,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 転てつ器 (4)
     {
-        id: "tentetsu", family: "tentetsu", name: "転てつ器故障", weight: 2.5, needTrain: false, radio: false,
+        id: "tentetsu", family: "tentetsu", name: "転てつ器故障", weight: 2, needTrain: false, radio: false,
         cat: "設備故障", depts: ["施設区", "信号通信区"],
         block: { tracks: "same", radius: 1 }, fault: true, atStation: true,
         hold: null, suspend: [600, 1800],
@@ -304,7 +304,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 線路支障 (5)
     {
-        id: "shishobutsu", family: "shishobutsu", name: "線路支障", weight: 1.5, needTrain: false, radio: true,
+        id: "shishobutsu", family: "shishobutsu", name: "線路支障", weight: 0.75, needTrain: false, radio: true,
         cat: "外部要因", depts: ["保線区"],
         block: { tracks: "parallel", radius: 3 },
         hold: null, suspend: [600, 1500],
@@ -392,7 +392,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 車両故障 (8)
     {
-        id: "syaryo", family: "syaryo", name: "車両故障", weight: 2.5, needTrain: true, radio: false,
+        id: "syaryo", family: "syaryo", name: "車両故障", weight: 2, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所"],
         block: null,
         hold: [600, 1500], suspend: null,
@@ -486,7 +486,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ ドア (7)
     {
-        id: "door", family: "door", name: "ドア故障", weight: 3.5, needTrain: true, radio: false,
+        id: "door", family: "door", name: "ドア故障", weight: 3, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所", "駅"],
         block: null, atStation: true,
         hold: [300, 780], suspend: null,
@@ -550,7 +550,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 踏切 (7)
     {
-        id: "fumikiri", family: "fumikiri", name: "踏切障害", weight: 2.5, needTrain: true, radio: true,
+        id: "fumikiri", family: "fumikiri", name: "踏切障害", weight: 2, needTrain: true, radio: true,
         cat: "外部要因", depts: ["保線区", "警察"],
         block: { tracks: "same", radius: 1 },
         hold: [300, 900], suspend: [300, 900],
@@ -636,7 +636,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 旅客対応 (8)
     {
-        id: "kyubyonin", family: "kyubyonin", name: "急病人救護", weight: 4.5, needTrain: true, radio: false,
+        id: "kyubyonin", family: "kyubyonin", name: "急病人救護", weight: 4, needTrain: true, radio: false,
         cat: "旅客対応", depts: ["駅", "消防"],
         block: null, atStation: true,
         hold: [240, 720], suspend: null,
@@ -701,7 +701,7 @@ const INCIDENT_TYPES = [
 
     // ================================================================ 車内設備 (5)
     {
-        id: "kikikosho", family: "kikikosho", name: "車内設備故障", weight: 1.5, needTrain: true, radio: false,
+        id: "kikikosho", family: "kikikosho", name: "車内設備故障", weight: 1, needTrain: true, radio: false,
         cat: "車両故障", depts: ["車両所"],
         block: null,
         hold: [240, 600], suspend: null,

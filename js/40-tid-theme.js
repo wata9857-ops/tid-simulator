@@ -1040,7 +1040,9 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
     /* 列車番号の枡。特急は「サンダーバード1号」のように長い名前が入るので、
        必要なぶんだけ広げてから、それでも入らなければ字を小さくする。 */
     ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
-    const noText = t.trainNo || "";
+    /* 催しの臨時列車は「臨9703M」のように頭に「臨」を付け、枠を金色にして見分ける (js/36-special-events.js) */
+    const special = typeof isEventSpecialTrain === "function" && isEventSpecialTrain(t);
+    const noText = (special ? "臨" : "") + (t.trainNo || "");
     const noW = Math.max(TID_GEO.trainNoW,
                          Math.min(92, ctx.measureText(noText).width + 10));
     const cars = (t.vehicles || []).reduce((s, v) => s + v.cars, 0);
@@ -1082,6 +1084,11 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
     ctx.lineWidth = 0.9;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     ctx.beginPath(); ctx.moveTo(x + noW, y); ctx.lineTo(x + noW, y + h); ctx.stroke();
+    if (special) {
+        ctx.strokeStyle = "#FFC400";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
+    }
 
     // 遅れ (分)
     const delay = Math.floor((t.delayTime || 0) / 60);
