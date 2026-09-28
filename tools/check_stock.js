@@ -100,12 +100,23 @@ const bads = [];
 const expressUse = {};
 let expressTrains = 0, freightTrains = 0;
 const dupSeen = [];
+/* 207系の固定の組み合わせ (Z1＋S54 など) が切り離されていないか。
+   組み合わせに入っている4両・3両の番号が、単独の編成として列車に出てきたら「切り離し」と数える。 */
+const pairParts = new Set();
+FORMATION_207_PAIRS.forEach(([a, b]) => [a, b].forEach(x => pairParts.add(x.replace(/^([A-Z]+)(\d)$/, '$10$2'))));
+const splitSeen = new Set();
+const pairVehicles = game.fleet.all.filter(v => v.pair);
+let adhoc207 = 0;
 
 for (let i = 0; i < 20 * 3600 / CONFIG.TICK_SEC; i++) {
     game.update();
     const holder = new Map();
     for (const t of game.trains) {
         if (t.state === 'finished' || !t.vehicles || !t.vehicles.length) continue;
+        for (const v of t.vehicles) {
+            if (v.group === 'AKASHI' && (pairParts.has(v.id) || (v.pair && v.cars !== 7))) splitSeen.add(t.trainNo + ':' + v.id);
+        }
+        if (t.vehicles.filter(v => v.group === 'AKASHI' && v.type.indexOf('207系') >= 0 && v.cars < 7).length >= 2) adhoc207++;
 
         if (t.type === '特急') {
             expressTrains++;
@@ -131,6 +142,17 @@ for (let i = 0; i < 20 * 3600 / CONFIG.TICK_SEC; i++) {
 console.log('  特急の在線のべ ' + expressTrains + ' / 貨物の在線のべ ' + freightTrains);
 console.log('  特急の内訳(のべ): ' + Object.keys(expressUse).map(k => (EXPRESS_FLEET[k] ? EXPRESS_FLEET[k].label : k) + '=' + expressUse[k]).join(' '));
 ok('走行中の列車に不正な充当が無い', bads.length === 0, bads.join(' / '));
+console.log('  207系の固定の組み合わせ: ' + pairVehicles.length + '本 (例 ' + pairVehicles.slice(0, 3).map(v => v.fullId).join(' ') + ')' +
+            ' / 4両・3両を臨時に組んだ列車 のべ ' + adhoc207 + ' Tick');
+ok('207系の固定の組み合わせ (4両＋3両) が1日を通して切り離されていない', splitSeen.size === 0,
+   [...splitSeen].slice(0, 6).join(' '));
+{
+    const lostPair = pairVehicles.filter(v =>
+        !game.trains.some(t => t.state !== 'finished' && (t.vehicles || []).indexOf(v) >= 0) &&
+        !Object.keys(game.fleet.pools).some(k => game.fleet.pools[k].indexOf(v) >= 0) &&
+        !Object.values(DEPOTS).some(d => (d.trains || []).some(t => (t.vehicles || []).indexOf(v) >= 0)));
+    console.log('  (在線・留置のどちらにも見当たらない固定の組み合わせ: ' + lostPair.length + '本)');
+}
 ok('特急編成が同時に2本の列車へ入っていない', dupSeen.length === 0, dupSeen.join(' / '));
 ok('列車生成時に検証で弾かれた回数が少ない', game.fleet.rejected < 50,
    game.fleet.rejected + '回' + (game.fleet.lastReject ? ' 直近: ' + game.fleet.lastReject : ''));
