@@ -322,7 +322,7 @@ Train.prototype.checkHold = function (isStarting) {
 
              // ★改善②: 優等列車からの逃げ切り最優先ロジック（待避不能駅での意味不明な抑止を完全排除）
              // 貨物ターミナルの着発線は待避できる場所 (優等列車を先に通してから出る)
-             if (!OVERTAKE_STATIONS.includes(currentStName) && !FREIGHT_TERMINALS[currentStName]) {
+             if (!PASSING_STATIONS.includes(currentStName) && !FREIGHT_TERMINALS[currentStName]) {
                  let approachingHigherPriority = false;
                  const escapeCheckDist = Math.ceil(UNITS_PER_STATION * 3.0);
                  for (let tId of yieldCheckTracks) {
@@ -585,7 +585,7 @@ Train.prototype.checkHold = function (isStarting) {
                 const currentBlock = blks[this.currBlockIndex];
                 const stIdx = currentBlock.stationIdx;
                 const stName = currentBlock.hoppoStationName || (stIdx >= 0 ? STATIONS[stIdx].name : "");
-                if (OVERTAKE_STATIONS.includes(stName)) {
+                if (PASSING_STATIONS.includes(stName)) {
                    
                    // ★事象①改善: 現在の線路に待避線(レーン数が2未満)が存在しない場合は、物理的に追い越し不可のため待避待ちをキャンセル
                    if (currentBlock.lanes.length > 1) {
@@ -903,7 +903,7 @@ Train.prototype.findFreeLane = function (block, toTrack) {
 
         // ★改善: 待避線を優先するのは「普通」だけに変更（快速は本線を優先させる）
         if (this.type === "普通") {
-            if (OVERTAKE_STATIONS.includes(stName)) {
+            if (PASSING_STATIONS.includes(stName)) {
                 for(let l=block.lanes.length-1; l>=0; l--) {
                    if(block.lanes[l]===null) return l;
                 }
@@ -1316,5 +1316,78 @@ const PLATFORM_OUTSIDE_LANE_DATA = { "山科": ["Up_Out", "Down_Out", "Kosei_Up"
     Train.prototype.shouldStop = function (st) {
         if (st && this.skipStopAt && st.name === this.skipStopAt && this.dest !== st.name) return false;
         return baseStop.call(this, st);
+    };
+})();
+
+/* ================================================================== 放出・徳庵の番線 (利用者の指摘)
+
+   ■ 決まり
+     ・学研都市線の快速は、徳庵・放出では普通を追い抜かない (待避の判定は PASSING_STATIONS)。
+     ・放出の 2番・3番 に入れるのは、放出で始発・終着・折り返しをする列車
+       (放出の電留線に出入りする列車を含む) だけ。通る列車は 1番 (下り)・4番 (上り) に入る。
+     ・徳庵の 3番 (下りの待避線) も、徳庵で運転を終える・折り返す列車だけが使う。
+       通る列車は 2番に入る (ここで普通が待避線に入ると、快速が追い抜けてしまう)。
+   ■ 詰まらないように
+     通る列車は 1番・4番 (徳庵は 2番) が空くまで手前で待つだけなので、
+     互いに待ち合う形にはならない (2番・3番 を使う列車は通る列車を待たずに出入りできる)。
+     徳庵だけは、輸送障害などで10分以上動けないときに限り 3番 を使ってよい。 */
+const LOCAL_USE_LANES = {
+    "放出": { Tozai_Up: ["3"], Tozai_Down: ["2"] },
+    "徳庵": { Tozai_Down: ["3"], relaxStuck: 600 }
+};
+
+/** その列車がその駅で始発・終着・折り返し (種別・行先の変更) をするか */
+Train.prototype.usesStationLocally = function (stName) {
+    if (this.dest === stName || this.startName === stName) return true;
+    if (this.serviceChange && this.serviceChange.at === stName) return true;
+    if (typeof lineEndForBeyond === "function" && lineEndForBeyond(this.dest) === stName) return true;
+    return false;
+};
+
+/** その番線が「その駅で始発・終着・折り返しをする列車だけ」の番線か */
+function localUseLane(stName, trackId, lane) {
+    const def = LOCAL_USE_LANES[stName];
+    const labels = def && def[trackId];
+    if (!labels) return false;
+    return labels.indexOf(String(displayPlatformLabel(stName, trackId, lane))) >= 0;
+}
+
+(function () {
+    const base = Train.prototype.findFreeLane;
+    Train.prototype.findFreeLane = function (block, toTrack) {
+        const lane = base.call(this, block, toTrack);
+        if (!block || block.freightTerminal || !(block.isStation || block.hoppoStationName)) return lane;
+        const stName = blockStationName(block);
+        const def = LOCAL_USE_LANES[stName];
+        if (!def) return lane;
+        const tid = block.trackId || this.trackId;
+        if (!def[tid]) return lane;
+        if (this.usesStationLocally(stName)) {
+            // 始発・終着・折り返しの列車は、空いていれば 2番・3番 を使う (通る列車の番線を空けておく)
+            if (lane >= 0 && localUseLane(stName, tid, lane)) return lane;
+            for (let l = 0; l < block.lanes.length; l++) {
+                if (block.lanes[l] === null && localUseLane(stName, tid, l) && canArriveAt(stName, tid, l)) return l;
+            }
+            return lane;
+        }
+        if (lane < 0 || !localUseLane(stName, tid, lane)) return lane;
+        for (let l = 0; l < block.lanes.length; l++) {
+            if (block.lanes[l] === null && !localUseLane(stName, tid, l) && canArriveAt(stName, tid, l)) return l;
+        }
+        if (def.relaxStuck && this.stuckTime > def.relaxStuck) return lane;
+        return -1;                            // 通る列車は 1番・4番 (徳庵は 2番) が空くまで待つ
+    };
+
+    /* 始発・折り返し・留置線からの発車 (pickRouteLane の "depart") は、その駅を使う列車なので、
+       空いていれば 2番・3番 から出す (通る列車の 1番・4番 をふさがない)。 */
+    const basePick = pickRouteLane;
+    pickRouteLane = function (block, stName, trackId, mode, type, hour, outer) {
+        const lane = basePick(block, stName, trackId, mode, type, hour, outer);
+        if (mode !== "depart" || !block || !LOCAL_USE_LANES[stName] || !LOCAL_USE_LANES[stName][trackId]) return lane;
+        if (lane >= 0 && localUseLane(stName, trackId, lane)) return lane;
+        for (let l = 0; l < block.lanes.length; l++) {
+            if (block.lanes[l] === null && localUseLane(stName, trackId, l)) return l;
+        }
+        return lane;
     };
 })();

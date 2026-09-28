@@ -303,7 +303,7 @@ const COMM_SCENES = [
             });
             if (!c.length) return null;
             const x = commOne(c);
-            const at = commAheadStation(game, x.train, OVERTAKE_STATIONS);
+            const at = commAheadStation(game, x.train, PASSING_STATIONS);
             if (!at) return null;
             return { train: x.train, chaser: x.chaser, at: at };
         },
@@ -333,7 +333,7 @@ const COMM_SCENES = [
               hint: "別の待避駅で退避させ、詰まりを前に持ち込まない。",
               reply: "待避駅を変更します。次の待避可能駅で退避してください。",
               apply(game, c) {
-                  const alt = commAheadStation(game, c.train, OVERTAKE_STATIONS) || c.at;
+                  const alt = commAheadStation(game, c.train, PASSING_STATIONS) || c.at;
                   commHold(game, c.train, alt, 180);
               } }
         ]
@@ -1041,7 +1041,7 @@ const COMM_SCENES = [
               apply(game, c) {
                   c.list.filter(t => PRIORITY[t.type] < PRIORITY["新快速"]).slice(0, 2)
                       .forEach(t => {
-                          const at = commAheadStation(game, t, OVERTAKE_STATIONS);
+                          const at = commAheadStation(game, t, PASSING_STATIONS);
                           if (at && at !== c.at) commHold(game, t, at, 180);
                       });
               } },
@@ -1143,7 +1143,7 @@ const COMM_SCENES = [
             });
             if (!cand.length) return null;
             const x = commOne(cand);
-            const at = commAheadStation(game, x.slow, OVERTAKE_STATIONS);
+            const at = commAheadStation(game, x.slow, PASSING_STATIONS);
             if (!at) return null;
             return { train: x.slow, slow: x.slow, fast: x.fast, at: at };
         },
@@ -1179,7 +1179,7 @@ const COMM_SCENES = [
               hint: "待避駅を手前に変え、優等を早めに前に出す。",
               reply: "待避駅を手前に変更します。そこで退避してください。",
               apply(game, c) {
-                  const alt = commAheadStation(game, c.slow, OVERTAKE_STATIONS) || c.at;
+                  const alt = commAheadStation(game, c.slow, PASSING_STATIONS) || c.at;
                   commHold(game, c.slow, alt, 180);
               } }
         ]
