@@ -100,7 +100,7 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                                 let interStInfo = (stIndex !== undefined) ? STATIONS[stIndex] : { name: interStName, stopTime: 60 };
                                 if (t.shouldStop(interStInfo)) {
                                     let sTime = interStInfo.stopTime || 60;
-                                    if (t.type === "普通" && OVERTAKE_STATIONS.includes(interStName)) {
+                                    if (t.type === "普通" && PASSING_STATIONS.includes(interStName)) {
                                         sTime = Math.max(sTime, 120);
                                     }
                                     etaSec += sTime;
@@ -113,7 +113,7 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                 let targetStIndex = STATION_MAP[stName];
                 let targetStInfo = (targetStIndex !== undefined) ? STATIONS[targetStIndex] : { name: stName, stopTime: 60 };
                 let targetStopTime = targetStInfo.stopTime || 60;
-                if (t.type === "普通" && OVERTAKE_STATIONS.includes(stName)) {
+                if (t.type === "普通" && PASSING_STATIONS.includes(stName)) {
                     targetStopTime = Math.max(targetStopTime, 120);
                 }
                 etaSec += targetStopTime;
