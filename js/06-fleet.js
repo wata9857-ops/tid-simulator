@@ -35,8 +35,56 @@ const VEH = {
     is6000:     (v) => v.type.indexOf("6000番台") >= 0 || v.notes.indexOf("221系性能") >= 0
 };
 
+// ------------------------------------------------------------------ 207系の固定の組み合わせ
+/* ★207系は 4両 (Z・H・T) ＋ 3両 (S) を組んだ7両が、ふだんは切り離さない固定の組み合わせ
+     (編成番号.xlsx の「Z1＋S54」「H1＋S13」「T1＋S2」…)。
+     在籍表 (js/02-fleet-data.js) は4両と3両を別々に持っていたので、運用のたびに
+     手近な4両と3両を組み合わせ、行路のたびに相手が変わっていた。
+     ここで表どおりの組み合わせを1本の7両 (編成番号「Z01+S54」) にまとめる。
+     検査・入換・試運転での組み替えは例外なので、シミュレーターでは扱わない。
+   ★在籍表の Z01 (7両・「唯一の0番台7両固定編成」) は、表の F1 編成にあたるので F01 と呼ぶ。
+   ★S66・S67 は在籍表に無いが、表には T29＋S66・T25＋S67 がある。表どおり7両として持つ。 */
+const FORMATION_207_PAIRS = [
+    // [4両, 3両, 形式]
+    ...[[1, 54], [2, 38], [3, 44], [4, 35], [5, 41], [6, 42], [7, 50], [8, 19], [9, 43], [10, 37],
+        [11, 40], [12, 51], [13, 34], [14, 14], [15, 23], [16, 18], [17, 31], [18, 48], [19, 3],
+        [20, 52], [21, 45], [22, 55], [23, 16]].map(p => ["Z" + p[0], "S" + p[1], "207系0番台＋1000番台"]),
+    ...[[1, 13], [2, 36], [3, 53], [4, 29], [5, 4], [6, 30], [7, 22], [8, 46], [9, 24], [10, 9],
+        [11, 39], [12, 32], [13, 47], [14, 49], [15, 28], [16, 6]].map(p => ["H" + p[0], "S" + p[1], "207系1000番台＋1500番台"]),
+    ...[[1, 2], [2, 15], [4, 1], [5, 21], [6, 17], [7, 25], [8, 5], [9, 11], [10, 61], [11, 26],
+        [12, 20], [13, 27], [14, 7], [15, 12], [16, 8], [17, 10], [19, 33]].map(p => ["T" + p[0], "S" + p[1], "207系1000番台"]),
+    ["T3", "T18", "207系1000番台"],
+    ...[[20, 57], [21, 59], [22, 64], [23, 65], [24, 63], [25, 67], [26, 56], [27, 58], [28, 62],
+        [29, 66], [30, 60]].map(p => ["T" + p[0], "S" + p[1], "207系2000番台"])
+];
+
+/** 固定の組み合わせを在籍表に反映する (読み込み時に1回) */
+(function mergeFormation207Pairs() {
+    if (typeof EXCEL_VEHICLES === "undefined") return;
+    const pad = (id) => id.replace(/^([A-Z]+)(\d)$/, "$10$2");
+    const f1 = EXCEL_VEHICLES.find(v => v.g === "AKASHI" && v.i === "Z01" && v.c === 7);
+    if (f1) f1.i = "F01";
+    const take = (id) => {
+        const k = EXCEL_VEHICLES.findIndex(v => v.g === "AKASHI" && v.i === id);
+        return k >= 0 ? EXCEL_VEHICLES.splice(k, 1)[0] : null;
+    };
+    const merged = [];
+    FORMATION_207_PAIRS.forEach(([a, b, type]) => {
+        const ia = pad(a), ib = pad(b);
+        const va = take(ia), vb = take(ib);
+        const tmpl = va || vb;
+        if (!tmpl) return;
+        const note = [va && (ia + ": " + va.n), vb && (ib + ": " + vb.n)].filter(Boolean).join(" / ");
+        merged.push({ g: "AKASHI", b: tmpl.b, t: type, i: ia + "+" + ib, c: 7,
+                      n: "固定の組み合わせ (" + ia + "＋" + ib + ")、" + note, pair: [ia, ib] });
+    });
+    // 7両の並び (Z → H → T) は、元の4両があった位置あたりに入れる
+    const at = EXCEL_VEHICLES.findIndex(v => v.g === "AKASHI" && VEH.is207({ type: v.t }));
+    EXCEL_VEHICLES.splice(at >= 0 ? at + 1 : EXCEL_VEHICLES.length, 0, ...merged);
+})();
+
 // ------------------------------------------------------------------ 留置場定義
-// name   : 留置場(夜間滞泊地)の名前。STATION_MAP で座標が引けるもの。
+// name   :留置場(夜間滞泊地)の名前。STATION_MAP で座標が引けるもの。
 // groups : そこに所属・滞泊できる車両所グループ
 // weight : 初期配置時の割り当て比率。
 //          配線図(DEPOT_LAYOUTS)のある留置場は、図の収容両数を大きく
@@ -319,6 +367,7 @@ class FleetManager {
         const byGroup = { ABOSHI: [], AKASHI: [], MIYAHARA: [], KYOTO: [] };
         EXCEL_VEHICLES.forEach(v => {
             const veh = new Vehicle(v.t, v.i, v.c, v.n, v.b, v.g);
+            if (v.pair) veh.pair = v.pair.slice();     // 207系の固定の組み合わせ (4両＋3両)
             this.all.push(veh);
             if (byGroup[v.g]) byGroup[v.g].push(veh);
         });
