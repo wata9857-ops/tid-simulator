@@ -242,7 +242,12 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                     } else if (t.type === "普通") {
                         typeStyle = "background:#000; color:#fff; border:2px solid #fff;";
                     } else {
-                        typeStyle = "background:#3cb371; color:#fff; border:2px solid #fff;"; 
+                        typeStyle = "background:#3cb371; color:#fff; border:2px solid #fff;";
+                    }
+                    // 催しの臨時列車は「臨時普通」のように出す (js/36-special-events.js)
+                    if (typeof isEventSpecialTrain === "function" && isEventSpecialTrain(t)) {
+                        typeName = "臨時" + typeName;
+                        typeStyle = typeStyle.replace("border:2px solid #fff;", "border:2px solid #FFC400;");
                     }
 
                     let typeHtml = "";

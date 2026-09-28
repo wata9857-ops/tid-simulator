@@ -704,8 +704,8 @@ class TidUI {
 
         e.innerHTML =
             `<div class="tid-tno" style="background:${(TID_TYPE_COLORS[t.type] || {}).bg};color:${(TID_TYPE_COLORS[t.type] || {}).text}">` +
-                `${escapeLogHtml(t.trainNo || "—")}</div>` +
-            `<div class="tid-tdest">${escapeLogHtml(t.type)} ${escapeLogHtml(t.dest || "")} ${cars ? cars + "両" : ""}</div>` +
+                `${isEventSpecialTrain(t) ? "<span class=\"tid-rin\">臨</span>" : ""}${escapeLogHtml(t.trainNo || "—")}</div>` +
+            `<div class="tid-tdest">${escapeLogHtml(eventSpecialTypeLabel(t))} ${escapeLogHtml(t.dest || "")} ${cars ? cars + "両" : ""}</div>` +
             row("在線", escapeLogHtml(where) + " / " +
                         escapeLogHtml((TID_ROWS.find(r => r.id === t.trackId) || {}).label || t.trackId)) +
             /* ★番線は配線データから引く (js/03-stations.js の trainPlatformLabel)。
@@ -730,8 +730,11 @@ class TidUI {
             (t.workTrain ? row("列車の種類", escapeLogHtml(t.workTrain === "工臨"
                 ? "工事用臨時列車 (工臨) … " + (t.vehicles || []).map(v => v.type + (v.isWorkCar ? " " + v.cars + "両" : "")).join(" + ")
                 : "単機回送 … " + ((t.vehicles || [])[0] || {}).type + " (" + (((t.vehicles || [])[0] || {}).base || "") + ")")) : "") +
-            (t.eventTrain ? row("臨時輸送", escapeLogHtml("催しの臨時列車 (" + ((typeof SPECIAL_EVENTS !== "undefined" &&
-                SPECIAL_EVENTS.find(e => e.id === t.eventTrain)) || {}).name + ")")) : "") +
+            (isEventSpecialTrain(t)
+                ? row("臨時輸送", escapeLogHtml("臨時 (" + eventSpecialName(t) + ") … 臨時列車番号 " + t.eventTrainNo))
+                : (t.eventTrain && t.eventTrainNo
+                    ? row("臨時輸送", escapeLogHtml("臨時 " + t.eventTrainNo + " (" + eventSpecialName(t) + ") " +
+                          (t.type === "回送" || t.serviceChange ? "の送り込み" : "の運用を終えてふだんの運用"))) : "")) +
             row("始発", escapeLogHtml(t.startName || "—")) +
             row("編成", (t.vehicles || []).map(v =>
                 `<span class="tid-fleet" style="background:${(TID_FLEET_COLORS[v.group] || {}).bg}">${escapeLogHtml(v.fullId)}</span>`).join(" ") || "—") +

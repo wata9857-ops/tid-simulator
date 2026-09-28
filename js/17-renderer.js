@@ -651,9 +651,15 @@ class Renderer {
             ctx.fillStyle = cdata.text;
             ctx.font = "bold 12px 'Meiryo UI', 'Yu Gothic', sans-serif";
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText(t.trainNo, lx + tw / 2, ly + 4);
+            // 催しの臨時列車は「臨」を付け、枠を金色にする (js/36-special-events.js)
+            const special = typeof isEventSpecialTrain === "function" && isEventSpecialTrain(t);
+            ctx.fillText((special ? "臨" : "") + t.trainNo, lx + tw / 2, ly + 4);
 
             ctx.fillStyle = "#fff"; ctx.fillRect(lx + tw, ly - 8, bw - tw, bh);
+            if (special) {
+                ctx.strokeStyle = "#FFC400"; ctx.lineWidth = 2;
+                ctx.strokeRect(lx - 1, ly - 9, bw + 2, bh + 2);
+            }
             ctx.fillStyle = "#000";
             let dTxt = t.dest || "";
             if (dTxt.length === 2) dTxt = dTxt[0] + "  " + dTxt[1];
