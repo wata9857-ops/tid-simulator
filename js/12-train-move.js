@@ -556,6 +556,8 @@ Train.prototype.move = function () {
                     this.timer = st.stopTime;
                     // 催しの旅客で乗り降りが増える駅は、停車時分を延ばす (js/36-special-events.js)
                     if (this.game.events) this.timer += this.game.events.dwellExtra(st.name, this);
+                    // 朝夕の混雑時、尼崎の周りで遅れている列車は停車時分を詰める (js/37-amagasaki-prc.js)
+                    if (typeof amaDwellAdjust === "function") this.timer = amaDwellAdjust(this, st.name, this.timer);
                 }
 
                 // 快速列車の場合、降格チェックを実行
