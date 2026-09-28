@@ -79,7 +79,11 @@ const SK_MIN_PER_STATION = 108 / 27;   // 線路図の駅1つあたりの所要 
 const SK_HORIZON = 190 * 60;
 
 /** その駅から大阪までの所要 (秒)。大阪を通らない向きなら null */
-Spawner.prototype.skLeadFrom = function (stName, dir) {
+Spawner.prototype.skLeadFrom = function (stName, dir, atTime) {
+    if (atTime !== undefined) {
+        const learned = SK_LEAD_LEARNED[dir + "|" + stName + "|" + skBand((atTime / 3600) % 24)];
+        if (learned !== undefined) return learned;
+    }
     const L = SK_LEAD[String(dir)];
     if (L && L[stName] !== undefined) return L[stName] * 60;
     const i = STATION_MAP[stName], o = STATION_MAP["大阪"];
@@ -109,19 +113,37 @@ Spawner.prototype.checkShinkaisokuSlots = function (ct) {
                 const origin = this.skPickOrigin(dir, sl.t, ct);
                 if (!origin) { sl.state = "dropped"; this.sk.stats.dropped++; continue; }
                 sl.origin = origin;
-                sl.spawnAt = sl.t - this.skLeadFrom(origin, dir);
+                const lead0 = this.skLeadFrom(origin, dir);
+                sl.spawnAt = sl.t - this.skLeadFrom(origin, dir, sl.t - lead0);
                 sl.state = "queued";
             }
+            /* ★始発駅に編成がいないときは、発車の45分前に車両所から送り込む (railInStock)。
+                 以前は発車の時刻になってから送り込んでいたので、着くのが枠より 20分ほど遅れ、
+                 大阪の時刻も持たずに走って次の枠の新快速の前をふさいでいた (翌朝の上り 2.5本/時)。 */
+            if (sl.state === "queued" && !sl.railed && ct >= sl.spawnAt - 2700 && ct < sl.spawnAt - 600 &&
+                this.game.fleet.poolAt(sl.origin).length === 0 && this.game.ops) {
+                sl.railed = true;
+                const trackId0 = (dir === 1 ? "Up_Out" : "Down_Out");
+                const cfg = { type: "新快速", dir: dir, trackId: trackId0, startName: sl.origin,
+                              dest: this.getDestination("新快速", dir, sl.origin, trackId0),
+                              skTarget: sl.t, skOrigin: sl.origin, skBorn: sl.spawnAt };
+                if (this.game.ops.railInStock(cfg, true)) {
+                    sl.state = "taken"; sl.by = "railin"; this.sk.stats.railin = (this.sk.stats.railin || 0) + 1;
+                    continue;
+                }
+            }
             if (sl.state === "queued" && ct >= sl.spawnAt) {
-                if (ct > sl.spawnAt + 420) { sl.state = "dropped"; this.sk.stats.dropped++; continue; }
+                if (ct > sl.spawnAt + 600) { sl.state = "dropped"; this.sk.stats.dropped++; continue; }
                 this.sk.hold[sl.origin + "|" + dir] = ct + 60;
-                if (this.trySpawn("新快速", dir, sl.origin)) {
+                /* 出す列車に大阪の時刻を持たせる (途中の駅で早すぎれば時間を調整する。skHoldAt)。
+                   ★以前は出したあとに列車の一覧の後ろから探していたが、留置場の予備車を使って出した列車
+                     (一覧の前のほうにいる) には付かず、翌朝の新快速の多くが時間調整なしで走っていた。
+                     生成の設定 (config.skTarget) で渡す。 */
+                this.skPendingTarget = { t: sl.t, origin: sl.origin, spawnAt: ct };
+                const okSpawn = this.trySpawn("新快速", dir, sl.origin);
+                this.skPendingTarget = null;
+                if (okSpawn) {
                     sl.state = "taken"; sl.by = "spawn"; this.sk.stats.spawned++;
-                    // 出した列車に大阪の時刻を持たせる (途中の駅で早すぎれば時間を調整する。skHoldAt)
-                    for (let i = this.game.trains.length - 1; i >= 0 && i >= this.game.trains.length - 40; i--) {
-                        const t = this.game.trains[i];
-                        if (t.type === "新快速" && t.dir === dir && t.startName === sl.origin && !t.skTarget) { t.skTarget = sl.t; break; }
-                    }
                     delete this.sk.hold[sl.origin + "|" + dir];
                 }
             }
@@ -140,7 +162,28 @@ Spawner.prototype.skHoldAt = function (train, stName) {
     const rest = this.skLeadFrom(stName, train.dir);
     if (rest === null) return 0;
     const early = (train.skTarget - rest) - this.game.currentTime;
-    return early > 30 ? Math.min(150, Math.round(early)) : 0;
+    return early > 30 ? Math.min(240, Math.round(early)) : 0;
+};
+
+/**
+ * 枠から出した新快速が大阪を発車したとき、始発駅から大阪までの所要を覚え直す。
+ * ★所要は時間帯で変わる (早朝・深夜は線路が空いていて速い)。昼間に測った値のままだと、
+ *   翌朝の新快速は大阪に枠より 20分近く早く着き、間隔が崩れていた。時間帯 (4区分) ごとに持つ。
+ */
+const SK_LEAD_LEARNED = {};
+function skBand(h) { return (h < 6.5) ? "早朝" : (h < 9.5) ? "朝" : (h < 17) ? "昼" : "夕夜"; }
+Spawner.prototype.skLearn = function (train) {
+    if (!train.skOrigin || !train.skBorn) return;
+    let obs = this.game.currentTime - train.skBorn;
+    if (obs <= 0 || (train.delayTime || 0) > 180) { train.skOrigin = null; return; }
+    /* 留置場の出区待ちで待った時間などが入ることがあるので、実測の基準 (SK_LEAD) の ±20% に収める */
+    const base = (SK_LEAD[String(train.dir)] || {})[train.skOrigin];
+    if (base !== undefined) obs = Math.max(base * 60 * 0.8, Math.min(base * 60 * 1.2, obs));
+    else if (obs > 4 * 3600) { train.skOrigin = null; return; }
+    const key = train.dir + "|" + train.skOrigin + "|" + skBand((train.skBorn / 3600) % 24);
+    const cur = SK_LEAD_LEARNED[key];
+    SK_LEAD_LEARNED[key] = (cur === undefined) ? obs : cur * 0.6 + obs * 0.4;
+    train.skOrigin = null;
 };
 
 /** 枠の始発駅を選ぶ (いまから出して間に合う駅だけ) */
@@ -148,7 +191,12 @@ Spawner.prototype.skPickOrigin = function (dir, slotT, ct) {
     const base = (dir === -1)
         ? [{n:"野洲",w:25}, {n:"米原",w:25}, {n:"長浜",w:12}, {n:"敦賀",w:23}, {n:"近江今津",w:15}]
         : [{n:"姫路",w:80}, {n:"網干",w:20}];
-    const ok = base.filter(o => slotT - this.skLeadFrom(o.n, dir) >= ct - 60);
+    let ok = base.filter(o => slotT - this.skLeadFrom(o.n, dir) >= ct - 60);
+    /* ★編成のいない始発駅は選ばない。編成が無いと車両所からの送り込み (railInStock) になり、
+         着くのが枠より 20分ほど遅れて、次の枠の新快速の前をふさいでいた (翌朝の上り)。 */
+    const stocked = ok.filter(o => this.game.fleet.poolAt(o.n).length > 0 ||
+                                   (DEPOTS[o.n] && DEPOTS[o.n].trains.some(t => t.vehicles && t.vehicles.length)));
+    if (stocked.length) ok = stocked;
     if (!ok.length) return null;
     ok.forEach(o => { o.w *= this.getTimeMultiplier(o.n, "新快速", dir, true, ct); });
     const tot = ok.reduce((a, o) => a + o.w, 0);
@@ -171,6 +219,7 @@ Spawner.prototype.skHeld = function (stName, dir) {
 Spawner.prototype.skClaimForTurnback = function (train, stName) {
     if (serviceDisrupted(this.game)) return true;
     const ct = this.game.currentTime;
+
     if (!this.sk) this.checkShinkaisokuSlots(ct);
     const newDir = -train.dir;
     const lead = this.skLeadFrom(stName, newDir);
@@ -560,6 +609,11 @@ Spawner.prototype.trySpawn = function (type, dir, forcedStart) {
         }
 
         const t = { type, dir, trackId, dest: dest, startName };
+        if (forcedStart && this.skPendingTarget) {
+            t.skTarget = this.skPendingTarget.t;
+            t.skOrigin = this.skPendingTarget.origin;
+            t.skBorn = this.skPendingTarget.spawnAt;
+        }
         
         if (type === "貨物" || type === "回送") {
             t.nextAction = "depot"; // 貨物と回送は折り返さず必ず消滅させる

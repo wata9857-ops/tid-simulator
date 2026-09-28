@@ -643,7 +643,7 @@ class OperationsManager {
      * いちばん近い車両所から回送を1本出し、始発駅で営業列車に変える
      * (serviceChange)。手配できたら true。
      */
-    railInStock(config) {
+    railInStock(config, early) {
         if (!config || config.vehicles) return false;
         if (config.type === "貨物" || config.type === "特急") return false;
         if (config.serviceChange) return false;          // 二重に付けない
@@ -685,7 +685,8 @@ class OperationsManager {
             name: this.deadheadNo(), dutyName: serviceNo,
             vehicles: vs,
             serviceChange: { at: startName, type: config.type,
-                             dest: config.dest, name: serviceNo }
+                             dest: config.dest, name: serviceNo,
+                             skTarget: config.skTarget, skOrigin: config.skOrigin, skBorn: config.skBorn }
         };
         this.asRevenue(scfg);
         const ok = this.game.addTrain(scfg);

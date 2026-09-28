@@ -35,6 +35,8 @@ class Train {
         this.delayTime = 0; // ★追加: 累積遅延時間（秒）
         this.hasDeparted = false; // ★追加: 始発駅を一度でも出発したかのフラグ
         this.depotOutConfig = null; // ★追加: 留置場からの出区設定
+        // 新快速の枠 (js/08-spawner-mainline.js の checkShinkaisokuSlots) の大阪の時刻
+        if (config.skTarget) { this.skTarget = config.skTarget; this.skOrigin = config.skOrigin; this.skBorn = config.skBorn; }
         this.isFinalStop = false; // ★修正: 終着駅フラグの明示的初期化
         
         
@@ -202,6 +204,10 @@ class Train {
                 // ★修正: 出区前のもう少し早い段階から表示するため、基本の待機時間を 5〜8分(300〜480秒) に延ばす
                 // ★待ち時間の上限 (js/14-train-turnback.js と同じ理由)
                 this.timer = Math.max(300 + Math.random() * 180, Math.min(maxTimer + 120, 660)); 
+                /* ★新快速の枠の列車 (skTarget) は出区待ちの列に並ばず、すぐ出る。
+                     並ぶと 5〜11分遅れて出て、2日目の朝 (留置場に出区待ちがいる) の上りの新快速が
+                     大阪の枠から 30分近く遅れていた。 */
+                if (this.skTarget) this.timer = 15;
                 /* 出区の準備をする車両所 (向日町操) は、準備の時間ぶん前もって手配する。
                    手配した時点で着発線に据え付け、20〜30分の点検・ブレーキ試験のあと発車する。 */
                 if (depHere0.prep) {

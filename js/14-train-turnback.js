@@ -31,6 +31,12 @@ Train.prototype.executeTurnBack = function () {
             this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
             this.type = this.serviceChange.type;
             this.dest = this.serviceChange.dest;
+            // 新快速の枠の送り込み: 大阪の時刻を引き継ぐ (js/08-spawner-mainline.js)
+            if (this.serviceChange.skTarget) {
+                this.skTarget = this.serviceChange.skTarget;
+                this.skOrigin = this.serviceChange.skOrigin;
+                this.skBorn = this.game.currentTime;
+            }
             this.trainNo = this.serviceChange.name;
             // ★運用名も引き継ぐ。特急を終えて回送に変わる場合は、直前の特急名を
             //   運用名として残し、特急編成がそのまま車両所へ戻れるようにする。

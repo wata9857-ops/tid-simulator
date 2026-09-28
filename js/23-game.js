@@ -192,6 +192,7 @@ class GameSystem {
                 reserveTrain.dutyName = dutyName || reserveTrain.trainNo;
                 reserveTrain.nextAction = config.nextAction || "turnback";
                 
+                if (config.skTarget) { reserveTrain.skTarget = config.skTarget; reserveTrain.skOrigin = config.skOrigin; reserveTrain.skBorn = config.skBorn; }
                 reserveTrain.depotOutConfig = { type: reserveTrain.type, dest: reserveTrain.dest,
                     trainNo: reserveTrain.trainNo, dir: reserveTrain.dir, dutyName: reserveTrain.dutyName };
                 
@@ -201,6 +202,7 @@ class GameSystem {
                 });
                 // ★待ち時間の上限 (js/14-train-turnback.js と同じ理由)
                 reserveTrain.timer = Math.max(300 + Math.random() * 180, Math.min(maxTimer + 120, 660));
+                if (config.skTarget) reserveTrain.timer = 15;   // 新快速の枠の列車は出区待ちの列に並ばない
                 
                 return true; 
             }
