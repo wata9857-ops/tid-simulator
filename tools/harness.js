@@ -152,7 +152,8 @@ const sandbox = {
     prompt: () => null,
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
     __alerts: alerts,
-    __elements: els
+    __elements: els,
+    __argv: process.argv.slice()
 };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;

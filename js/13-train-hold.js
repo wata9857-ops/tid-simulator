@@ -415,7 +415,7 @@ Train.prototype.checkHold = function (isStarting) {
                                                  canEnter = hereBlk.lanes.some((x, li) => x === null && (!pl || !pl.length || pl.indexOf(li) >= 0) &&
                                                                                     (!needPf || laneHasPlatform(currentStName, otherTarget, li)));
                                              }
-                                             if (canEnter && l.stuckTime < 480) {
+                                             if (canEnter && l.stuckTime < 480 && (typeof amaYieldOk !== "function" || amaYieldOk(this, l, k))) {
                                                   yieldToHigher = true;
                                                         }
                                                     }
@@ -653,6 +653,8 @@ Train.prototype.checkHold = function (isStarting) {
                                                 if (l.stuckTime > 30) continue; 
                                                 if (k >= UNITS_PER_STATION * 1.5 && (l.state === "holding" || l.stuckTime > 15)) continue;
                                                 if (k >= UNITS_PER_STATION * 2.5 && l.stuckTime > 0) continue;
+                                                // 尼崎は、見込みの時間の内に着く優等列車だけを待つ (js/37-amagasaki-prc.js)
+                                                if (typeof amaYieldOk === "function" && !amaYieldOk(this, l, k)) continue;
                                                 
                                                 approaching = true;
                                                 if (k <= 2) veryCloseHigherPriority = true; // ★追加: 同一駅〜手前2ブロック以内なら超接近と判定

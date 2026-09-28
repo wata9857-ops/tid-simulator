@@ -558,6 +558,8 @@ Train.prototype.move = function () {
                     if (this.game.events) this.timer += this.game.events.dwellExtra(st.name, this);
                     // 新快速の時間調整 (大阪の時刻より早く走っているとき。js/08-spawner-mainline.js の skHoldAt)
                     if (this.skTarget) this.timer += this.game.spawner.skHoldAt(this, st.name);
+                    // 朝夕の混雑時、尼崎の周りで遅れている列車は停車時分を詰める (js/37-amagasaki-prc.js)
+                    if (typeof amaDwellAdjust === "function") this.timer = amaDwellAdjust(this, st.name, this.timer);
                 }
 
                 // 快速列車の場合、降格チェックを実行
