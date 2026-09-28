@@ -767,3 +767,84 @@ const ServiceRules = {
         return vehicles.map(v => v.id).join("+");
     }
 };
+
+/* ------------------------------------------------------------------ ふだんのダイヤに無い列車 (利用者の指摘 3.)
+
+   ■ 何が起きていたか
+     列車の生成・折り返し・出区計画のそれぞれが行先の表を持っていて、組み合わせによっては
+       学研都市線の 快速 四条畷行き・快速 西明石行き (JR神戸線へ直通する快速)
+       JR宝塚線の 快速 京都行き (大阪より東へ行く快速)
+       琵琶湖線の 普通 京都行き (昼間)
+     のような、実際の時刻表 (京橋・同志社前・大阪・草津・京都) に無い列車ができていた。
+   ■ どうするか
+     ふだんのダイヤ (輸送障害・見合わせ・段階開通の抑止が無いとき) だけ、ここで直す。
+     障害のときは運転整理で実際にこうした列車ができるので、そのままにする。
+       ・学研都市線・JR東西線の快速で、行先が 京橋〜四条畷 か本線 (JR神戸線など) … 普通にする
+         (JR東西線の中は快速も各駅に停まり、JR神戸線へ直通するのは普通)
+       ・JR宝塚線の快速で、行先が大阪より東の本線 … 大阪止まりにする (丹波路快速は大阪止まり)
+       ・琵琶湖線 (京都より東) から来る普通の京都行き … 時刻表にある時間帯のほかは高槻行きにする */
+const RAPID_NOT_TERMINAL_TOZAI = ["京橋", "鴫野", "放出", "徳庵", "鴻池新田", "住道", "野崎", "四条畷"];
+
+/** いま輸送障害・見合わせ・段階開通の抑止・指令の抑止があるか (ふだんのダイヤでない) */
+function serviceDisrupted(game) {
+    if (!game) return false;
+    if (game.isEmergency) return true;
+    if (game.incidents && game.incidents.active && game.incidents.active.length) return true;
+    const tm = game.trackMgr;
+    if (!tm) return false;
+    if (tm.manualSuspensions && tm.manualSuspensions.length) return true;
+    if (tm.recoveryHolds && tm.recoveryHolds.length) return true;
+    if (tm.suspendedSections) for (const k in tm.suspendedSections) {
+        if (tm.suspendedSections[k] && tm.suspendedSections[k].length) return true;
+    }
+    return false;
+}
+
+/** 琵琶湖線の普通が京都止まりになる時間帯 (添付の草津駅の時刻表) */
+function biwakoKyotoTermHour(h) {
+    return (h < 6.0) || (h >= 7.9 && h < 8.6) || (h >= 17.5 && h < 18.2) || (h >= 20.6 && h < 21.0) || (h >= 23.3);
+}
+
+/**
+ * ふだんのダイヤに無い組み合わせなら、直し方 ({type} か {dest}) を返す。無ければ null。
+ *   startName … その列車 (折り返しなら折り返す駅) の始発駅、trackId … 出ていく線路
+ */
+function unrealisticService(type, startName, trackId, dest, dir, h) {
+    if (!dest || !type) return null;
+    const tid = trackId || "";
+    const mainSt = (n) => STATION_MAP[n] !== undefined && stationBranchLine(n) === null;
+    const onTozai = /^Tozai/.test(tid) || stationBranchLine(startName) === "tozai";
+    const onFukuchi = /^Fukuchi/.test(tid) || stationBranchLine(startName) === "fukuchi";
+    if (type === "快速") {
+        if (RAPID_NOT_TERMINAL_TOZAI.indexOf(dest) >= 0 && (onTozai || onFukuchi)) return { type: "普通", why: "快速 " + dest + "行き" };
+        if (onTozai && mainSt(dest)) return { type: "普通", why: "学研都市線・JR東西線の快速 " + dest + "行き" };
+        if (onFukuchi && mainSt(dest) && STATION_MAP[dest] > STATION_MAP["大阪"]) return { dest: "大阪", why: "JR宝塚線の快速 " + dest + "行き" };
+    }
+    if (type === "普通" && dir === -1 && dest === "京都" && mainSt(startName) &&
+        STATION_MAP[startName] > STATION_MAP["京都"] && !/Kosei/.test(tid) && stationBranchLine(startName) !== "kosei" &&
+        h !== undefined && !biwakoKyotoTermHour(h)) {
+        return { dest: "高槻", why: "琵琶湖線の普通 京都行き" };
+    }
+    return null;
+}
+
+/**
+ * 列車の設定 (addTrain に渡すもの・serviceChange) をふだんのダイヤの形に直す。直したら true。
+ * 行先を変えるときは、その編成で走れるか (canServe) を確かめ、走れなければ直さない。
+ */
+function normalizeServiceConfig(game, cfg, startName, trackId, vehicles) {
+    if (!cfg || serviceDisrupted(game)) return false;
+    if (cfg.specialEvent || cfg.special) return false;
+    const h = (game.currentTime / 3600) % 24;
+    const fix = unrealisticService(cfg.type, startName, trackId, cfg.dest, cfg.dir, h);
+    if (!fix) return false;
+    if (fix.type) {
+        cfg.type = fix.type;
+    } else if (fix.dest) {
+        if (vehicles && vehicles.length && game.fleet &&
+            !game.fleet.canServe(vehicles, startName, cfg.type, trackId, fix.dest, null)) return false;
+        cfg.dest = fix.dest;
+    }
+    game.serviceFixes = (game.serviceFixes || 0) + 1;
+    return true;
+}

@@ -17,6 +17,8 @@ Spawner.prototype.checkIntervalSpawns = function (ct) {
             const dir = (dirName === "Up") ? 1 : -1;
 
             for (let type in INTERVALS) {
+                // 新快速は大阪の発車時刻で組む (下の checkShinkaisokuSlots)
+                if (type === "新快速") continue;
                 // 下り特急のうち、はまかぜ・こうのとりは向日町からの出区で別に走らせる
                 if (dirName === "Down" && type === "特急") {
                     if (ct >= this.nextMukoHamakazeTime) { this.spawnTokkyu(dirName, "hamakaze"); this.nextMukoHamakazeTime += 5400; }
@@ -47,6 +49,145 @@ Spawner.prototype.checkIntervalSpawns = function (ct) {
                 }
             }
         });
+        this.checkShinkaisokuSlots(ct);
+};
+
+/* ------------------------------------------------------------------ 新快速の組み方 (利用者の指摘 4.)
+
+   ■ 何が起きていたか
+     新快速は「始発駅を出る時刻」を毎時同じ分にそろえていた。ところが始発駅が
+     野洲・米原・長浜・敦賀・近江今津 (下り)、姫路・網干 (上り) と毎回ちがい、大阪までの所要が
+     野洲 約1時間50分 〜 敦賀 約2時間45分 と1時間近くちがうので、大阪では
+     「ほとんど来ない時間」と「1駅おきに続けて来る時間」ができていた。
+     しかも朝の 7〜9時に大阪へ着く列車は 5〜6時 (早朝の少ない本数) に出た列車なので、
+     朝ラッシュの大阪の新快速は 1〜1.5本/時 しかなかった (実際は 4〜5本/時)。
+     上りは、姫路・網干の着発線のすぐ先が朝の普通・快速で埋まり、出せたのは試みの 1割以下だった。
+   ■ どうするか
+     1. 新快速の時刻は「大阪を発車する時刻」で決める (TIMETABLE の新快速は大阪の本数)。
+        大阪の時刻 (枠) ごとに始発駅を決め、その駅から大阪までの所要 (SK_LEAD) だけ前に出す。
+     2. 終点で折り返す新快速は、大阪に着くころの空いている枠を受け持つ。
+        受け持つ枠が無い (その時間の本数が足りている・深夜で枠が無い) ときは折り返さず運用を終える。
+     3. 枠の時刻が来た新快速が出られないあいだ (最長5分)、その始発駅から同じ向きに出る
+        ほかの列車 (普通・快速・出区) を待たせる。
+     4. 出られないまま5分過ぎた枠は捨てる (遅れて出して続行にしない)。 */
+/* 始発駅から大阪までの所要 (分)。実測した値 (種 20260922、ふだんのダイヤの中央値)。 */
+const SK_LEAD = {
+    "-1": { "野洲": 113, "米原": 150, "長浜": 160, "敦賀": 165, "近江今津": 141 },
+    "1":  { "姫路": 110, "網干": 132 }
+};
+const SK_MIN_PER_STATION = 108 / 27;   // 線路図の駅1つあたりの所要 (姫路〜大阪 27駅)
+const SK_HORIZON = 190 * 60;
+
+/** その駅から大阪までの所要 (秒)。大阪を通らない向きなら null */
+Spawner.prototype.skLeadFrom = function (stName, dir) {
+    const L = SK_LEAD[String(dir)];
+    if (L && L[stName] !== undefined) return L[stName] * 60;
+    const i = STATION_MAP[stName], o = STATION_MAP["大阪"];
+    if (i === undefined || stationBranchLine(stName)) return null;
+    if ((o - i) * dir < 0) return null;
+    return Math.abs(o - i) * SK_MIN_PER_STATION * 60;
+};
+
+Spawner.prototype.checkShinkaisokuSlots = function (ct) {
+    if (!this.sk) this.sk = { "1": { next: null, slots: [] }, "-1": { next: null, slots: [] }, hold: {},
+                              stats: { spawned: 0, turnback: 0, dropped: 0 } };
+    for (const dir of [1, -1]) {
+        const dirName = dir === 1 ? "Up" : "Down";
+        const S = this.sk[String(dir)];
+        const phase = ttPhase("新快速", dirName);
+        if (S.next === null) S.next = ttNextTime(ct, 4, phase);
+        // 1. 大阪の時刻の枠を先まで作る
+        let guard = 0;
+        while (S.next <= ct + SK_HORIZON && guard++ < 50) {
+            const per = ttPerHour("main", dirName, "新快速", (S.next / 3600) % 24);
+            if (per > 0) S.slots.push({ t: S.next, state: "free", step: 3600 / per });
+            S.next = ttNextTime(S.next, per > 0 ? per : 4, phase);
+        }
+        // 2. 枠ごとに始発駅を決め、3. 出す
+        for (const sl of S.slots) {
+            if (sl.state === "free" && ct >= sl.t - SK_HORIZON + 300) {
+                const origin = this.skPickOrigin(dir, sl.t, ct);
+                if (!origin) { sl.state = "dropped"; this.sk.stats.dropped++; continue; }
+                sl.origin = origin;
+                sl.spawnAt = sl.t - this.skLeadFrom(origin, dir);
+                sl.state = "queued";
+            }
+            if (sl.state === "queued" && ct >= sl.spawnAt) {
+                if (ct > sl.spawnAt + 420) { sl.state = "dropped"; this.sk.stats.dropped++; continue; }
+                this.sk.hold[sl.origin + "|" + dir] = ct + 60;
+                if (this.trySpawn("新快速", dir, sl.origin)) {
+                    sl.state = "taken"; sl.by = "spawn"; this.sk.stats.spawned++;
+                    // 出した列車に大阪の時刻を持たせる (途中の駅で早すぎれば時間を調整する。skHoldAt)
+                    for (let i = this.game.trains.length - 1; i >= 0 && i >= this.game.trains.length - 40; i--) {
+                        const t = this.game.trains[i];
+                        if (t.type === "新快速" && t.dir === dir && t.startName === sl.origin && !t.skTarget) { t.skTarget = sl.t; break; }
+                    }
+                    delete this.sk.hold[sl.origin + "|" + dir];
+                }
+            }
+        }
+        S.slots = S.slots.filter(sl => sl.t > ct - 3600);
+    }
+};
+
+/* 時間を調整する駅 (新快速の停車駅)。大阪の時刻より早く走っている新快速は、ここで発車を待つ。
+   実際のダイヤでも、主な駅の停車時分で前後の間隔をそろえている。 */
+const SK_TIMING_STATIONS = { "1": ["加古川", "明石", "三ノ宮", "尼崎"], "-1": ["草津", "京都", "高槻"] };
+/** その駅で、大阪の時刻に合わせるために延ばす停車時分 (秒) */
+Spawner.prototype.skHoldAt = function (train, stName) {
+    if (!train.skTarget || serviceDisrupted(this.game)) return 0;
+    if ((SK_TIMING_STATIONS[String(train.dir)] || []).indexOf(stName) < 0) return 0;
+    const rest = this.skLeadFrom(stName, train.dir);
+    if (rest === null) return 0;
+    const early = (train.skTarget - rest) - this.game.currentTime;
+    return early > 30 ? Math.min(150, Math.round(early)) : 0;
+};
+
+/** 枠の始発駅を選ぶ (いまから出して間に合う駅だけ) */
+Spawner.prototype.skPickOrigin = function (dir, slotT, ct) {
+    const base = (dir === -1)
+        ? [{n:"野洲",w:25}, {n:"米原",w:25}, {n:"長浜",w:12}, {n:"敦賀",w:23}, {n:"近江今津",w:15}]
+        : [{n:"姫路",w:80}, {n:"網干",w:20}];
+    const ok = base.filter(o => slotT - this.skLeadFrom(o.n, dir) >= ct - 60);
+    if (!ok.length) return null;
+    ok.forEach(o => { o.w *= this.getTimeMultiplier(o.n, "新快速", dir, true, ct); });
+    const tot = ok.reduce((a, o) => a + o.w, 0);
+    let r = Math.random() * tot;
+    for (const o of ok) { r -= o.w; if (r < 0) return o.n; }
+    return ok[ok.length - 1].n;
+};
+
+/** 枠の時刻が来た新快速のために、その駅から同じ向きに出るほかの列車を待たせているか */
+Spawner.prototype.skHeld = function (stName, dir) {
+    if (!this.sk || !stName) return false;
+    const until = this.sk.hold[stName + "|" + dir];
+    return !!until && this.game.currentTime < until;
+};
+
+/**
+ * 終点で折り返す新快速が、大阪に着くころの枠を受け持てるか。受け持てたら true。
+ * 障害のときは枠を見ない (運転整理として折り返す)。
+ */
+Spawner.prototype.skClaimForTurnback = function (train, stName) {
+    if (serviceDisrupted(this.game)) return true;
+    const ct = this.game.currentTime;
+    if (!this.sk) this.checkShinkaisokuSlots(ct);
+    const newDir = -train.dir;
+    const lead = this.skLeadFrom(stName, newDir);
+    if (lead === null) return true;                     // 大阪を通らない (湖西線の中など): 枠と関係ない
+    const eta = ct + lead + 300;
+    const S = this.sk[String(newDir)];
+    let best = null, bd = Infinity;
+    for (const sl of S.slots) {
+        if (sl.state !== "free" && !(sl.state === "queued" && ct < sl.spawnAt)) continue;
+        const d = Math.abs(sl.t - eta);
+        if (d <= sl.step * 0.5 && d < bd) { bd = d; best = sl; }
+    }
+    if (!best) return false;
+    best.state = "taken"; best.by = "turnback";
+    train.skTarget = best.t;
+    this.sk.stats.turnback++;
+    return true;
 };
 
 Spawner.prototype.getTimeMultiplier = function (st, type, dir, isStart, ct) {
@@ -137,10 +278,17 @@ Spawner.prototype.spawnTokkyu = function (dirName, forcedType = null) {
         if(t) this.game.addTrain(t);
 };
 
-Spawner.prototype.trySpawn = function (type, dir) {
+/** 生成できなかった理由を数える (検証用。tools/check_patterns.js) */
+Spawner.prototype.noteSpawnFail = function (type, dir, st, why) {
+    const k = type + (dir === 1 ? "上" : "下") + ":" + (st || "") + ":" + why;
+    this.spawnFail = this.spawnFail || {};
+    this.spawnFail[k] = (this.spawnFail[k] || 0) + 1;
+};
+
+Spawner.prototype.trySpawn = function (type, dir, forcedStart) {
         // ★追加: 22時以降の段階的な優等列車の削減
         let hOfDay = (this.game.currentTime / 3600) % 24;
-        if (hOfDay >= 22.0 || hOfDay < 4.0) {
+        if (!forcedStart && (hOfDay >= 22.0 || hOfDay < 4.0)) {
             if (hOfDay >= 22.5 && type === "新快速") return false; // 22:30以降 新快速生成停止
             if (hOfDay >= 23.0 && type === "快速") return false;   // 23:00以降 快速生成停止
             if (hOfDay >= 23.0 && type === "特急") return false;   // 23:00以降 特急生成停止
@@ -150,7 +298,8 @@ Spawner.prototype.trySpawn = function (type, dir) {
            ★以前は新快速だけ「18本まで」という決め打ちの上限があり、
              実際の時刻表 (片道8本/時) に足りなかった。
              いまは時刻表から出した本数を種別ごとに見ている。 */
-        if (ttOverBudget(this.game, "main", type)) return false;
+        /* 新快速の枠 (checkShinkaisokuSlots) から出すときは、本数は枠で決まっているので目安を見ない */
+        if (!forcedStart && ttOverBudget(this.game, "main", type)) { this.noteSpawnFail(type, dir, "", "在線目安"); return false; }
         let trackId = "";
         if (type === "貨物" || type === "回送") trackId = (dir===1) ? "Up_Out" : "Down_Out";
         else trackId = (type==="普通"||type==="快速") ? (dir===1?"Up_In":"Down_In") : (dir===1?"Up_Out":"Down_Out");
@@ -198,7 +347,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
                 }
                 return [{n:"姫路",w:100}];
             };
-            let options = getStartOptions();
+            let options = forcedStart ? [{n: forcedStart, w: 1}] : getStartOptions();
             let totalW = 0;
             options.forEach(o => {
                 o.w *= this.getTimeMultiplier(o.n, type, dir, true, this.game.currentTime);
@@ -259,6 +408,8 @@ Spawner.prototype.trySpawn = function (type, dir) {
                これが西明石のまわりで新快速が続けて3本並ぶ主な原因だった。
                Train.initPosition() と同じ読み替えを使う。 */
             let physName = stName;   // 姫路より西・学研都市線も線路図に入ったので読み替えは要らない
+            // 新快速の枠の時刻が来ているあいだは、その駅から同じ向きにほかの列車を出さない
+            if (type !== "新快速" && this.skHeld(stName, dir)) { this.noteSpawnFail(type, dir, stName, "新快速待ち"); continue; }
 
             if (["姫路","加古川"].includes(physName)) checkTrackId = checkTrackId.replace("In", "Out");
             const blks = this.game.trackMgr.blocks[checkTrackId];
@@ -269,7 +420,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
             if (!startBlk) { availableCandidates.push(stName); continue; }
 
             // ① 着発線の空き
-            if (!startBlk.lanes.some(l => l === null)) continue;
+            if (!startBlk.lanes.some(l => l === null)) { this.noteSpawnFail(type, dir, stName, "着発線"); continue; }
 
             // ② 進行方向のすぐ先が空いているか
             let clear = true;
@@ -280,16 +431,19 @@ Spawner.prototype.trySpawn = function (type, dir) {
                 if (b.x === -1000) break;
                 if (b.lanes.some(l => l !== null)) { clear = false; break; }
             }
-            if (!clear) continue;
+            /* 新快速の枠 (forcedStart) は、着発線が空いていれば出して、そこで信号を待つ
+               (実際の始発列車と同じ)。先の閉塞で止めると、通過列車の多い野洲・姫路では
+               枠の半分以上が出せずに捨てられていた。 */
+            if (!clear && !forcedStart) { this.noteSpawnFail(type, dir, stName, "続行"); continue; }
 
             /* ③ 同じ種別が近くを走っていないか (団子を作らない)。
                実際の続行間隔 (新快速 約7.5分 = 約4駅) より内側にとる。
                詳しくは js/16-train-adjust.js の「団子を作らない」を参照。 */
-            const gap = CONVOY_SPAWN_GAP[type];
+            const gap = forcedStart ? 1.5 : CONVOY_SPAWN_GAP[type];
             if (gap !== undefined) {
                 const n = countSameTypeAhead(this.game, checkTrackId, startBlk.index,
                                              dir, type, gap, null);
-                if (n > 0) continue;
+                if (n > 0) { this.noteSpawnFail(type, dir, stName, "同種別"); continue; }
             }
             availableCandidates.push(stName);
         }
@@ -368,11 +522,12 @@ Spawner.prototype.trySpawn = function (type, dir) {
                 // ① 昼間の閑散時間帯でも本数を確保するため、普通列車の干渉チェック距離を「2.5駅(約8ブロック)」に短縮
                 let scanDist = (type === "普通") ? Math.ceil(UNITS_PER_STATION * 2.5) : 6;
                 if (type === "特急") scanDist = 12;
+                if (forcedStart) scanDist = 0;       // 新快速の枠: 上の「着発線が空いているか」だけで出す
                 
                 // ① 前方列車のチェック（既存の被り防止）
                 for(let k=1; k<=scanDist; k++) {
                     let idx = startBlk.index + (dir * k);
-                    if(idx >= 0 && idx < blks.length && blks[idx].lanes.some(l => l !== null)) return false;
+                    if(idx >= 0 && idx < blks.length && blks[idx].lanes.some(l => l !== null)) { this.noteSpawnFail(type, dir, startName, "前方"); return false; }
                 }
                 
                 // ② 追加：満線回避ロジック（後方から優等列車が接近している場合は生成キャンセル）
@@ -390,7 +545,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
                             }
                         }
                     }
-                    if (approachingHigher) return false;
+                    if (approachingHigher) { this.noteSpawnFail(type, dir, startName, "後続優等"); return false; }
                 }
             }
         }
@@ -400,6 +555,7 @@ Spawner.prototype.trySpawn = function (type, dir) {
         
         // ★追加：目的地決定後、尼崎合流地点での高度なETA干渉チェック（東西・福知山線との予測譲り合い）
         if (this.willConflictAtAmagasaki(startName, dest, type, dir)) {
+            this.noteSpawnFail(type, dir, startName, "尼崎");
             return false; // 被る場合は生成をスキップして次回のインターバルへ回す
         }
 
@@ -648,8 +804,17 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                              京都で折り返して琵琶湖線へ戻る編成が無いと、網干の 223系・225系が
                              JR神戸線へ流れ出たままになり、京都〜野洲の普通が薄くなった
                              (明石の 207系・321系は京都より東の運用を持たないので、代わりにならない)。 */
+                        /* ★京都止まりは、添付の草津駅の時刻表 (京都・大阪方面) にある時間帯だけにする
+                             (5時台・8時台・17〜18時台・20時台後半・23時台。1日9本ほど)。
+                             ほかの時間の琵琶湖線の普通は高槻・西明石方面へ直通する
+                             (時刻表の ▼京都から快速・●高槻から快速 の列車)。
+                             以前は一日じゅう半分を京都止まりにしていた (利用者の指摘 3.)。 */
                         if (stIdx !== undefined && stIdx > STATION_MAP["京都"]) {
-                            return [{d:"京都",w:50}, {d:"高槻",w:15}, {d:"西明石",w:20}, {d:"大阪",w:10}, {d:"須磨",w:5}];
+                            const hk = (this.game.currentTime / 3600) % 24;
+                            const kyotoTerm = (hk < 6.0) || (hk >= 7.9 && hk < 8.6) || (hk >= 17.5 && hk < 18.2) ||
+                                              (hk >= 20.6 && hk < 21.0) || (hk >= 23.3 || hk < 4.0);
+                            if (kyotoTerm) return [{d:"京都",w:60}, {d:"高槻",w:15}, {d:"西明石",w:25}];
+                            return [{d:"高槻",w:30}, {d:"西明石",w:45}, {d:"須磨",w:10}, {d:"大阪",w:15}];
                         }
                         if (stIdx !== undefined && stIdx > STATION_MAP["高槻"]) {
                             return [{d:"西明石",w:45}, {d:"須磨",w:22}, {d:"大阪",w:17},
@@ -664,6 +829,15 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                 if (type === "新快速") {
                     if (koseiStations.includes(startName)) return [{d:"敦賀",w:91}, {d:"近江今津",w:9}];
                     return [{d:"野洲",w:25}, {d:"米原",w:25}, {d:"長浜",w:12}, {d:"敦賀",w:23}, {d:"近江今津",w:15}];
+                }
+                /* ★JR宝塚線から上る快速 (新三田・宝塚・塚口で折り返した列車)。
+                     丹波路快速は大阪止まり、JR東西線へ入る快速は学研都市線の同志社前・木津 (と松井山手) へ行く。
+                     以前はこの場合分けが無く、下の本線の上り快速の表 (米原・野洲・京都・高槻) から選んでいたので、
+                     「JR宝塚線の快速 京都行き」が走っていた (利用者の指摘 3.)。
+                     塚口で折り返すのは学研都市線から来た区間快速なので、学研都市線へ戻る。 */
+                if (type === "快速" && (stationBranchLine(startName) === "fukuchi" || /^Fukuchi/.test(trackId || ""))) {
+                    if (startName === "塚口") return [{d:"同志社前",w:3}, {d:"木津",w:1}];
+                    return [{d:"大阪",w:34}, {d:"同志社前",w:24}, {d:"木津",w:8}, {d:"松井山手",w:2}];
                 }
                 if (type === "快速") {
                     if (startName === "高槻") return [{d:"米原",w:20}, {d:"野洲",w:20}, {d:"京都",w:40}, {d:"草津",w:20}];

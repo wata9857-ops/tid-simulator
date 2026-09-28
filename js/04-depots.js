@@ -155,6 +155,26 @@ function depotRemove(train) {
     }
 }
 
+/**
+ * その留置場に出区待ちの列車をもう1本置けるか。
+ * ★入区した列車は、編成を在庫に返したあとも「空の予備の枠」(編成も出区予定も無い) として
+ *   在線リストに残る。枠の少ない留置場 (祝園の2本) では、朝に入った空の枠が一日じゅう
+ *   枠を埋め、出区計画が「満線」と見て祝園の編成を一度も出していなかった (利用者の指摘 1.)。
+ *   満線のときは、空の枠を1つ片付けてから判定する。
+ */
+function depotHasRoom(name, limit) {
+    const dep = DEPOTS[depotKeyOf(name)];
+    if (!dep) return false;
+    const cap = (limit === undefined) ? dep.capacity : limit;
+    while (dep.trains.length >= cap) {
+        const empty = dep.trains.find(t => t && t.state === "in_depot" && !t.depotOutConfig &&
+                                           !t.forceDepotOut && !(t.vehicles && t.vehicles.length));
+        if (!empty) break;
+        empty.remove();
+    }
+    return dep.trains.length < cap;
+}
+
 /** 消滅済み・すでに本線へ出た列車を在線リストから取り除く。毎Tick呼ぶ。 */
 function depotPrune() {
     for (const name in DEPOTS) {

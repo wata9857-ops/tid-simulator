@@ -216,6 +216,28 @@ globalThis.__run = function (seconds, onTick) {
     }
 };
 
+/**
+ * いま「ふだんのダイヤ」ではない状態か (輸送障害・運転見合わせ・段階開通の抑止・指令の抑止)。
+ * 間隔の検証は、この状態のとき (と、終わってから settle 秒のあいだ) の計測を不合格にしない。
+ * ★利用者の指摘: 見合わせや大きな遅れで間隔が開くのは当然なので、そのときに
+ *   ふだんのダイヤのしきい値を当てはめて落とさない。
+ */
+globalThis.__disruptedUntil = 0;
+globalThis.__disrupted = function (settle) {
+    const g = game, tm = g.trackMgr;
+    const now = g.currentTime;
+    let on = false;
+    if (g.incidents && g.incidents.active && g.incidents.active.length) on = true;
+    if (!on && tm.manualSuspensions && tm.manualSuspensions.length) on = true;
+    if (!on && tm.recoveryHolds && tm.recoveryHolds.length) on = true;
+    if (!on && tm.suspendedSections) {
+        for (const k in tm.suspendedSections) if (tm.suspendedSections[k] && tm.suspendedSections[k].length) { on = true; break; }
+    }
+    if (!on && g.isEmergency) on = true;
+    if (on) globalThis.__disruptedUntil = now + (settle === undefined ? 1800 : settle);
+    return on || now < globalThis.__disruptedUntil;
+};
+
 // 検証スクリプトからクラス・定数を参照できるように公開する
 globalThis.__api = { game, Train, Vehicle, CONFIG, DEPOTS, STATIONS, STATION_MAP, EXCEL_VEHICLES };
 `, ctxObj, { filename: 'harness-bootstrap.js' });

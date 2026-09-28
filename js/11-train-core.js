@@ -187,7 +187,7 @@ class Train {
         // 線路図の外から入ってくる特急 (新三田から入るこうのとり) は留置場を通さず、線路の上に出す
         const fromBeyond = this.type === "特急" && this.trainNo && this.trainNo.indexOf("こうのとり") >= 0;
         if (this.type !== "貨物" && !fromBeyond && depHere0 && !depHere0.turnbackFirst &&
-            depHere0.trains.length < depHere0.capacity) {
+            depotHasRoom(actualStart)) {
             let hOfDay = (this.game.currentTime / 3600) % 24;
             // 朝など生成可能な時間帯 (深夜帯はスキップ)
             if (hOfDay >= 4.0 && hOfDay < 23.0) {

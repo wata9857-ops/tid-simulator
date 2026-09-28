@@ -67,9 +67,13 @@ function measureGap(sc) {
 // 4:00 -> 10:00 まで進めてから、10:00〜16:00 を計測する
 __run(6 * 3600);
 const ticksPerMin = 60 / CONFIG.TICK_SEC;
+let disruptedSamples = 0;
 for (let i = 0; i < 6 * 3600 / CONFIG.TICK_SEC; i++) {
     game.update();
     if (i % (ticksPerMin * 5) !== 0) continue;   // 5分おきに測る
+    /* ★見合わせ・大きな障害のあいだ (と、終わってから30分) は、間隔が開くのが当然なので
+         ふだんのダイヤのしきい値では判定しない (利用者の指摘)。数だけ数えて出す。 */
+    if (__disrupted(1800)) { disruptedSamples++; continue; }
     SECTIONS.forEach((sc, k) => {
         const g = measureGap(sc);
         if (g === null) return;
@@ -81,6 +85,7 @@ for (let i = 0; i < 6 * 3600 / CONFIG.TICK_SEC; i++) {
 
 head('昼間(10:00〜16:00)の列車間隔');
 console.log('  区間ごとの「同じ向きの列車がいない区間の長さ」(駅数)');
+if (disruptedSamples) console.log('  (見合わせ・障害のため判定から外した計測: ' + disruptedSamples + '回 / 72回)');
 SECTIONS.forEach((sc, k) => {
     const st = gapStats[k];
     const avg = st.n ? (st.sum / st.n) : 0;
@@ -105,7 +110,7 @@ SECTIONS.forEach((sc, k) => {
      実際に近い姿。最大6駅 (約29分) は引き続き超えないこととする。 */
 SECTIONS.slice(0, 4).forEach((sc, k) => {
     const st = gapStats[k];
-    const avg = st.n ? (st.sum / st.n) : 99;
+    const avg = st.n ? (st.sum / st.n) : 0;   // 全部が障害中なら判定しない
     ok(`${sc.name} の平均間隔が4駅以内`, avg <= 4.0, avg.toFixed(1) + '駅');
 });
 /* 最大間隔。これは6時間を5分おきに測った72回のうち「いちばん空いた1回」なので、
@@ -136,7 +141,7 @@ const BRANCH_LIMIT = { 4: { avg: 4.5, max: 11 },    // 琵琶湖線 京都〜野
     const sc = SECTIONS[k];
     const st = gapStats[k];
     const lim = BRANCH_LIMIT[k];
-    const avg = st.n ? (st.sum / st.n) : 99;
+    const avg = st.n ? (st.sum / st.n) : 0;   // 全部が障害中なら判定しない
     ok(`${sc.name} の平均間隔が${lim.avg}駅以内`, avg <= lim.avg, avg.toFixed(1) + '駅');
     ok(`${sc.name} の最大間隔が${lim.max}駅以内`, st.max <= lim.max, st.max.toFixed(1) + '駅');
 });

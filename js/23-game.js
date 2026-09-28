@@ -124,6 +124,22 @@ class GameSystem {
 
     addTrain(config) {
         let actualStart = config.startName;
+        /* ふだんのダイヤに無い種別・行先の組み合わせを直す (利用者の指摘 3.。js/24-service-rules.js)。
+           障害のときは運転整理として実際にあり得るので直さない。 */
+        if (config.type !== "回送" && config.type !== "貨物" && config.type !== "特急" && config.type !== "臨時") {
+            normalizeServiceConfig(this, config, config.startName, config.trackId, config.vehicles);
+        }
+        /* 新快速の枠の時刻が来ているあいだは、その始発駅から同じ向きにほかの列車を出さない
+           (js/08-spawner-mainline.js の skHeld。出区・送り込みも含む) */
+        if (config.type !== "新快速" && config.type !== "貨物" && this.spawner && this.spawner.skHeld &&
+            this.spawner.skHeld(config.startName, config.dir)) return false;
+        if (config.serviceChange && ["普通", "快速"].indexOf(config.serviceChange.type) >= 0) {
+            const sc = config.serviceChange;
+            const scCfg = { type: sc.type, dest: sc.dest, dir: sc.dir || config.dir };
+            if (normalizeServiceConfig(this, scCfg, sc.at, sc.trackId || config.trackId, config.vehicles)) {
+                sc.type = scCfg.type; sc.dest = scCfg.dest;
+            }
+        }
         // (姫路より西・学研都市線は線路図の中の駅になったので読み替えない)
 
         // 車両選定に使う運用名 (送り込み回送などで列車番号と運用が食い違う場合の対策)

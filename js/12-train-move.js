@@ -556,6 +556,8 @@ Train.prototype.move = function () {
                     this.timer = st.stopTime;
                     // 催しの旅客で乗り降りが増える駅は、停車時分を延ばす (js/36-special-events.js)
                     if (this.game.events) this.timer += this.game.events.dwellExtra(st.name, this);
+                    // 新快速の時間調整 (大阪の時刻より早く走っているとき。js/08-spawner-mainline.js の skHoldAt)
+                    if (this.skTarget) this.timer += this.game.spawner.skHoldAt(this, st.name);
                 }
 
                 // 快速列車の場合、降格チェックを実行

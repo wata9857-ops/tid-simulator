@@ -97,11 +97,20 @@ Train.prototype.executeTurnBack = function () {
             }
         }
 
-        if(this.nextAction === "depot") { 
+        /* ★新快速は、大阪に着くころの枠 (js/08-spawner-mainline.js の checkShinkaisokuSlots) を受け持てるときだけ
+             折り返す。受け持つ枠が無いときは運用を終える (続けて来る・間があく、の原因だった)。 */
+        this.skTarget = undefined;   // 前の運用の大阪の時刻は持ち越さない (枠を受け持てばそこで付け直す)
+        if (this.nextAction !== "depot" && !this.serviceChange && this.type === "新快速" &&
+            !this.game.spawner.skClaimForTurnback(this, stName)) {
+            this.nextAction = "depot";
+            this.retiredByBudget = true;
+        }
+
+        if(this.nextAction === "depot") {
             let h = (this.game.currentTime / 3600) % 24;
             let isDaytime = (h >= 9.5 && h < 17.0);
             let allowedCap = (DEPOTS[stName]) ? (isDaytime ? Math.floor(DEPOTS[stName].capacity / 2) : DEPOTS[stName].capacity) : 0;
-            if (this.type !== "貨物" && DEPOTS[stName] && DEPOTS[stName].trains.length < allowedCap) {
+            if (this.type !== "貨物" && DEPOTS[stName] && depotHasRoom(stName, allowedCap)) {
                 this.enterDepot(stName);
             } else {
                 if (!this.tryConvertDeadhead(stName)) {
@@ -225,7 +234,7 @@ Train.prototype.executeTurnBack = function () {
             } else {
                 // 夕ラッシュ時間帯：米原到着後はそのまま米原留置場で入区させて終了
                 let allowedCap = DEPOTS[stName] ? DEPOTS[stName].capacity : 0;
-                if (DEPOTS[stName] && DEPOTS[stName].trains.length < allowedCap) {
+                if (DEPOTS[stName] && depotHasRoom(stName, allowedCap)) {
                     this.game.ui.updateBanner(`【運転整理】${stName}駅 当駅止まりの普通 ${this.trainNo} は運用を終了し入区します。`, "banner-orange");
                     this.enterDepot(stName);
                 } else {
@@ -258,7 +267,8 @@ Train.prototype.executeTurnBack = function () {
         // ★追加: 22:15以降の折り返しは優等種別を普通に降格し、遠距離走行を防ぐ
         //   ただし、いまの編成でその線区の普通運用に入れない場合は降格しない。
         //   (湖西線の普通は京都支所の車両のみ、という規則を壊さないため)
-        if (hOfDay >= 22.25 && ["新快速", "快速"].includes(this.type) &&
+        /* 新快速の枠を受け持った列車 (skTarget) は、その枠の新快速として走る (大阪 23時台・0時の新快速) */
+        if (hOfDay >= 22.25 && ["新快速", "快速"].includes(this.type) && !this.skTarget &&
             this.canChangeTypeTo("普通", stName)) {
             this.type = "普通";
         }
@@ -268,10 +278,11 @@ Train.prototype.executeTurnBack = function () {
             /* ★turnbackFirst の駅 (京都・尼崎) は、運用を終えると決まった
                列車だけを入区させる。ふだんはその場で折り返す。 */
             const depHere = DEPOTS[stName];
-            const stableHere = !!depHere && depHere.trains.length < depHere.capacity &&
+            const stableHere = !!depHere && depotHasRoom(stName) &&
                                (!depHere.turnbackFirst || this.retiredByBudget ||
                                 hOfDay >= 22.0 || hOfDay < 5.0);
-            if (this.type !== "貨物" && this.type !== "特急" && stableHere) {
+            // 新快速の枠を受け持った列車は、留置線で出区待ちの列に並ばず、その場で折り返す (枠の時刻に遅れる)
+            if (this.type !== "貨物" && this.type !== "特急" && stableHere && !this.skTarget) {
                 let depot = DEPOTS[stName];
                 const newDir = this.dir * -1;
                 let nextDest = this.game.spawner.getDestination(this.type, newDir, stName, this.trackId);
@@ -354,7 +365,7 @@ Train.prototype.executeTurnBack = function () {
                 let h = (this.game.currentTime / 3600) % 24;
                 let isDaytime = (h >= 9.5 && h < 17.0);
                 let allowedCap = (DEPOTS[stName]) ? (isDaytime ? Math.floor(DEPOTS[stName].capacity / 2) : DEPOTS[stName].capacity) : 0;
-                if (this.type !== "貨物" && DEPOTS[stName] && DEPOTS[stName].trains.length < allowedCap) {
+                if (this.type !== "貨物" && DEPOTS[stName] && depotHasRoom(stName, allowedCap)) {
                     this.game.ui.updateBanner(`【運転整理】${stName}駅 列車密度調整(渋滞緩和)のため、折り返し予定の ${this.trainNo} は留置場に入区します。`, "banner-orange");
                     this.enterDepot(stName);
                 } else {
@@ -535,7 +546,7 @@ Train.prototype.executeTurnBack = function () {
             const hh = (this.game.currentTime / 3600) % 24;
             const dep = DEPOTS[stName];
             if (this.type !== "貨物" && this.type !== "特急" &&
-                dep && dep.trains.length < dep.capacity) {
+                dep && depotHasRoom(stName)) {
                 this.game.ui.updateBanner(
                     `【運転整理】${stName}駅は方向を変えられない配線のため、` +
                     `${this.trainNo} は折り返さず入区します。`, "banner-orange");
@@ -643,6 +654,7 @@ Train.prototype.executeTurnBack = function () {
             this.maybeSwitchTozaiType(stName, newTrackId);
             if (!["回送", "貨物", "臨時", "特急"].includes(this.type)) {
                 this.dest = this.pickServableDest(stName, newTrackId);
+                this.normalizeService(stName, newTrackId);
                 // 近江塩津・敦賀からの下り普通は米原行きとする (琵琶湖線経由)
                 if (this.dir === -1 && this.type === "普通" &&
                     ["敦賀", "近江塩津"].includes(stName) && newTrackId.indexOf("Kosei") < 0) {
@@ -732,6 +744,7 @@ Train.prototype.executeTurnBack = function () {
                 this.maybeSwitchTozaiType(stName, newTrackId);
                 if (!["回送","貨物","臨時","特急"].includes(this.type)) {
                     this.dest = this.pickServableDest(stName, newTrackId);
+                this.normalizeService(stName, newTrackId);
                     
                     // ★追加: 近江塩津・敦賀からの下り普通は米原行きとする（琵琶湖線経由）
                     if (this.dir === -1 && this.type === "普通" && ["敦賀", "近江塩津"].includes(stName) && !this.trackId.includes("Kosei")) {
@@ -824,7 +837,7 @@ Train.prototype.resolveStall = function (stName, reason) {
         }
     };
     const dep = DEPOTS[stName];
-    if (this.type !== "貨物" && dep && dep.trains.length < dep.capacity) {
+    if (this.type !== "貨物" && dep && depotHasRoom(stName)) {
         note("入区させて番線を空けます");
         this.enterDepot(stName);
         return true;
@@ -1243,10 +1256,14 @@ Train.prototype.pickServableDest = function (stName, newTrackId) {
     const sp = this.game.spawner, fleet = this.game.fleet;
     const fix = (d) => (d === stName) ? sp.fallbackTerminal(this.dir, stName, newTrackId) : d;
     let first = null;
+    const disrupted = serviceDisrupted(this.game);
+    const h = (this.game.currentTime / 3600) % 24;
     for (let k = 0; k < 10; k++) {
         const d = fix(sp.getDestination(this.type, this.dir, stName, newTrackId));
         if (first === null) first = d;
         if (!this.vehicles || !this.vehicles.length) return d;
+        // ふだんのダイヤに無い行先 (js/24-service-rules.js の unrealisticService) は引き直す
+        if (!disrupted && unrealisticService(this.type, stName, newTrackId, d, this.dir, h)) continue;
         if (fleet.canServe(this.vehicles, stName, this.type, newTrackId, d, null)) return d;
     }
     /* 割合の表に走れる行先が無い: 編成の受け持つ線区の終点から選ぶ */
@@ -1255,6 +1272,20 @@ Train.prototype.pickServableDest = function (stName, newTrackId) {
         fleet.canServe(this.vehicles, stName, this.type, newTrackId, d, null));
     if (alt.length) return alt[Math.floor(Math.random() * alt.length)];
     return first;
+};
+
+/**
+ * 折り返した列車の種別・行先を、ふだんのダイヤの形に直す (js/24-service-rules.js)。
+ * 障害のときは直さない。
+ */
+Train.prototype.normalizeService = function (stName, newTrackId) {
+    if (["回送", "貨物", "臨時", "特急"].indexOf(this.type) >= 0 || this.specialEvent) return;
+    const cfg = { type: this.type, dest: this.dest, dir: this.dir };
+    if (normalizeServiceConfig(this.game, cfg, stName, newTrackId, this.vehicles)) {
+        if (cfg.type !== this.type && !this.canChangeTypeTo(cfg.type, stName)) return;
+        this.type = cfg.type;
+        this.dest = cfg.dest;
+    }
 };
 
 /* 編成の受け持つ線区の終点 (折り返しの行先の予備の候補)。

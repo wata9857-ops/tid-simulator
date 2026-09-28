@@ -123,12 +123,18 @@ const DEPOT_DUTIES = [
              同志社前・木津で折り返す列車だけだった。添付の同志社前駅の時刻表では
              5:45 区間快速 西明石行き・6:02 西明石行き・6:14 新三田行き … と、
              南の端で夜を明かした編成が朝いちばんに出ていく。 */
+    /* ★朝・夕のラッシュに使う (利用者の指摘 1.)。以前は 5:00〜6:36 の1枠だけで、しかも入区した列車の
+         空の枠が留置線2本を埋めていたので (depotHasRoom)、祝園の編成は一日じゅう置かれたままだった。
+         夕方に出た編成は、夜に祝園止まり・入区で戻す (NIGHT_RETURN)。
+       ★学研都市線から JR神戸線 (西明石) へ直通するのは普通。快速 西明石行きは作らない (利用者の指摘 3.)。 */
     { depot: "祝園", windows: [
-        { h: [5.0, 6.6],  every: 1800, dir: -1, via: "祝園", as: "快速", dest: ["西明石", "新三田"], ratio: 1.0 }
+        { h: [5.0, 8.3],  every: 1800, dir: -1, via: "祝園", as: "快速", dest: ["新三田", "宝塚"], ratio: 1.0 },
+        { h: [5.5, 8.3],  every: 3000, dir: -1, via: "祝園", as: "普通", dest: ["西明石", "尼崎"], ratio: 0.8 },
+        { h: [16.5, 19.0], every: 2700, dir: -1, via: "祝園", as: "快速", dest: ["新三田", "宝塚"], ratio: 1.0 }
     ]},
     { depot: "木津", windows: [
-        { h: [4.9, 7.6],  every: 1500, dir: -1, via: "木津", as: "快速", dest: ["新三田", "篠山口", "西明石", "宝塚"], ratio: 0.9 },
-        { h: [5.2, 7.0],  every: 2700, dir: -1, via: "木津", as: "普通", dest: ["京橋", "松井山手"], ratio: 0.7 },
+        { h: [4.9, 7.6],  every: 1500, dir: -1, via: "木津", as: "快速", dest: ["新三田", "篠山口", "宝塚"], ratio: 0.9 },
+        { h: [5.2, 7.0],  every: 2700, dir: -1, via: "木津", as: "普通", dest: ["京橋", "松井山手", "西明石"], ratio: 0.7 },
         { h: [16.0, 20.0], every: 3600, dir: -1, via: "木津", as: "快速", dest: ["新三田", "宝塚"], ratio: 0.5 }
     ]},
     // --- 新三田電留線 (JR宝塚線の始発)
@@ -154,6 +160,19 @@ const DEPOT_DUTIES = [
         { h: [4.5, 9.0],  every: 1800, dir: 1, via: "姫路", as: "普通", dest: ["西明石", "大阪"], ratio: 1.0 },
         { h: [16.0, 22.0], every: 3000, dir: 1, via: "姫路", as: "普通", dest: ["西明石"], ratio: 0.7 }
     ]}
+];
+
+/* ------------------------------------------------------------------ 夜の入区
+   翌朝その留置場から出る始発のために、夜のうちに戻しておく本数 (7両の編成の数)。
+   (OperationsManager.checkNightReturn)
+     need  … 21時〜終電のあいだに、在庫と入区に向かう列車の合計をこの数まで戻す
+     every … 行先を変える間隔 (秒)
+     dirs  … 行先を変える列車の向き (その留置場に入れる向き)
+   放出 … 朝 4:30〜9:00 に放出から出る列車 (DEPOT_DUTIES の放出) と、列車生成の放出始発のぶん。
+   祝園 … 留置線2本ぶん。 */
+const NIGHT_RETURN = [
+    { depot: "放出", need: 18, every: 150, dirs: [1, -1], types: ["普通"] },
+    { depot: "祝園", need: 2,  every: 600, dirs: [1, -1], types: ["普通", "快速"] }
 ];
 
 /* ------------------------------------------------------------------ 始発の裏付け
@@ -264,6 +283,76 @@ class OperationsManager {
         this.checkDepotDuties(ct);
         this.checkLocalGapFill(ct);
         this.checkStockBalance(ct);
+        this.checkNightReturn(ct);
+    }
+
+    /* ------------------------------------------------------------ 夜の入区 (翌朝の始発の手配)
+
+       ■ 利用者の指摘 2.
+         放出行きがほとんど無くなったのはよいが、終電の近くにも放出行きが無いので、
+         放出の電留線の編成が起動したとき (夜明け前) の数まで戻らず、翌朝の始発が遅れていた
+         (実測: 起動時 26本 → 7時に 0本 → 翌3時も 1本)。祝園の留置線も同じ。
+       ■ どうするか
+         21時から終電までのあいだ、翌朝その留置場から出る本数 (NIGHT_RETURN の need) に
+         足りないぶんだけ、その駅を通って先へ行く営業列車の行先をその駅に変え、入区させる。
+         ・行先を変えるのは、その駅まで1駅以上あり、その駅より先が行先の列車だけ
+         ・4分に1本まで (先の駅へ行く列車を一度に削らない)
+         ・入区のために向かっている列車も「戻ってくる数」に数える */
+    nightReturnStock(name) {
+        const f = this.game.fleet;
+        return (name === "放出" && f.sevenCarSets) ? f.sevenCarSets(name)
+             : Math.floor(f.poolAt(name).reduce((s, v) => s + (v.cars || 0), 0) / 7);
+    }
+    checkNightReturn(ct) {
+        const g = this.game;
+        const h = (ct / 3600) % 24;
+        const a = ttAbsHour(h);
+        if (a < 21.0 || a >= 24.4) return;
+        if (ct < (this.nightReturnNext || 0)) return;
+        this.nightReturnNext = ct + 60;
+        for (const nr of NIGHT_RETURN) {
+            if (!DEPOTS[nr.depot]) continue;
+            const inbound = g.trains.filter(t => t.state !== "finished" && t.state !== "in_depot" &&
+                t.dest === nr.depot && (t.nextAction === "depot" || t.nightReturn)).length;
+            const have = this.nightReturnStock(nr.depot) + inbound;
+            if (have >= nr.need) continue;
+            const key = "nr#" + nr.depot;
+            if (ct < (this[key] || 0)) continue;
+            const cand = this.pickNightReturnTrain(nr);
+            if (!cand) continue;
+            const oldDest = cand.dest;
+            cand.dest = nr.depot;
+            cand.nextAction = "depot";
+            cand.nightReturn = true;
+            cand.isFinalStop = false;
+            this[key] = ct + nr.every;
+            this.stats.nightReturn = (this.stats.nightReturn || 0) + 1;
+            g.ui.updateBanner(`【入区手配】翌朝の始発に備え、${cand.trainNo} の行先を ${oldDest} から ` +
+                              `${nr.depot} に変更し、${nr.depot}${nr.depot === "放出" ? "電留線" : "留置線"}へ入れます。`, "banner-blue");
+        }
+    }
+    pickNightReturnTrain(nr) {
+        const g = this.game;
+        let best = null, bestD = Infinity;
+        for (const t of g.trains) {
+            if (t.state === "finished" || t.state === "in_depot" || t.state === "turning_back") continue;
+            if (nr.dirs.indexOf(t.dir) < 0 || !/^Tozai_/.test(t.trackId)) continue;
+            if (nr.types.indexOf(t.type) < 0 || t.specialEvent || t.nightReturn) continue;
+            if (!t.vehicles || !t.vehicles.length || t.dest === nr.depot) continue;
+            if (t.nextAction === "remove" || t.nextAction === "in_depot_remove") continue;
+            const blks = g.trackMgr.blocks[t.trackId];
+            if (!blks) continue;
+            const db = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === nr.depot);
+            if (!db) continue;
+            const d = (db.index - t.currBlockIndex) * t.dir;
+            if (d < UNITS_PER_STATION || d > UNITS_PER_STATION * 8) continue;
+            const destB = blks.find(b => b.x !== -1000 && isRealStationBlock(b) && blockStationName(b) === t.dest);
+            // 行先がこの駅より先 (線路図の外を含む) の列車だけ
+            if (destB && (destB.index - db.index) * t.dir <= 0) continue;
+            if (!g.fleet.canServe(t.vehicles, nr.depot, t.type, t.trackId, nr.depot, t.dutyName)) continue;
+            if (d < bestD) { bestD = d; best = t; }
+        }
+        return best;
     }
 
     /* ------------------------------------------------------------ 返却回送
@@ -318,7 +407,7 @@ class OperationsManager {
 
         for (const to of short) {
             const dep = DEPOTS[to.name];
-            if (!dep || dep.trains.length >= dep.capacity) continue;
+            if (!dep || !depotHasRoom(to.name)) continue;
             // その編成を受け入れられる、いちばん近い「余っている」留置場
             const toIdx = fleetIndexOf(to.name);
             const from = FLEET_BASES
@@ -396,7 +485,7 @@ class OperationsManager {
                    なっていたので、目安がまったく効いていなかった。 */
                 if (ttOverBudget(this.game, dutyLineOf(duty.depot, w), w.as)) continue;
                 // 留置場に空きが無い(出区待ちが詰まっている)ときは見送る
-                if (depot.trains.length >= depot.capacity) continue;
+                if (!depotHasRoom(duty.depot)) continue;
                 // 在庫が無いときも見送る
                 if (this.game.fleet.poolAt(duty.depot).length < 2) continue;
                 this.dispatchFromDepot(duty.depot, w);
@@ -504,7 +593,7 @@ class OperationsManager {
         }
 
         const depot = DEPOTS[fromName];
-        if (!depot || depot.trains.length >= depot.capacity) return false;
+        if (!depot || !depotHasRoom(fromName)) return false;
         if (this.game.fleet.poolAt(fromName).length < 2) return false;
 
         const dir = this.dirFromTo(fromName, config.startName);
@@ -578,7 +667,7 @@ class OperationsManager {
            枠が無い駅から出す場合は、本線の着発線へ直接出す
            (Train.initPosition が受け持つ)。 */
         const depot = DEPOTS[from];
-        if (depot && depot.trains.length >= depot.capacity) return false;
+        if (depot && !depotHasRoom(from)) return false;
 
         const dir = this.dirFromTo(from, startName);
         if (!dir) return false;                           // 方向転換なしには送り込めない
@@ -715,7 +804,7 @@ class OperationsManager {
             // 手前の車両所から1本出す
             for (const dname of sc.depots) {
                 const depot = DEPOTS[dname];
-                if (!depot || depot.trains.length >= depot.capacity) continue;
+                if (!depot || !depotHasRoom(dname)) continue;
                 if (this.game.fleet.poolAt(dname).length < 2) continue;
                 /* ★車両を出す車両所が本線のものなら、本線の目安も見る。
                    分岐線の穴埋めのために本線の車両所から次々に出すと、

@@ -387,7 +387,7 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         /* ★turnbackFirst の留置線 (京都・尼崎) は「運用の終わり」だけに使う。
            折り返しの要になる駅なので、ここに入れると出区待ちの列に並び、
            線区の列車が薄くなる (js/04-depots.js の turnbackFirst を参照)。 */
-        const stableOk = !!depHere && depHere.trains.length < depHere.capacity &&
+        const stableOk = !!depHere && depotHasRoom(stName) &&
                          (!depHere.turnbackFirst || this.retiredByBudget);
         if (this.type !== "貨物" && stableOk) {
             this.enterDepot(stName);
