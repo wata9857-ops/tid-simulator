@@ -385,7 +385,7 @@ function ttStillNeeded(game, train, stName) {
        5駅は、シミュレーターの1駅あたり約4.6分で 約23分ぶん。
        実際のダイヤで、いちばん空く時間帯 (神戸線の西半分で毎時4本) でも
        このあいだには必ず1本は入る。 */
-    let n = 0;
+    let n = 0, nLocal = 0;
     for (let k = 1; k <= UNITS_PER_STATION * 5; k++) {
         const i = here.index + newDir * k;
         if (i < 0 || i >= blks.length) break;
@@ -393,6 +393,18 @@ function ttStillNeeded(game, train, stName) {
         if (!b || b.x === -1000) continue;
         n += b.lanes.filter(l => l && l.dir === newDir &&
                                  ["普通", "快速"].indexOf(l.type) >= 0).length;
+        nLocal += b.lanes.filter(l => l && l.dir === newDir && l.type === "普通").length;
+    }
+    /* ★JR京都線の折り返し駅 (高槻・京都) から大阪方へ下る普通は、普通だけを数えて見る。
+         高槻〜尼崎は普通だけで 8本/時 (大阪駅の時刻表: 京都線の普通 8本 = 宝塚線4本+神戸線4本)
+         なので 5駅ぶん (約23分) に 3本、京都〜高槻は 4本/時 なので 2本が目安。
+         以前は快速 (内側線を 4本/時) も合わせて「2本」で切っていたので、高槻・京都で
+         折り返すはずの普通の半分近くが運用を終えて入区し、高槻〜大阪の下りの普通が
+         実際 8本/時 に対して 4〜5本/時 になっていた。 */
+    const mainTrk = /^(Up|Down)_/.test(tid);
+    if (mainTrk && newDir === -1 && train.type === "普通") {
+        if (idx >= STATION_MAP["尼崎"] && idx <= STATION_MAP["高槻"]) return nLocal < 3;
+        if (idx === STATION_MAP["京都"]) return nLocal < 2;
     }
     return n < 2;
 }

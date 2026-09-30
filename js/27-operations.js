@@ -835,9 +835,9 @@ class OperationsManager {
             }
             // 進行方向の後ろ側から見て、最初に空きすぎている所を探す
             const gapBlocks = Math.ceil(UNITS_PER_STATION * (sc.maxGap || MAX_GAP_STATIONS));
-            let worst = 0;
+            let worst = 0, worstLo = lo;
             for (let k = 1; k < occupied.length; k++) {
-                worst = Math.max(worst, occupied[k] - occupied[k - 1]);
+                if (occupied[k] - occupied[k - 1] > worst) { worst = occupied[k] - occupied[k - 1]; worstLo = occupied[k - 1]; }
             }
             if (occupied.length === 0) worst = hi - lo;
             if (worst <= gapBlocks) continue;
@@ -871,7 +871,14 @@ class OperationsManager {
                 const dLine = (dname === "放出" || (dname === "尼崎" && scLine === "tozai")) ? "tozai"
                             : (dname === "新三田") ? "fukuchi" : "main";
                 if (dLine === "main" && ttOverBudget(this.game, "main", "普通")) continue;
-                const dest = sc.dest;
+                let dest = sc.dest;
+                /* ★JR京都線・JR神戸線の上りの穴が高槻より手前なら高槻行きで埋める。
+                     高槻〜京都の普通は 4本/時 (大阪 8本/時 の半分は高槻止まり。osaka1.pdf)。
+                     いつも京都行きにしていたので、高槻〜京都だけ普通が多くなっていた。 */
+                if (sc.trackId === "Up_In" && sc.dest === "京都") {
+                    const tk = blks.find(b => b.stationIdx === STATION_MAP["高槻"] && b.x !== -1000);
+                    if (tk && worstLo < tk.index) dest = "高槻";
+                }
                 if (this.dirFromTo(dname, dest) !== sc.dir) continue;
                 const no = this.game.spawner.generateTrainNumber("普通", sc.dir, dname, sc.trackId);
                 // 車両は行先の運用の条件で選ぶ (東西線なら207系/321系 など)
