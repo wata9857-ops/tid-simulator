@@ -117,6 +117,14 @@ function dispatchTerminateProblem(game, t, dest) {
     const d = game.ops.directionFor(refSt, dest);
     // 後ろの駅は、折り返したあとの向きで着くことになる
     const arriveDir = (d === -t.dir) ? -t.dir : t.dir;
+    /* 両側が単線の交換駅 (大住・JR三山木) では折り返さない。
+       ★折り返す列車が交換用の番線を塞ぎ、両隣の交換駅と向かい合って動けなくなった
+         (大住で折り返した列車と松井山手の上り列車が互いに番線の空きを待ち、学研都市線が止まった)。
+       京田辺はふだんから折り返しに使う駅なので除く。 */
+    if (!DEPOTS[dest] && dest !== "京田辺" && typeof SINGLE_TRACK_UNITS !== "undefined" &&
+        SINGLE_TRACK_UNITS.some(u => u.lo === dest) && SINGLE_TRACK_UNITS.some(u => u.hi === dest)) {
+        return `${dest}駅は単線の交換駅で、折り返す列車が行き違いの番線を塞ぐため、折り返せません。`;
+    }
     if (canReverseAtDir(dest, arriveDir) || DEPOTS[dest]) return null;
     if (canReverseAt(dest)) {
         return `${dest}駅は${arriveDir === 1 ? "上り" : "下り"}列車が着いても折り返せない配線です` +
