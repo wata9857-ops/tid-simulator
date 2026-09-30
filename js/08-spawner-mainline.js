@@ -834,8 +834,15 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                 }
                 if (type === "普通") {
                     let stIdx = STATION_MAP[startName];
+                    /* ★高槻で折り返す下りの普通は、ほとんどが JR宝塚線の宝塚行き。
+                         大阪駅の時刻表 (osaka4.pdf) では宝塚線の普通は :00 :15 :30 :45 の 4本/時で、
+                         どれも「当駅始発」ではない (= 京都線から直通)。宝塚駅の時刻表
+                         (takaraduka-tozai.pdf) でも昼間の上りの普通はすべて高槻行き。
+                         京都始発の普通 4本/時 は JR神戸線の須磨方面へ行く (osaka3.pdf)。
+                         以前は宝塚方面が3割しかなく、宝塚線の普通は尼崎始発で出していたので、
+                         高槻〜尼崎の下りの普通が 実際 8本/時 に対して 4〜5本/時 しかなかった。 */
                     if (startName === "高槻") {
-                        return [{d:"宝塚方面",w:30}, {d:"西明石",w:50}, {d:"須磨",w:20}];
+                        return [{d:"宝塚方面",w:75}, {d:"須磨",w:15}, {d:"西明石",w:10}];
                     } else if (stIdx !== undefined && stIdx <= STATION_MAP["尼崎"]) {
                         // ★修正: 尼崎以西で生成される下り列車(西へ向かう)が、東の駅(大阪・神戸等)を目指すと逆走バグで詰まるため削除
                         return [{d:"西明石",w:70}, {d:"須磨",w:30}];
@@ -868,14 +875,19 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                             const kyotoTerm = (hk < 6.0) || (hk >= 7.9 && hk < 8.6) || (hk >= 17.5 && hk < 18.2) ||
                                               (hk >= 20.6 && hk < 21.0) || (hk >= 23.3 || hk < 4.0);
                             if (kyotoTerm) return [{d:"京都",w:60}, {d:"高槻",w:15}, {d:"西明石",w:25}];
-                            return [{d:"高槻",w:30}, {d:"西明石",w:45}, {d:"須磨",w:10}, {d:"大阪",w:15}];
+                            /* ★高槻止まり・大阪止まりを減らした。高槻〜京都の普通は 上下とも 4本/時 (osaka1.pdf の
+                                 京都行き)。高槻で折り返して京都へ戻る列車が多いと、高槻〜京都だけが 6本/時 になっていた。 */
+                            return [{d:"高槻",w:10}, {d:"西明石",w:50}, {d:"須磨",w:35}, {d:"大阪",w:5}];
                         }
+                        /* ★大阪・尼崎止まりを減らした。大阪駅の時刻表 (osaka3.pdf) では、昼間に京都線から来る
+                             下りの普通はすべて須磨行き・宝塚行きで、大阪止まりは無い。
+                             大阪止まりは宮原へ回送して方転するぶん、高槻〜大阪の下りの普通が抜けていた。 */
                         if (stIdx !== undefined && stIdx > STATION_MAP["高槻"]) {
-                            return [{d:"西明石",w:45}, {d:"須磨",w:22}, {d:"大阪",w:17},
-                                    {d:"神戸",w:10}, {d:"尼崎",w:6}];
+                            return [{d:"西明石",w:42}, {d:"須磨",w:35}, {d:"大阪",w:6},
+                                    {d:"神戸",w:12}, {d:"尼崎",w:5}];
                         }
-                        return [{d:"西明石",w:36}, {d:"須磨",w:19}, {d:"大阪",w:16},
-                                {d:"宝塚方面",w:14}, {d:"神戸",w:8}, {d:"尼崎",w:6},
+                        return [{d:"西明石",w:30}, {d:"須磨",w:20}, {d:"大阪",w:6},
+                                {d:"宝塚方面",w:30}, {d:"神戸",w:8}, {d:"尼崎",w:5},
                                 {d:"甲子園口",w:1}];
                     }
                 }
@@ -904,18 +916,24 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                     if (koseiStations.includes(startName)) return [{d:"近江今津",w:91}, {d:"永原",w:9}];
                     let stIdx = STATION_MAP[startName];
                     if (startName === "京都") return [{d:"野洲",w:55}, {d:"米原",w:32}, {d:"草津",w:13}];
+                    /* ★大阪を通る上りの普通の行先は 高槻・京都 だけ (大阪駅の時刻表 osaka1.pdf の
+                         普通は「無印=高槻」と「京」のみ)。草津行きは少なくした。
+                         高槻行きは宝塚線から来る普通 (宝塚 :08 → 大阪 :32 → 高槻)、
+                         JR神戸線から来る普通は京都行き (須磨方面 ⇔ 京都) が基本。
+                         ただし宝塚線へ直通できるのは 223系・225系だけ (編成の運用規則) なので、
+                         明石の 207系・321系の普通も高槻で折り返して、高槻〜大阪の 8本/時 を埋める。 */
                     if ((stIdx !== undefined && stIdx >= STATION_MAP["尼崎"]) || ["新三田", "宝塚"].includes(startName)) {
                         if (startName === "高槻") return [{d:"京都",w:70}, {d:"草津",w:30}];
-                        return [{d:"高槻",w:40}, {d:"京都",w:45}, {d:"草津",w:15}];
+                        return [{d:"高槻",w:45}, {d:"京都",w:50}, {d:"草津",w:5}];
                     }
-                    
-                    let options = [{d:"松井山手",w:20}, {d:"四条畷",w:15}, {d:"同志社前",w:5}, {d:"高槻",w:30}, {d:"京都",w:20}, {d:"草津",w:10}];
+
+                    let options = [{d:"松井山手",w:20}, {d:"四条畷",w:15}, {d:"同志社前",w:5}, {d:"高槻",w:27}, {d:"京都",w:30}, {d:"草津",w:3}];
                     
                     // ★追加: 尼崎到着時の3連続被り防止ロジック
                     let recentDests = this.getAmagasakiRecentDestinations(startName, dir, type);
                     if (recentDests.length === 2) {
                         if (recentDests[0] === "Tozai" && recentDests[1] === "Tozai") {
-                            options = [{d:"高槻",w:50}, {d:"京都",w:35}, {d:"草津",w:15}]; // 東西線2連続なら本線へ
+                            options = [{d:"高槻",w:45}, {d:"京都",w:50}, {d:"草津",w:5}]; // 東西線2連続なら本線へ
                         } else if (recentDests[0] === "Honsen" && recentDests[1] === "Honsen") {
                             options = [{d:"松井山手",w:50}, {d:"四条畷",w:40}, {d:"同志社前",w:10}]; // 本線2連続なら東西線へ
                         }
@@ -947,7 +965,7 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                         
                         // 周辺列車の割合を比較し、少ない方の行き先グループを確定的に選ぶ
                         if (tozaiCount > honsenCount) {
-                            options = [{d:"高槻",w:50}, {d:"京都",w:35}, {d:"草津",w:15}]; // 本線方面
+                            options = [{d:"高槻",w:45}, {d:"京都",w:50}, {d:"草津",w:5}]; // 本線方面
                         } else if (honsenCount > tozaiCount) {
                             options = [{d:"松井山手",w:50}, {d:"四条畷",w:40}, {d:"同志社前",w:10}]; // 東西線方面
                         }
@@ -1083,7 +1101,14 @@ Spawner.prototype.sanitizeDestination = function (dest, dir, startName, type, tr
             return this.fallbackTerminal(dir, startName, trackId);
         }
         const okSide = (sIdx0 !== undefined && sIdx0 >= STATION_MAP["西明石"] && sIdx0 <= amaIdx);
-        if (branchFull("tozai")) return this.fallbackTerminal(dir, startName, trackId);
+        /* ★東西線へ入れない JR神戸線の上りの普通は、大阪を通って 高槻・京都 へ半分ずつ行く
+             (大阪駅の時刻表 osaka1.pdf: 上りの普通は高槻行き 4本・京都行き 4本)。
+             以前は fallbackTerminal の「前方の2番目」= 京都 に決まっていたので、東西線の目安が
+             埋まっているあいだは JR神戸線の普通の7〜8割が京都行きになり、高槻〜京都の普通が
+             実際の 4本/時 に対して 6本/時、高槻で折り返して下る普通が足りなかった。 */
+        const kobeUp = () => (dir === 1 && okSide && Math.random() < 0.5)
+            ? "高槻" : this.fallbackTerminal(dir, startName, trackId);
+        if (branchFull("tozai")) return kobeUp();
         return (dir === 1 && okSide) ? dest : this.fallbackTerminal(dir, startName, trackId);
     }
     /* 赤穂線へ入るのは、相生より東から下ってきた列車。

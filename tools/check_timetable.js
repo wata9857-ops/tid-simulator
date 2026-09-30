@@ -28,8 +28,10 @@ function head(s) { console.log('\n=== ' + s + ' ==='); }
 const SPOTS = [
     { n: '大阪 上り(京都方面)', tracks: ['Up_In', 'Up_Out'],   st: '大阪',   dir: 1,
       real: { '普通': 8, '快速': 4, '新快速': 4 }, realTotal: 22 },
+    /* 大阪〜尼崎の下り線には JR宝塚線の普通 (宝塚行き :00 :15 :30 :45、osaka4.pdf) も走るので、
+       普通は 神戸線4 + 宝塚線4 = 8本/時 (どちらも京都線から直通。tools/check_locals.js)。 */
     { n: '大阪 下り(神戸方面)', tracks: ['Down_In', 'Down_Out'], st: '大阪', dir: -1,
-      real: { '普通': 4, '快速': 4, '新快速': 4 }, realTotal: 13 },
+      real: { '普通': 8, '快速': 4, '新快速': 4 }, realTotal: 17 },
     { n: '西明石 上り',        tracks: ['Up_In', 'Up_Out'],   st: '西明石', dir: 1,
       real: { '普通': 5, '快速': 4, '新快速': 4 }, realTotal: 13 },
     { n: 'JR宝塚線 下り',      tracks: ['Fukuchi_Down'],      st: '尼崎',   dir: -1,

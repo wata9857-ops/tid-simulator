@@ -225,6 +225,15 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
         if (stIdx !== undefined && stIdx >= STATION_MAP["京都"]) {
             return;
         }
+        /* ★西明石より西の上りでは普通に変えない。この区間の快速はもともと各駅に止まり、
+             内側線も無いので、普通に変えても間隔は開かない。変えると行先 (京都・草津) は
+             そのままなので、姫路〜加古川で普通になった列車が JR京都線の内側線まで
+             普通として走り、昼間の高槻〜大阪の上りの普通の3分の1ほどを占めていた
+             (大阪駅の時刻表では、京都線の上りの普通は JR神戸線の須磨・西明石方面から来る)。 */
+        if (this.dir === 1 && stIdx !== undefined && stIdx < STATION_MAP["西明石"] &&
+            isMainlineTrip(this)) {
+            return;
+        }
 
         // ★修正: in_depot状態の列車を除外
         let rapidTrains = this.game.trains.filter(t => 
@@ -274,9 +283,17 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                 /* ★本線の行先だけ。分岐線 (学研都市線など) の駅も本線と同じ
                    インデックスの並びを使っているので、数の大小だけで比べると
                    木津行きが「草津より先」に見えてしまう。 */
-                if (this.dir === 1 && isMainlineTrip(this) && STATION_MAP[this.dest] > STATION_MAP["草津"]) {
+                /* ★高槻より手前 (JR神戸線・JR京都線) で普通に変えた上りは高槻止まりにする。
+                     大阪を通る上りの普通は 高槻行き・京都行き が 4本/時 ずつで (osaka1.pdf)、
+                     高槻〜京都は 4本/時。草津・京都まで普通で走らせると高槻〜京都の普通が
+                     6本/時 になり、高槻で折り返して大阪へ下る普通 (実際 4本/時) が足りなくなっていた。 */
+                const cutTk = STATION_MAP[stationName] !== undefined &&
+                              STATION_MAP[stationName] < STATION_MAP["高槻"] &&
+                              STATION_MAP[this.dest] > STATION_MAP["高槻"];
+                if (this.dir === 1 && isMainlineTrip(this) &&
+                    (cutTk || STATION_MAP[this.dest] > STATION_MAP["草津"])) {
                     let oldDest = this.dest;
-                    this.dest = "草津";
+                    this.dest = cutTk ? "高槻" : "草津";
                     extraMsg = ` 行先を${oldDest}から${this.dest}に変更しました。`;
                 }
                 const cutW = this.shortenDowngradedWest();
