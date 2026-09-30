@@ -792,6 +792,70 @@ Train.prototype.singleTrackBlocked = function (nextIdx, trackIdAhead) {
 };
 
 /**
+ * ★列車を新しく線路に出すときの安全確認 (生成・出区・引上線からホームへ戻る)。
+ *
+ * 学研都市線で、木津へ向かって単線区間 (祝園〜木津) を走っている列車がいるのに、
+ * 木津の1線しかない番線へ新しい回送が生成され、単線の上で向かい合った (正面衝突)。
+ * 生成の判定が「その番線が空いているか」しか見ていなかったため。
+ * 列車を線路に出す所はすべてここを通し、次のどれかに当たれば出さずに待たせる。
+ *   1. その番線の枠がふさがっている
+ *   2. その駅が単線区間の中にあり、区間にほかの列車が居る (一閉塞一列車)
+ *   3. 出す列車の行く手から、その駅の同じ番線の組へ向かってくる列車
+ *      (SPAWN_GUARD_BLOCKS 以内) の数が、出したあとに残る空き番線の数より多い
+ *      (向かってくる列車の入る番線を取ってしまい、向かい合って動けなくなる)。
+ *      同じ向きで後ろから来る列車は、番線が空くまで場内で待つだけなので数えない
+ *      (数えると尼崎・姫路などの出区が何時間も止まる)。
+ * 当たったときは理由の文字列、無ければ null を返す。
+ *
+ *   block … 出す駅のブロック / trackId … その線路 / lane … 出す番線 / self … 出す列車
+ *   dir   … 出す列車が進む向き (省略すると self.dir)
+ */
+const SPAWN_GUARD_BLOCKS = UNITS_PER_STATION * 2;     // 2駅ぶん手前まで見る
+function spawnConflict(game, trackId, block, lane, self, dir) {
+    dir = dir || (self && self.dir) || 0;
+    if (!block || block.x === -1000) return "線路が無い";
+    if (lane < 0 || lane >= block.lanes.length) return "番線が無い";
+    const occ = block.lanes[lane];
+    if (occ !== null && occ !== self) return "番線に列車が居る";
+    const tm = game.trackMgr;
+    const u = singleUnitAt(trackId, block.index);
+    if (u) {
+        const ub = tm.blocks[u.up], r = singleUnitBlockRange(u);
+        for (let i = r[0]; i <= r[1]; i++) {
+            const b = ub && ub[i];
+            if (b && b.x !== -1000 && b.lanes.some(l => l && l !== self)) return "単線区間 (" + u.id + ") に列車が居る";
+        }
+    }
+    let free = 0;
+    for (let l = 0; l < block.lanes.length; l++) if (l !== lane && block.lanes[l] === null) free++;
+    let approaching = 0;
+    for (const t of game.trains) {
+        if (t === self || t.state === "finished" || t.state === "in_depot" || t.state === "initializing") continue;
+        if (!(t.currBlockIndex >= 0) || !t.dir || t.dir === dir) continue;
+        const d = (block.index - t.currBlockIndex) * t.dir;
+        if (d <= 0 || d > SPAWN_GUARD_BLOCKS) continue;
+        // 同じ番線の組へ入ってくる線路の上か (上下で番線を共有する終点の木津などを含む)
+        const tb = tm.blocks[t.trackId];
+        const there = tb && tb[block.index];
+        if (!there || there.lanes !== block.lanes) continue;
+        // 手前の駅止まりの列車は来ない
+        const di = STATION_MAP[t.dest];
+        if (di !== undefined) {
+            const dd = (di * UNITS_PER_STATION - t.currBlockIndex) * t.dir;
+            if (dd >= 0 && dd < d) continue;
+        }
+        approaching++;
+    }
+    if (approaching > free) return "向かってくる列車 " + approaching + " 本の入る番線が無くなる";
+    return null;
+}
+/** 生成・出区を見合わせた回数 (検証用。tools/check_spawn_safety.js) */
+function noteSpawnGuard(game, kind) {
+    game.spawnGuardStats = game.spawnGuardStats || {};
+    game.spawnGuardStats[kind] = (game.spawnGuardStats[kind] || 0) + 1;
+}
+
+/**
  * 進路のつながっている番線から空きを1つ選ぶ (到着・発車の別を指定)。
  *
  * ★番線を直に 0..n や n..0 と走査している所が何か所もあり、
