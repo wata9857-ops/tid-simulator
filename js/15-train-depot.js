@@ -62,28 +62,26 @@ Train.prototype.enterDepot = function (stName) {
 /**
  * 貨物ターミナルに着いた貨物列車の、荷役・機回し・次の列車への付け替え。
  *
- * 着発線 (js/03-stations.js の FREIGHT_TERMINALS) に止まったまま、
- * ターミナルごとの時間 (dwell) を過ごし、次の貨物列車として発車する。
+ * 着発線 (js/03-stations.js の FREIGHT_TERMINALS) に止まったまま荷役・機回しをし、
  *   機関車開放 → 機回し → 荷役 (E&S 着発線荷役) → 機関車連結 → ブレーキ試験 → 出発待ち
- * 半分は機回しをして来た方向へ戻り (反対方向の着発線へ移る)、半分はそのまま先へ進む。
- * 反対方向の着発線が空いていないときは、そのまま先へ進む。
- * 夜中 (0〜4時台) に着いた列車は、4割が朝まで着発線に留置される。
+ * 時刻表でそこ始発の列車 (js/38-freight-timetable.js の claimFreightDeparture) になって、
+ * その発車時刻に出る。吹田タで長く止まる通過列車は、同じ列車番号のまま発車する。
+ * 受け持つ列車が無ければ、荷役のあと運用を終える (機関車は機関区へ)。
+ * ★以前は、着いた列車を乱数で決めた行先・列車番号の次の列車にしていた。
  */
 Train.prototype.freightTerminalWork = function (stName) {
     const g = this.game;
     const key = freightTerminalAt(stName) || freightTerminalOfTrack(this.trackId) || this.dest;
     const ft = FREIGHT_TERMINALS[key] || { name: stName, dwell: [1800, 3600] };
-    let dwell = ft.dwell[0] + Math.random() * (ft.dwell[1] - ft.dwell[0]);
-    const h = (g.currentTime / 3600) % 24;
-    let stabled = false;
-    if (h < 4.5 && Math.random() < 0.4) {
-        // 朝 5〜6時台の発車まで留置
-        dwell = Math.max(dwell, (5 - h) * 3600 + Math.random() * 3600);
-        stabled = true;
-    }
-    let newDir = (Math.random() < 0.5) ? -this.dir : this.dir;
-    if (newDir !== this.dir) {
+    const now = g.currentTime;
+    const oldNo = this.trainNo;
+    g.freightStats = g.freightStats || { arrivals: {}, departures: {} };
+    g.freightStats.arrivals[key] = (g.freightStats.arrivals[key] || 0) + 1;
+
+    let plan = g.spawner.claimFreightDeparture ? g.spawner.claimFreightDeparture(this, key) : null;
+    if (plan && plan.leg.dir !== this.dir) {
         // 機回しをして反対方向の着発線から出る
+        const newDir = plan.leg.dir;
         const opp = isFreightTerminalTrack(this.trackId) ? freightTerminalTrack(key, newDir)
             : (this.trackId.indexOf("Hoppo") >= 0
                 ? (newDir === 1 ? "Up_Hoppo" : "Down_Hoppo")
@@ -103,30 +101,52 @@ Train.prototype.freightTerminalWork = function (stName) {
             nb.lanes[lane] = this;
             this.turnbackTrack = null;
         } else {
-            newDir = this.dir;
+            // 反対方向の着発線が空いていない: その列車はあとで別に出す
+            plan.state = "pending"; plan.train = null; g.spawner.frt.stats.claimed--;
+            plan = null;
         }
     }
-    const oldNo = this.trainNo;
+
+    if (!plan) {
+        // 受け持つ列車が無い: 荷役のあと運用を終える
+        const dwell = ft.dwell[0] + Math.random() * (ft.dwell[1] - ft.dwell[0]);
+        this.state = "stopped";
+        this.isFinalStop = true;
+        this.nextAction = "remove";
+        this.timer = Math.round(dwell);
+        this.terminalWork = { key: key, kind: "turn", start: now, until: now + this.timer, end: true };
+        if (g.spawner.frt) g.spawner.frt.stats.ended++;
+        g.ui.updateBanner(`【貨物】${oldNo} は${ft.name}の${platformOrLane(this)}に到着。荷役のあと運用を終えます。`, "banner-blue");
+        return;
+    }
+
+    // 時刻表の発車時刻まで (荷役・機回しに最低10分)
+    const wait = Math.max(600, plan.spawnAt + FREIGHT_START_PREP - now);
+    const stabled = wait >= 2 * 3600;
     g.spawner.activeTrainNos.delete(this.trainNo);
-    this.dest = g.spawner.freightDestFrom(key, newDir);
-    this.trainNo = g.spawner.generateTrainNumber("貨物", newDir, key, this.trackId);
+    this.dest = plan.leg.dest;
+    this.trainNo = plan.leg.no;
+    g.spawner.activeTrainNos.add(this.trainNo);
     this.dutyName = this.trainNo;
     this.startName = key;
+    this.frtKey = plan.key;
+    this.realOrigin = plan.leg.realFrom; this.realDest = plan.leg.realTo;
+    this.frtPlanned = plan.depAt;
     this.nextAction = "depot";
     this.isFinalStop = false;
     this.hasStoppedAtCurrent = false;
     this.hasDeparted = false;
     this.delayTime = 0;
     this.state = "waiting_start";
-    this.timer = Math.round(dwell);
-    this.terminalWork = { key: key, kind: "turn", start: g.currentTime, until: g.currentTime + this.timer, stabled: stabled };
+    this.timer = Math.round(wait);
+    this.terminalWork = { key: key, kind: "turn", start: now, until: now + this.timer, stabled: stabled };
     this.syncFreightTerminalExit();
-    g.freightStats = g.freightStats || { arrivals: {}, departures: {} };
-    g.freightStats.arrivals[key] = (g.freightStats.arrivals[key] || 0) + 1;
+    if (typeof this.updateKoseiRoute === "function") this.updateKoseiRoute();
+    const hm = (s) => { const m = Math.floor(((s % 86400) + 86400) % 86400 / 60); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
     g.ui.updateBanner(
         `【貨物】${oldNo} は${ft.name}の${platformOrLane(this)}に到着。` +
-        (stabled ? `朝まで着発線に留置し、` : `荷役・機回しのあと、約${Math.round(dwell / 60)}分後に `) +
-        `${this.trainNo} (${this.dest}行き) として発車します。`, "banner-blue");
+        (stabled ? `着発線に留置し、` : `荷役・機回しのあと、`) +
+        `${hm(now + this.timer)} に ${this.trainNo} (${this.realDest || this.dest}行き) として発車します。`, "banner-blue");
 };
 
 /** 着発線の番線名 (無ければ「着発線」) */
