@@ -96,6 +96,9 @@ Spawner.prototype.update = function (currentTime) {
             this.spawnedExtras.clear();
         }
 
+        /* 貨物列車は吹田貨物ターミナルの時刻表どおり、夜中も走らせる (js/38-freight-timetable.js) */
+        this.checkFreightSchedule(currentTime);
+
         let hOfDay = (currentTime / H) % 24;
         
         // ★22:45 (22.75H) から 4:00 までは新規列車の生成を停止

@@ -19,6 +19,9 @@ Spawner.prototype.checkIntervalSpawns = function (ct) {
             for (let type in INTERVALS) {
                 // 新快速は大阪の発車時刻で組む (下の checkShinkaisokuSlots)
                 if (type === "新快速") continue;
+                /* 貨物は吹田貨物ターミナルの実際の時刻表で出す (js/38-freight-timetable.js)。
+                   ★以前はここで「1時間に何本」を乱数の始発駅・行先・列車番号で出していた。 */
+                if (type === "貨物") continue;
                 // 下り特急のうち、はまかぜ・こうのとりは向日町からの出区で別に走らせる
                 if (dirName === "Down" && type === "特急") {
                     if (ct >= this.nextMukoHamakazeTime) { this.spawnTokkyu(dirName, "hamakaze"); this.nextMukoHamakazeTime += 5400; }
@@ -334,7 +337,9 @@ Spawner.prototype.noteSpawnFail = function (type, dir, st, why) {
     this.spawnFail[k] = (this.spawnFail[k] || 0) + 1;
 };
 
-Spawner.prototype.trySpawn = function (type, dir, forcedStart) {
+/* plan … 時刻表の貨物列車 (js/38-freight-timetable.js の checkFreightSchedule)。
+          始発駅・行先・列車番号はその列車のものにする。 */
+Spawner.prototype.trySpawn = function (type, dir, forcedStart, plan) {
         // ★追加: 22時以降の段階的な優等列車の削減
         let hOfDay = (this.game.currentTime / 3600) % 24;
         if (!forcedStart && (hOfDay >= 22.0 || hOfDay < 4.0)) {
@@ -348,14 +353,16 @@ Spawner.prototype.trySpawn = function (type, dir, forcedStart) {
              実際の時刻表 (片道8本/時) に足りなかった。
              いまは時刻表から出した本数を種別ごとに見ている。 */
         /* 新快速の枠 (checkShinkaisokuSlots) から出すときは、本数は枠で決まっているので目安を見ない */
-        if (!forcedStart && ttOverBudget(this.game, "main", type)) { this.noteSpawnFail(type, dir, "", "在線目安"); return false; }
+        if (!forcedStart && !plan && ttOverBudget(this.game, "main", type)) { this.noteSpawnFail(type, dir, "", "在線目安"); return false; }
         let trackId = "";
         if (type === "貨物" || type === "回送") trackId = (dir===1) ? "Up_Out" : "Down_Out";
         else trackId = (type==="普通"||type==="快速") ? (dir===1?"Up_In":"Down_In") : (dir===1?"Up_Out":"Down_Out");
         
         let candidates = [];
         if (type === "貨物" || type === "回送") {
-            if (type === "貨物") {
+            if (type === "貨物" && plan) {
+                candidates = [plan.leg.from];      // 時刻表の列車 (js/38-freight-timetable.js)
+            } else if (type === "貨物") {
                 if (dir === 1) {
                     /* 山陽本線の上り貨物は岡山方面から上郡で線路図に入ってくる。
                        姫路貨物駅 (姫路タ) 発のものもある。
@@ -600,7 +607,7 @@ Spawner.prototype.trySpawn = function (type, dir, forcedStart) {
         }
 
         // ★変更: 目的地を事前に決定し、折り返し先の状況を確認できるようにする
-        const dest = this.getDestination(type, dir, startName);
+        const dest = plan ? plan.leg.dest : this.getDestination(type, dir, startName);
         
         // ★追加：目的地決定後、尼崎合流地点での高度なETA干渉チェック（東西・福知山線との予測譲り合い）
         if (this.willConflictAtAmagasaki(startName, dest, type, dir)) {
@@ -609,6 +616,7 @@ Spawner.prototype.trySpawn = function (type, dir, forcedStart) {
         }
 
         const t = { type, dir, trackId, dest: dest, startName };
+        if (plan) t.name = plan.leg.no;
         if (forcedStart && this.skPendingTarget) {
             t.skTarget = this.skPendingTarget.t;
             t.skOrigin = this.skPendingTarget.origin;
