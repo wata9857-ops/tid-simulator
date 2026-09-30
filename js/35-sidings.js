@@ -67,6 +67,8 @@ Train.prototype.sidingReturn = function (force) {
             }
         }
         if (lane < 0) continue;
+        // ホームへ入ってくる列車・単線区間の列車とぶつからないか (js/13-train-hold.js の spawnConflict)
+        if (!force && spawnConflict(g, tid, blk, lane, this)) { noteSpawnGuard(g, "引上線で待機"); continue; }
         const sb = (g.trackMgr.blocks[this.trackId] || [])[this.currBlockIndex];
         if (sb) freeOwnLane(sb.lanes, this);
         this.trackId = tid;

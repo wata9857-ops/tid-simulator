@@ -244,6 +244,25 @@ class Train {
              }
         }
 
+        /* ★出す番線と、その駅へ近づく列車・単線区間の列車がぶつからないかを確かめる
+             (js/13-train-hold.js の spawnConflict)。木津で、単線を近づいてくる列車の前に
+             回送が生成されて向かい合った。当たるときは線路に出さない。
+             留置場のある駅なら留置場で待たせ、出区の判定 (同じ確認を通る) で改めて出す。 */
+        if (startBlock && freeLane !== -1 && spawnConflict(this.game, this.trackId, startBlock, freeLane, this)) {
+            freeLane = -1;
+            if (this.type !== "貨物" && depHere0 && depotHasRoom(actualStart)) {
+                noteSpawnGuard(this.game, "生成→留置場で待機");
+                this.startName = actualStart;
+                this.state = "in_depot";
+                this.timer = this.skTarget ? 30 : 60;
+                this.depotOutConfig = { type: this.type, dest: this.dest, trainNo: this.trainNo,
+                                        dir: this.dir, dutyName: this.dutyName };
+                depotAdd(actualStart, this);
+                return;
+            }
+            noteSpawnGuard(this.game, "生成を見送り");
+        }
+
         if (startBlock && freeLane !== -1) {
             // ★修正: ここで無条件に編成を引き直していたため、GameSystem.addTrain() が
             //        先に割り当てた編成が行き場を失い、1本生成するごとに1編成が

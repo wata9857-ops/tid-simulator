@@ -282,6 +282,16 @@ Train.prototype.tryDepotOut = function (depotName, force = false, prepSec = 0) {
                 /* 準備で着発線へ据え付けるだけなら、本線の様子は発車のときに見る */
                 if (prepDef) safeToOut = true;
 
+                /* ★出す番線と、その駅へ近づく列車・単線区間の列車がぶつからないか
+                     (js/13-train-hold.js の spawnConflict)。強制出区でも、ここに当たるときは出さない。
+                     木津 (奈良支所) からの出区が、単線を近づいてくる列車の前に出ると向かい合う。 */
+                if (spawnConflict(this.game, targetTrackId, startBlock, freeLane, this, this.depotOutConfig.dir)) {
+                    noteSpawnGuard(this.game, "出区を見合わせ");
+                    this.depotOutWait = outWait + 30;
+                    this.timer = 30;
+                    return;
+                }
+
                 if (!safeToOut) {
                     this.depotStuckTime += 30;
                     this.depotOutWait = outWait + 30;
