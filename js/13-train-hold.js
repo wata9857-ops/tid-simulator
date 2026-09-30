@@ -1,6 +1,10 @@
 /* このファイルは index.html から分割されたものです。
    Train: 抑止(信号待ち)判定と着発番線の選択 */
 Train.prototype.checkHold = function (isStarting) {
+        /* ★この抑止が「ふだんの運転整理」(待避・続行間隔・始発の間隔) によるものかの印。
+           trainStalledAbnormally() が、ふだんの待避で止まっている列車を
+           「異常で止まっている列車」と取り違えないために使う。 */
+        this._routineHold = false;
         const blks = this.game.trackMgr.blocks[this.trackId];
         const nextIdx = this.currBlockIndex + this.dir;
         let targetTrackId = this.trackId; // ★変数のスコープを関数全体に広げてエラーを防止
@@ -143,9 +147,9 @@ Train.prototype.checkHold = function (isStarting) {
                     calcTravelTime() の減速 (js/14-train-turnback.js) で
                     ゆるやかに開ける。
                     js/16-train-adjust.js の「団子を作らない」を参照。 */
-                 if (!this.hasDeparted && this.shouldHoldForConvoy()) return true;
+                 if (!this.hasDeparted && this.shouldHoldForConvoy()) { this._routineHold = true; return true; }
                  /* ★始発駅から同じ向きの列車を続けて出さない (js/16-train-adjust.js の originHeadwayHold)。 */
-                 if (!this.hasDeparted && this.originHeadwayHold()) return true;
+                 if (!this.hasDeparted && this.originHeadwayHold()) { this._routineHold = true; return true; }
 
                  // 7分(420秒)以上スタックしている場合は間隔調整を無視して強制発車(デッドロック回避)
                  if (this.stuckTime > 420) return false;
@@ -177,7 +181,7 @@ Train.prototype.checkHold = function (isStarting) {
                  for (let k = 1; k <= maxScanTrouble; k++) {
                      let idx = this.currBlockIndex + (this.dir * k);
                      if (idx >= 0 && idx < targetBlks.length) {
-                         let hasTrouble = targetBlks[idx].lanes.some(l => l !== null && l.dir === this.dir && (l.minorTrouble || l.isManuallySuspended || l.stuckTime > 300));
+                         let hasTrouble = targetBlks[idx].lanes.some(l => l !== null && l.dir === this.dir && trainStalledAbnormally(l, 300));
                          if (hasTrouble) {
                              troubleAheadDist = k;
                              break;
@@ -309,7 +313,7 @@ Train.prototype.checkHold = function (isStarting) {
                          }
                          if (shouldYieldToSameStation) break;
                      }
-                     if (shouldYieldToSameStation) return true;
+                     if (shouldYieldToSameStation) { this._routineHold = true; return true; }
                  }
                  // ====================================================================
 
@@ -415,7 +419,8 @@ Train.prototype.checkHold = function (isStarting) {
                                                  canEnter = hereBlk.lanes.some((x, li) => x === null && (!pl || !pl.length || pl.indexOf(li) >= 0) &&
                                                                                     (!needPf || laneHasPlatform(currentStName, otherTarget, li)));
                                              }
-                                             if (canEnter && l.stuckTime < 480 && (typeof amaYieldOk !== "function" || amaYieldOk(this, l, k))) {
+                                             if (canEnter && l.stuckTime < 480 && (typeof amaYieldOk !== "function" || amaYieldOk(this, l, k)) &&
+                                                 overtakeWorthWaiting(this, l, k, currentStName)) {
                                                   yieldToHigher = true;
                                                         }
                                                     }
@@ -431,7 +436,7 @@ Train.prototype.checkHold = function (isStarting) {
                      // ★確実な抑止: 厳格な駅では最大10分(600秒)まで優等列車を待ち続ける。
                      // これにより、西明石で300秒待機する新規生成の快速を、普通列車が確実に待つようになる。
                      let maxWaitTime = isStrictPriorityStation ? 600 : 360;
-                     if (yieldToHigher && this.stuckTime < maxWaitTime) return true;
+                     if (yieldToHigher && this.stuckTime < maxWaitTime) { this._routineHold = true; return true; }
                  }
 
              // ----- 琵琶湖線内での新快速 待避優先ロジック -----
@@ -457,7 +462,7 @@ Train.prototype.checkHold = function (isStarting) {
                          }
                          if (approachingSpecialRapid) break;
                      }
-                     if (approachingSpecialRapid && this.stuckTime < 420) return true;
+                     if (approachingSpecialRapid && this.stuckTime < 420) { this._routineHold = true; return true; }
                  }
              }
              // ---------------------------------------------------
@@ -544,7 +549,7 @@ Train.prototype.checkHold = function (isStarting) {
                  }
                  
                  // ★修正: 前方列車との間隔が不十分な場合に、正しく発車抑止(hold)を適用する
-                 if (conflictAhead) return true;
+                 if (conflictAhead) { this._routineHold = true; return true; }
                  
              } else {
                  // 普通・快速・新快速「以外」（特急、貨物、回送など）の基本接近チェック
@@ -571,7 +576,7 @@ Train.prototype.checkHold = function (isStarting) {
                                               if (blockingTrain.stuckTime > this.stuckTime) continue;
                                               if (blockingTrain.stuckTime === this.stuckTime && this.trackId.includes("Out")) continue;
                                           }
-                                          return true;
+                                          { this._routineHold = true; return true; }
                                       }
                                   }
                               }
@@ -655,7 +660,9 @@ Train.prototype.checkHold = function (isStarting) {
                                                 if (k >= UNITS_PER_STATION * 2.5 && l.stuckTime > 0) continue;
                                                 // 尼崎は、見込みの時間の内に着く優等列車だけを待つ (js/37-amagasaki-prc.js)
                                                 if (typeof amaYieldOk === "function" && !amaYieldOk(this, l, k)) continue;
-                                                
+                                                // 姫路より西〜西明石: 追いつかれない優等列車・回送は待たない
+                                                if (!overtakeWorthWaiting(this, l, k, stName)) continue;
+
                                                 approaching = true;
                                                 if (k <= 2) veryCloseHigherPriority = true; // ★追加: 同一駅〜手前2ブロック以内なら超接近と判定
 
@@ -733,7 +740,7 @@ Train.prototype.checkHold = function (isStarting) {
                                    this.notifiedEvents.passSkip = true;
                                    this.game.ui.updateBanner(`【乗務員連絡】${stName}駅で通過待ち予定ですが、特急(優等)が大幅に遅れています。このまま先行してよろしいでしょうか？（${this.trainNo}）`, "banner-blue");
                                }
-                               return true;
+                               { this._routineHold = true; return true; }
                            } else {
                                // 待機上限を超えた場合、強制的に先行する
                                if (Math.random() < 0.2) {
@@ -756,6 +763,87 @@ Train.prototype.checkHold = function (isStarting) {
         }
         return false;
 };
+
+/**
+ * その列車が「異常で」止まっているか (後続を手前の駅で抑止・減速させる理由になるか)。
+ *
+ * ■ 何が起きていたか (利用者の指摘: 上りの 土山・東加古川〜御着・英賀保 の団子)
+ *   以前は「5分 (減速は3分) 以上動けない列車」をすべて異常として扱い、
+ *   後ろ15駅ぶんの列車を待避駅で最大30分止め、走っている列車も最大2.5倍に減速させていた。
+ *   ところが止まっている列車の多くは、ふだんの待避 (新快速・貨物の通過待ち) や
+ *   続行間隔の調整で待っているだけだった。その1本が3〜5分待つたびに
+ *   後ろの列車が一斉に遅くなり・止まり、網干〜西明石の上りに列ができていた
+ *   (実測: この抑止だけで 1日 321分)。
+ * ■ 決まり
+ *   ・故障 (minorTrouble)・個別の抑止 (isManuallySuspended) は、これまでどおり異常。
+ *   ・長く止まっていても、ふだんの運転整理 (checkHold の _routineHold) で待っている列車は異常ではない。
+ *   ・前の閉塞に同じ向きの列車がいて、その後ろに並んでいるだけの列車も異常ではない
+ *     (列の先頭が異常なら、先頭のほうで見つかる)。
+ */
+function trainStalledAbnormally(l, thresholdSec) {
+    if (!l) return false;
+    if (l.minorTrouble || l.isManuallySuspended) return true;
+    if (!(l.stuckTime > thresholdSec)) return false;
+    if (l._routineHold) return false;
+    const tm = l.game && l.game.trackMgr;
+    const ahead = tm && tm.blocks[l.turnbackTrack || l.trackId];
+    const nb = ahead && ahead[l.currBlockIndex + l.dir];
+    if (nb && nb.lanes.some(x => x && x !== l && x.dir === l.dir)) return false;
+    return true;
+}
+
+/**
+ * 待避駅で、後ろから来る優等列車 l を待つ意味があるか (姫路より西〜西明石の複線区間)。
+ *
+ * ■ 何が起きていたか (利用者の指摘)
+ *   網干〜西明石の上りで、普通・快速が待避駅に着くたびに「3駅以内に優等列車がいる」
+ *   というだけで数分待っていた。ところが
+ *     ・快速は西明石より西で各駅に停まる。新快速も姫路より西は各駅に停まる。
+ *       停まる駅が同じなら、先に出ても追いつかれない (待っても追い抜かれない)。
+ *     ・回送は旅客列車より先に通す理由が無い。
+ *     ・優等列車がまだ遠ければ、先に出て次の待避駅で待てば足りる。
+ *   待っている間に後ろの普通・快速が詰まり、英賀保・加古川・宝殿・大久保で
+ *   列車が団子になっていた (実測: 待避の抑止が 1日 881分)。
+ * ■ 決まり
+ *   自分が今すぐ発車して「次の待避駅」に着くまでに、優等列車が追いつく (自分の後ろの
+ *   閉塞まで迫る) ときだけ待つ。所要は 1閉塞の走行時間 (BLOCK_RUN_SEC) と、
+ *   途中で停まる駅の停車時間から見積もる。
+ *   複々線 (西明石より東) や他の線区は、これまでの判定のまま (true を返す)。
+ */
+function overtakeWorthWaiting(t, l, k, stName) {
+    if (!/^(Up|Down)_Out$/.test(t.trackId)) return true;
+    const here = STATION_MAP[stName];
+    const nishi = STATION_MAP["西明石"];
+    if (here === undefined || here >= nishi || STATIONS[here].name !== stName) return true;
+    if (l.type === "回送") return false;
+    const blks = t.game.trackMgr.blocks[t.trackId];
+    if (!blks) return true;
+    const runT = BLOCK_RUN_SEC[t.type] || BLOCK_RUN_SEC["普通"];
+    const runL = BLOCK_RUN_SEC[l.type] || BLOCK_RUN_SEC["普通"];
+    const stops = (tr, st) => tr.passengerStopsAt(st.name);   // 回送・貨物は停まらない
+    // 優等列車がここへ着くまで
+    let tl = k * runL;
+    if (l.state === "stopped" && l.timer > 0) tl += l.timer;
+    if (k > 0 && stops(l, STATIONS[here])) tl += STATIONS[here].stopTime || 60;
+    let tt = 0;
+    for (let j = 1; j <= 10; j++) {
+        const s = here + t.dir * j;
+        if (s < 0 || s >= STATIONS.length) return true;
+        const st = STATIONS[s];
+        const b = blks[s * UNITS_PER_STATION];
+        if (!b || b.x === -1000) return true;
+        tt += UNITS_PER_STATION * runT;
+        tl += UNITS_PER_STATION * runL;
+        const isPass = s >= nishi || PASSING_STATIONS.indexOf(st.name) >= 0;
+        if (isPass || st.name === t.dest) {
+            // 自分が次の待避駅に入る前に、優等列車が2閉塞の内まで迫るなら待つ
+            return tl < tt + 2 * runL;
+        }
+        if (stops(t, st)) tt += st.stopTime || 60;
+        if (stops(l, st)) tl += st.stopTime || 60;
+    }
+    return true;
+}
 
 /**
  * 単線区間 (js/03-stations.js の SINGLE_TRACK_UNITS) へ入れないか。
