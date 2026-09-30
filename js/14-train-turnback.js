@@ -1160,7 +1160,7 @@ Train.prototype.calcTravelTime = function () {
             if (idx < 0 || idx >= blks.length) break;
             
             // 同一方向で異常のある列車を探す（トラブル、個別抑止、異常スタック）
-            let hasTrouble = blks[idx].lanes.some(l => l !== null && l.dir === this.dir && (l.minorTrouble || l.isManuallySuspended || l.stuckTime > 180));
+            let hasTrouble = blks[idx].lanes.some(l => l !== null && l.dir === this.dir && trainStalledAbnormally(l, 180));
             if (hasTrouble) {
                 troubleAheadDist = k;
                 break;
