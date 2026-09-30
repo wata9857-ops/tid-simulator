@@ -44,19 +44,18 @@ Train.prototype.enterDepot = function (stName) {
         this.game.fleet.release(stName, this.vehicles);
         this.vehicles = [];
 
-        this.state = "in_depot";
+        /* ★運用を終えて入区した列車は、編成を留置場の在庫 (待機編成) に返したら、
+             列車としては消す。以前は「編成も出区予定も無い空の枠」として留置場の在線に残り、
+             構内図・指令卓に「編成未定」「予備車」と出続けていた (利用者の指摘 4.)。
+             編成は待機編成として編成番号だけで表示され、次の運用はそこから選ぶ。 */
+        const oldNo = this.trainNo;
+        depotRemove(this);
+        this.state = "finished";
         this.startName = stName;
-        this.preparing = null;
-        this.prepLead = 0;
-        this.timer = -1; 
         this.depotOutConfig = null;
-        let oldNo = this.trainNo;
-        this.type = "回送";
-        this.trainNo = "";
-        this.dutyName = "";     // 前の運用の名前を持ち越さない
-        depotAdd(stName, this);   // ★二重登録を防ぐためヘルパー経由にする
+        this.preparing = null;
         this.game.spawner.activeTrainNos.delete(oldNo);
-        this.game.ui.updateBanner(`【入区】${oldNo} は ${stName}留置場に入区し、待機状態に入りました。`, "banner-orange");
+        this.game.ui.updateBanner(`【入区】${oldNo} は ${stName}留置場に入区し、編成は待機に入りました。`, "banner-orange");
 };
 
 /**

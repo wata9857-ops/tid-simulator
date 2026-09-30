@@ -242,6 +242,9 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 }
             }
 
+            // 朝の木津方の始発 (js/27-operations.js の DEPOT_DUTIES 放出 firsts) のぶんの編成は残す
+            if (canSpawn && this.game.ops && this.game.ops.firstsHoldStock("放出", -1)) canSpawn = false;
+
             if (canSpawn && (budget(type, "tozai") || starved("tozai", -1)) && !jammedAhead("Tozai_Down", "放出", -1)) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Tozai_Down", dest:dest, startName:"放出", nextAction:"depot"});
                 this.nextTozaiDown += (type === "快速" ? 750 : 600) * timeFactor;

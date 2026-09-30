@@ -186,6 +186,36 @@ function depotPrune() {
     }
 }
 
+/**
+ * 留置場の待機編成 (在庫) を1本、出区を待つ列車にする (指令の出区操作で待機編成を選んだとき)。
+ * ★入区した列車は編成を在庫へ返して消えるようにしたので (js/15-train-depot.js の enterDepot)、
+ *   指令卓の車両の一覧には待機編成を編成番号で並べ、選ばれたらここで列車にする。
+ *   値は "pool:<編成番号>"。作れなければ null。
+ */
+function depotTrainFromPool(game, depotName, fullId) {
+    const home = depotKeyOf(depotName);
+    if (!DEPOTS[home] || !game.fleet) return null;
+    const pool = game.fleet.poolAt(home);
+    const i = pool.findIndex(v => v.fullId === fullId);
+    if (i < 0) return null;
+    const veh = pool.splice(i, 1)[0];
+    const trackId = depotTrackId(home, 1, "回送");
+    const t = new Train({ type: "回送", dir: 1, trackId: trackId, startName: home, name: "",
+                          vehicles: [veh], nextAction: "depot" }, game);
+    const blks = game.trackMgr.blocks[t.trackId];
+    if (blks && blks[t.currBlockIndex]) freeOwnLane(blks[t.currBlockIndex].lanes, t);
+    t.vehicles = [veh];
+    t.state = "in_depot";
+    t.timer = -1;
+    t.startName = home;
+    t.depotOutConfig = null;
+    if (t.trainNo) game.spawner.activeTrainNos.delete(t.trainNo);
+    t.trainNo = "";
+    depotAdd(home, t);
+    if (game.trains.indexOf(t) < 0) game.trains.push(t);
+    return t;
+}
+
 const DEPOT_LAYOUTS = {
     "祝園": {
         title: "祝園 留置線",

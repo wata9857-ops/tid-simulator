@@ -153,6 +153,7 @@ class SimBus {
                 isKoseiRoute: !!t.isKoseiRoute,
                 isFinalStop: !!t.isFinalStop,
                 nextAction: t.nextAction,
+                overnightStable: t.overnightStable ? { st: t.overnightStable.st, leaveAt: t.overnightStable.leaveAt } : null,
                 trackChangeReservation: t.trackChangeReservation ? {
                     stationName: t.trackChangeReservation.stationName,
                     targetTrackId: t.trackChangeReservation.targetTrackId,

@@ -1035,6 +1035,25 @@ function tidCircledNumber(n) {
  */
 function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
     opt = opt || {};
+    /* 駅で朝まで留置している編成は、運用が付くまで編成番号だけを出す
+       (列車番号・行先・両数は出さない。利用者の指摘 3.。js/27-operations.js の STATION_STABLING) */
+    if (t.overnightStable) {
+        const fc = (t.vehicles && t.vehicles.length && TID_FLEET_COLORS[t.vehicles[0].group]) || { bg: "#444", text: "#fff" };
+        const label = (t.vehicles || []).map(v => v.fullId || v.id).join("+");
+        const h0 = TID_GEO.trainH;
+        ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
+        const w0 = Math.max(40, ctx.measureText(label).width + 12);
+        const x0 = cx - w0 / 2, y0 = cy - h0 / 2;
+        ctx.fillStyle = fc.bg;
+        ctx.fillRect(x0, y0, w0, h0);
+        ctx.fillStyle = fc.text;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(label, cx, y0 + h0 / 2 + 0.5);
+        ctx.strokeStyle = "#5A5A66"; ctx.lineWidth = 0.9;
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, w0 - 1, h0 - 1);
+        tidRecordBox("fleet", x0, y0, w0, h0, label);
+        return { x: x0 - 12, y: y0 - 12, w: w0 + 24, h: h0 + 24 };
+    }
     const col = TID_TYPE_COLORS[t.type] || TID_TYPE_COLORS["普通"];
     const h = TID_GEO.trainH;
     /* 列車番号の枡。特急は「サンダーバード1号」のように長い名前が入るので、

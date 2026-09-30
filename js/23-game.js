@@ -292,7 +292,7 @@ class GameSystem {
            いまの線路・向きでたどり着けるかを確かめ、駄目なら直す。
            (js/27-operations.js の fixUnreachableDest) */
         this.trains.forEach(t => {
-            if (t.state === "finished" || t.state === "in_depot") return;
+            if (t.state === "finished" || t.state === "in_depot" || t.overnightStable) return;
             this.ops.fixUnreachableDest(t);
             /* いまの編成で走れない運用になっていたら当駅止まりに短縮する
                (js/27-operations.js の fixIllegalStock) */

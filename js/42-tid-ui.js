@@ -226,13 +226,18 @@ class TidUI {
         if (!sel) return;
         let html = '<option value="">車両を選択</option>';
         if (dName && DEPOTS[dName]) {
-            DEPOTS[dName].trains.forEach((t, i) => {
+            let n = 0;
+            DEPOTS[dName].trains.forEach((t) => {
+                /* ★運用の無い編成は編成番号だけを出す (「予備車」「編成未定」は出さない。利用者の指摘 4.) */
                 const veh = (t.vehicles && t.vehicles.length)
-                    ? t.vehicles.map(v => v.fullId).join("+") + "(" + t.vehicles.reduce((s, v) => s + v.cars, 0) + "両)"
-                    : "編成未定";
-                const wait = (t.timer > 0) ? "出区まで" + Math.ceil(t.timer / 60) + "分"
-                    : (t.timer === -1 ? "待機中" : "出区準備");
-                html += `<option value="${t.id}">[${i + 1}] ${escapeLogHtml(t.trainNo || "予備車")} ${escapeLogHtml(veh)} / ${wait}</option>`;
+                    ? t.vehicles.map(v => v.fullId).join("+") + "(" + t.vehicles.reduce((s, v) => s + v.cars, 0) + "両)" : "";
+                const no = t.depotOutConfig ? (t.trainNo || t.depotOutConfig.trainNo || "") : "";
+                const wait = !t.depotOutConfig ? "" : (t.timer > 0) ? " / 出区まで" + Math.ceil(t.timer / 60) + "分" : " / 出区準備";
+                html += `<option value="${t.id}">[${++n}] ${escapeLogHtml([no, veh].filter(Boolean).join(" "))}${wait}</option>`;
+            });
+            // 待機編成 (留置場の在庫)。出区指令で列車になる (js/04-depots.js の depotTrainFromPool)
+            this.game.fleet.poolAt(dName).forEach(v => {
+                html += `<option value="pool:${escapeLogHtml(v.fullId)}">[${++n}] ${escapeLogHtml(v.fullId)}(${v.cars}両)</option>`;
             });
         }
         this.writeSelect("tid-depot-train", html, sel.value);

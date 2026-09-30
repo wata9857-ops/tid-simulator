@@ -41,19 +41,22 @@ function collectDepotItems(depotName) {
         depot.trains.forEach(t => {
             const ids = (t.vehicles && t.vehicles.length)
                 ? t.vehicles.map(v => v.fullId).join("+") : "";
+            /* ★編成も出区予定も無い空の枠は出さない (以前は「編成未定」と出ていた。利用者の指摘 4.) */
+            if (!ids && !t.depotOutConfig) return;
             const cars = (t.vehicles && t.vehicles.length)
                 ? t.vehicles.reduce((s, v) => s + v.cars, 0) : 4;
             const out = t.depotOutConfig;
             items.push({
                 key: ids || t.id,
                 cars: cars,
-                kind: "train",
-                type: out ? out.type : "回送",
-                label: ids || "(編成未定)",
+                kind: out ? "train" : "idle",
+                type: out ? out.type : "留置",
+                label: ids || out.trainNo || "",
+                /* 運用の無い編成は編成番号だけ (列車番号・行先は出さない) */
                 sub: out
-                    ? `${out.trainNo || "番号未定"} ${out.dest || ""}行き` +
+                    ? `${out.trainNo || ""} ${out.dest || ""}行き` +
                       (t.timer > 0 ? ` / 出区まで ${Math.max(0, Math.ceil(t.timer / 60))}分` : " / 出区準備")
-                    : "予備車 (出区予定なし)",
+                    : `${t.vehicles[0].type} ${cars}両`,
                 train: t
             });
         });

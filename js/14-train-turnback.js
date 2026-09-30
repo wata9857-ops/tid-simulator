@@ -73,6 +73,10 @@ Train.prototype.executeTurnBack = function () {
             return;
         }
 
+        /* 終電の近くに、翌朝の始発駅になる駅 (四条畷・松井山手) に着いた列車は、
+           そのまま朝まで駅で留置する (js/27-operations.js の STATION_STABLING。利用者の指摘 3.) */
+        if (this.game.ops.tryStableOvernight(this, stName)) return;
+
         /* ★その種別が走りすぎているときは、超えているぶんに応じた割合だけ
            折り返さずに運用を終える (入区させる)。
            折り返しは種別を変えないので、何もしないと朝にできた
@@ -313,9 +317,11 @@ Train.prototype.executeTurnBack = function () {
                 this.depotOutConfig = { type: this.type, dest: nextDest, trainNo: nextNo,
                                         dir: newDir, dutyName: nextNo };
             
-                // ★車両を留置場へ返却 (返却先は車両所グループに応じてFleetManagerが決める)
-                this.game.fleet.release(stName, this.vehicles);
-                this.vehicles = [];
+                /* ★編成は持ったまま留置線で次の運用を待つ (出区のときに fleet.reassign が
+                     運用の条件を満たすか確かめ、満たさなければ差し替える)。
+                     以前はここで在庫へ返して編成の無い列車にしていたので、出区を待つあいだ
+                     構内図・指令卓に「編成未定」と出ていた (利用者の指摘 4.)。
+                     夜に出区が営業の時間を過ぎたときは、remove() がこの留置場へ編成を返す。 */
 
                 // 本線から消去して留置場へ
                 freeOwnLane(blk.lanes, this);

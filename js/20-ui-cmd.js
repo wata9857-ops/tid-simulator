@@ -141,18 +141,25 @@ UIManager.prototype.updateDepotTrains = function () {
         sel.innerHTML = '<option value="">車両を選択</option>';
         if(!depotName || !DEPOTS[depotName]) return;
         
-        DEPOTS[depotName].trains.forEach((t, i) => {
+        let n = 0;
+        DEPOTS[depotName].trains.forEach((t) => {
             let op = document.createElement("option");
             op.value = t.id;
-            let name = t.trainNo || `予備車${i+1}`;
             // ★追加: 強制発車・出区指令の対象を選びやすくするため、編成番号と
             //        出区までの残り時間も出す。
+            // ★運用の無い編成は編成番号だけを出す (「予備車」「編成未定」は出さない。利用者の指摘 4.)
             let veh = (t.vehicles && t.vehicles.length)
-                ? ` ${t.vehicles.map(v => v.fullId).join("+")}(${t.vehicles.reduce((s, v) => s + v.cars, 0)}両)`
-                : " (編成未定)";
-            let wait = (t.timer > 0) ? ` 出区まで${Math.ceil(t.timer / 60)}分`
-                     : (t.timer === -1 ? " 待機中" : " 出区準備");
-            op.text = `[${i+1}] ${name}${veh}${wait}`;
+                ? `${t.vehicles.map(v => v.fullId).join("+")}(${t.vehicles.reduce((s, v) => s + v.cars, 0)}両)` : "";
+            let name = t.depotOutConfig ? (t.trainNo || t.depotOutConfig.trainNo || "") : "";
+            let wait = !t.depotOutConfig ? "" : (t.timer > 0) ? ` 出区まで${Math.ceil(t.timer / 60)}分` : " 出区準備";
+            op.text = `[${++n}] ${[name, veh].filter(Boolean).join(" ")}${wait}`;
+            sel.add(op);
+        });
+        // 待機編成 (留置場の在庫)。選ぶと出区指令のときに列車になる (js/04-depots.js の depotTrainFromPool)
+        this.game.fleet.poolAt(depotName).forEach(v => {
+            let op = document.createElement("option");
+            op.value = "pool:" + v.fullId;
+            op.text = `[${++n}] ${v.fullId}(${v.cars}両)`;
             sel.add(op);
         });
 };

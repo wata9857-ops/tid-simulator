@@ -103,7 +103,17 @@ const DEPOT_DUTIES = [
     // --- 放出電留線 (JR東西線・学研都市線)
     /* ★学研都市線 (放出〜木津) を線路図に入れたので、朝夕は放出から
          木津方 (四条畷・松井山手・京田辺・同志社前・木津) へも出区する。 */
-    { depot: "放出", windows: [
+    /* ★朝の木津方への始発 (利用者の指摘 6.)。firsts は決まった時刻に1本ずつ必ず出す始発。
+         同志社前駅の時刻表 (木津方面) の 5:57・6:21・6:42・7:02 の普通 木津行きは、放出の電留線を
+         出た編成が受け持つ (放出→同志社前 約40分)。以前は窓 (every) の出区だけで、同じ時間帯の
+         京橋方 (dir -1) の出区と生成が放出の在庫を先に使い切り、2日目の朝は木津方へ 1〜2本しか出なかった。
+         始発の時刻までは、その本数ぶんの編成を京橋方へ出さずに残しておく (firstsHoldStock)。 */
+    { depot: "放出", firsts: [
+        { at: 5.28, dir: 1, via: "放出", as: "普通", dest: "木津" },
+        { at: 5.68, dir: 1, via: "放出", as: "普通", dest: "木津" },
+        { at: 6.03, dir: 1, via: "放出", as: "普通", dest: "木津" },
+        { at: 6.37, dir: 1, via: "放出", as: "普通", dest: "木津" }
+      ], windows: [
         { h: [4.8, 9.0],  every: 1800, dir: 1, via: "放出", as: "普通", dest: ["四条畷", "松井山手", "京田辺", "同志社前", "木津"], ratio: 0.9 },
         { h: [16.0, 21.0], every: 2700, dir: 1, via: "放出", as: "普通", dest: ["四条畷", "松井山手", "同志社前"], ratio: 0.7 },
         { h: [4.5, 9.0],  every: 1500, dir: -1, via: "放出", as: "普通", dest: ["西明石", "尼崎"], ratio: 1.0 },
@@ -284,6 +294,7 @@ class OperationsManager {
         this.checkLocalGapFill(ct);
         this.checkStockBalance(ct);
         this.checkNightReturn(ct);
+        this.checkStationStabling(ct);   // 駅の夜間留置 (四条畷・松井山手)
     }
 
     /* ------------------------------------------------------------ 夜の入区 (翌朝の始発の手配)
@@ -462,11 +473,54 @@ class OperationsManager {
      * 始発駅で営業列車に変わる (serviceChange)。
      * こうすることで「駅にいきなり列車が現れる」ことがなくなる。
      */
+    /** 営業日の番号 (4:30 で日が変わる) */
+    serviceDay(ct) { return Math.floor((ct - TT_SERVICE_START * 3600) / 86400); }
+
+    /** その始発 (firsts の i 本目) を今日もう出したか */
+    firstDone(depotName, i, ct) {
+        return (this.firstsDoneDay || {})[depotName + "#f" + i] === this.serviceDay(ct);
+    }
+
+    /**
+     * 決まった時刻の始発 (DEPOT_DUTIES の firsts) のために、その向き以外への出区・生成を控えるか。
+     * まだ出していない始発 (発車の2時間前〜15分後) の本数ぶんは、編成を残しておく。
+     */
+    firstsHoldStock(depotName, dir) {
+        const duty = DEPOT_DUTIES.find(d => d.depot === depotName && d.firsts);
+        if (!duty) return false;
+        const ct = this.game.currentTime;
+        const h = (ct / 3600) % 24;
+        let pend = 0;
+        duty.firsts.forEach((f, i) => {
+            if (f.dir !== dir && h >= f.at - 2.0 && h < f.at + 0.25 && !this.firstDone(depotName, i, ct)) pend++;
+        });
+        if (!pend) return false;
+        const f = this.game.fleet;
+        const stock = (depotName === "放出" && f.sevenCarSets) ? f.sevenCarSets(depotName) : f.poolAt(depotName).length;
+        return stock <= pend;
+    }
+
+    /** 決まった時刻の始発を出す。出せなければ15分まで1分ごとにやり直す */
+    checkDepotFirsts(ct, duty) {
+        const h = (ct / 3600) % 24;
+        this.firstsDoneDay = this.firstsDoneDay || {};
+        duty.firsts.forEach((f, i) => {
+            if (h < f.at || h >= f.at + 0.25 || this.firstDone(duty.depot, i, ct)) return;
+            const key = duty.depot + "#f" + i;
+            if (ct < ((this.firstsRetry || {})[key] || 0)) return;
+            this.firstsRetry = this.firstsRetry || {};
+            this.firstsRetry[key] = ct + 60;
+            if (!depotHasRoom(duty.depot)) return;
+            if (this.dispatchFromDepot(duty.depot, f)) this.firstsDoneDay[key] = this.serviceDay(ct);
+        });
+    }
+
     checkDepotDuties(ct) {
         const h = (ct / 3600) % 24;
         for (const duty of DEPOT_DUTIES) {
             const depot = DEPOTS[duty.depot];
             if (!depot) continue;
+            if (duty.firsts) this.checkDepotFirsts(ct, duty);
             for (let wi = 0; wi < duty.windows.length; wi++) {
                 const w = duty.windows[wi];
                 const key = duty.depot + "#" + wi;
@@ -488,6 +542,8 @@ class OperationsManager {
                 if (!depotHasRoom(duty.depot)) continue;
                 // 在庫が無いときも見送る
                 if (this.game.fleet.poolAt(duty.depot).length < 2) continue;
+                // 決まった時刻の始発 (firsts) のぶんの編成は残す
+                if (this.firstsHoldStock(duty.depot, w.dir)) continue;
                 this.dispatchFromDepot(duty.depot, w);
             }
         }
@@ -1349,7 +1405,7 @@ OperationsManager.prototype.watchdog = function (ct) {
                  g.trackMgr.manualSuspensions.length === 0;
     const list = g.trains.slice();
     for (const t of list) {
-        if (t.state === "finished" || t.state === "in_depot") continue;
+        if (t.state === "finished" || t.state === "in_depot" || t.overnightStable) continue;
         const blks = g.trackMgr.blocks[t.trackId];
         const b = blks ? blks[t.currBlockIndex] : null;
 
@@ -1401,5 +1457,180 @@ OperationsManager.prototype.watchdog = function (ct) {
         } else if (t.stuckTime === 0) {
             t.watchForced = 0;
         }
+    }
+};
+
+/* ------------------------------------------------------------------ 駅の夜間留置 (駅泊)
+
+   ■ 利用者の指摘 3.
+     四条畷のように翌朝の始発駅になる駅では、前の日の最終の運用を終えた編成が
+     2本ほど駅のホーム (着発線) で夜を明かし、そのまま翌朝の始発になる。
+     以前は終電のあとに着いた列車は、近くの車両所 (放出) へ回送するか、線路図から消していた。
+   ■ どうするか
+     ・終電の近く (23:24〜) にその駅止まりで着いた列車は、max 本まで折り返さずに朝まで留置する
+       (翌朝の始発の向きの番線へ先に移しておく)。
+     ・留置しているあいだは列車番号も行先も持たない。表示は編成番号だけ
+       (js/40-tid-theme.js の tidDrawTrainLabel・js/17-renderer.js)。
+     ・朝 leave の時刻の15分前に、翌朝の始発 (列車番号・行先) を付けて発車を待つ。
+       編成は夜に留置した編成をそのまま使う (在庫には戻さない = 瞬間移動しない)。
+     ・終電の近くにその駅止まりが足りないときは、先へ行く普通・快速を1本その駅止まりにする
+       (夜の入区 NIGHT_RETURN と同じ考え方)。
+   ■ 駅ごとの設定
+     max   … 留置する本数。四条畷は上下2線ずつ (4番線まで) あるので2本、
+             松井山手は上下1線ずつなので1本 (もう1本は朝の京橋方からの列車に空けておく)
+     dir   … 翌朝の始発の向き (-1 = 京橋・尼崎方)
+     leave … 翌朝の始発の発車時刻 (時。1本目・2本目 …)
+     as / dest … 翌朝の始発の種別・行先 (いまの編成で入れる行先を順に探す) */
+const STATION_STABLING = {
+    "四条畷":   { max: 2, dir: -1, leave: [4.85, 5.2], as: "普通", dest: ["西明石", "尼崎", "京橋"] },
+    "松井山手": { max: 1, dir: -1, leave: [5.05],      as: "普通", dest: ["尼崎", "西明石", "京橋"] }
+};
+
+/** その駅で朝まで留置している列車 */
+OperationsManager.prototype.stabledAt = function (stName) {
+    return this.game.trains.filter(t => t.state !== "finished" && t.overnightStable && t.overnightStable.st === stName);
+};
+
+/**
+ * 終着駅に着いた列車を、その駅で朝まで留置する。留置したら true
+ * (js/14-train-turnback.js の executeTurnBack から呼ぶ)。
+ */
+OperationsManager.prototype.tryStableOvernight = function (t, stName) {
+    const cfg = STATION_STABLING[stName];
+    if (!cfg || globalThis.__NO_STATION_STABLING) return false;
+    const g = this.game;
+    const now = g.currentTime;
+    const h = (now / 3600) % 24;
+    const a = ttAbsHour(h);
+    if (a < 23.4 || a >= 27.5) return false;
+    if (["普通", "快速", "回送"].indexOf(t.type) < 0 || t.specialEvent || t.eventTrain) return false;
+    if (!/^Tozai_/.test(t.trackId) || !t.vehicles || !t.vehicles.length) return false;
+    const here = this.stabledAt(stName);
+    if (here.length >= cfg.max) return false;
+    const morningTrack = cfg.dir === 1 ? "Tozai_Up" : "Tozai_Down";
+    if (!cfg.dest.some(d => g.fleet.canServe(t.vehicles, stName, cfg.as, morningTrack, d, null))) return false;
+    // 翌朝の始発の向きの番線へ先に移す (夜のうちに方向を変えておく)
+    if (t.dir !== cfg.dir && !this.moveToOppositeTrack(t, stName, cfg.dir)) return false;
+
+    const used = here.map(x => x.overnightStable.slot);
+    let slot = 0;
+    while (used.indexOf(slot) >= 0) slot++;
+    const leaveH = slot < cfg.leave.length ? cfg.leave[slot] : cfg.leave[cfg.leave.length - 1] + 0.25 * slot;
+    let leaveAt = now - h * 3600 + leaveH * 3600;
+    if (leaveAt <= now) leaveAt += 24 * 3600;
+
+    const oldNo = t.trainNo;
+    g.spawner.activeTrainNos.delete(t.trainNo);
+    t.overnightStable = { st: stName, slot: slot, since: now, leaveAt: leaveAt, assignAt: leaveAt - 900 };
+    t.type = "回送";
+    t.trainNo = "";
+    t.dutyName = "";
+    t.dest = stName;
+    t.startName = stName;
+    t.serviceChange = null;
+    t.skTarget = undefined;
+    t.nightReturn = false;
+    t.stableTarget = null;
+    t.retiredByBudget = false;
+    t.oldInfo = null;
+    t.nextAction = "turnback";
+    t.isFinalStop = false;
+    t.hasStoppedAtCurrent = false;
+    t.hasDeparted = false;
+    t.delayTime = 0;
+    t.stuckTime = 0;
+    t.state = "waiting_start";
+    t.timer = leaveAt - now;
+    this.stats.stabled = (this.stats.stabled || 0) + 1;
+    g.ui.updateBanner(`【夜間留置】${oldNo} は ${stName}駅で運用を終え、編成 ${t.vehicles.map(v => v.fullId).join("+")} は` +
+                      `${stabledPlatformLabel(t)}で朝まで留置します (翌朝 ${stabledClock(leaveH)} 発の始発に充当)。`, "banner-blue");
+    return true;
+};
+
+/** 番線名 (分からなければ「着発線」) */
+function stabledPlatformLabel(t) {
+    const blks = t.game.trackMgr.blocks[t.trackId];
+    const b = blks ? blks[t.currBlockIndex] : null;
+    const st = b ? blockStationName(b) : "";
+    const e = (st && typeof stationLaneEntry === "function") ? stationLaneEntry(st, t.trackId, t.lane) : null;
+    return (e && e.label) ? e.label + "番線" : "着発線";
+}
+/** 時 (小数) を「H:MM」に */
+function stabledClock(h) {
+    const m = Math.round(h * 60);
+    return Math.floor(m / 60) % 24 + ":" + String(m % 60).padStart(2, "0");
+}
+
+/**
+ * 留置している列車の見張り (js/11-train-core.js の update から毎Tick呼ぶ)。
+ * 朝の始発の15分前に、列車番号・行先を付けて発車を待たせる。
+ */
+OperationsManager.prototype.stabledStep = function (t) {
+    const g = this.game;
+    const s = t.overnightStable;
+    const now = g.currentTime;
+    t.timer = Math.max(15, s.leaveAt - now);
+    if (now < s.assignAt) return;
+    const cfg = STATION_STABLING[s.st];
+    if (!cfg) { t.overnightStable = null; t.remove(); return; }
+    if (t.dir !== cfg.dir && !this.moveToOppositeTrack(t, s.st, cfg.dir)) {
+        if (now < s.leaveAt + 1800) return;       // 番線が空くまで待つ。30分空かなければあきらめる
+        t.overnightStable = null; t.remove(); return;
+    }
+    const dests = cfg.dest.slice();
+    const first = dests.splice(Math.floor(Math.random() * Math.min(2, dests.length)), 1)[0];
+    dests.unshift(first);
+    const dest = dests.find(d => g.fleet.canServe(t.vehicles, s.st, cfg.as, t.trackId, d, null));
+    if (!dest) { t.overnightStable = null; t.remove(); return; }
+    const no = g.spawner.generateTrainNumber(cfg.as, cfg.dir, s.st, t.trackId);
+    t.overnightStable = null;
+    t.type = cfg.as;
+    t.dest = dest;
+    t.trainNo = no;
+    t.dutyName = no;
+    g.spawner.activeTrainNos.add(no);
+    t.startName = s.st;
+    t.nextAction = "turnback";
+    t.state = "waiting_start";
+    t.timer = Math.max(60, Math.round((s.leaveAt - now) / 15) * 15);
+    t.hasDeparted = false;
+    t.hasStoppedAtCurrent = false;
+    t.isFinalStop = false;
+    t.delayTime = 0;
+    t.stuckTime = 0;
+    if (t.updateKoseiRoute) t.updateKoseiRoute();
+    this.stats.stabledOut = (this.stats.stabledOut || 0) + 1;
+    g.ui.updateBanner(`【始発】${s.st}駅で夜間留置していた編成 ${t.vehicles.map(v => v.fullId).join("+")} は、` +
+                      `${no} ${cfg.as} ${dest}行き (${stabledClock((s.leaveAt / 3600) % 24)}発) として出発を待ちます。`, "banner-blue");
+};
+
+/**
+ * 終電の近くに、留置する駅の駅止まりが足りなければ、先へ行く普通・快速を1本その駅止まりにする。
+ * (OperationsManager.update から呼ぶ)
+ */
+OperationsManager.prototype.checkStationStabling = function (ct) {
+    if (globalThis.__NO_STATION_STABLING) return;
+    const a = ttAbsHour((ct / 3600) % 24);
+    if (a < 23.3 || a >= 24.25) return;
+    if (ct < (this.stableNext || 0)) return;
+    this.stableNext = ct + 60;
+    const g = this.game;
+    for (const st in STATION_STABLING) {
+        const cfg = STATION_STABLING[st];
+        const inbound = g.trains.filter(t => t.state !== "finished" && t.state !== "in_depot" && !t.overnightStable &&
+            /^Tozai_/.test(t.trackId) && t.dest === st && t.type !== "貨物").length;
+        if (this.stabledAt(st).length + inbound >= cfg.max) continue;
+        const key = "st#" + st;
+        if (ct < (this[key] || 0)) continue;
+        const cand = this.pickNightReturnTrain({ depot: st, dirs: [1], types: ["普通", "快速"] });
+        if (!cand) continue;
+        const oldDest = cand.dest;
+        cand.dest = st;
+        cand.nextAction = "turnback";
+        cand.stableTarget = st;
+        cand.isFinalStop = false;
+        this[key] = ct + 900;
+        g.ui.updateBanner(`【夜間留置の手配】翌朝の始発に備え、${cand.trainNo} の行先を ${oldDest} から ${st} に変更し、` +
+                          `${st}駅で朝まで留置します。`, "banner-blue");
     }
 };

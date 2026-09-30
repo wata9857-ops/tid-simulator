@@ -402,6 +402,10 @@ class Train {
             }
         }
 
+        /* 駅で朝まで留置している編成 (js/27-operations.js の STATION_STABLING)。
+           番線を占めたまま朝の始発の時刻を待つ。抑止・輸送障害の影響も受けない。 */
+        if (this.overnightStable) { this.game.ops.stabledStep(this); return; }
+
         // 指令の着発番線変更: すでにその駅に居るなら、その場で構内の転線をする
         if (this.trackChangeReservation) this.applyTrackReservation();
 

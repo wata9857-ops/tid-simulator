@@ -633,6 +633,20 @@ class Renderer {
 
     /** 列車の札 (列車番号・行先・遅れ) を (x, dy) に描く */
     drawTrainLabelAt(ctx, t, x, dy) {
+        /* 駅で朝まで留置している編成は、編成番号だけを出す (js/27-operations.js の STATION_STABLING) */
+        if (t.overnightStable) {
+            const label = (t.vehicles || []).map(v => v.id).join("+");
+            const bw = Math.max(60, label.length * 8 + 12), bh = 20, lx = x - bw / 2, ly = dy - bh / 2;
+            ctx.fillStyle = CONFIG.colors["回送"].bg;
+            ctx.fillRect(lx, ly, bw, bh);
+            ctx.fillStyle = CONFIG.colors["回送"].text;
+            ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(label, x, dy);
+            ctx.strokeStyle = "#333"; ctx.lineWidth = 1;
+            ctx.strokeRect(lx, ly, bw, bh);
+            return;
+        }
         {
             const bw = 100, bh = 24, tw = (t.type === "特急" ? 75 : 55), lx = x - bw / 2, ly = dy - bh / 2;
             const cdata = CONFIG.colors[t.type] || CONFIG.colors["普通"];

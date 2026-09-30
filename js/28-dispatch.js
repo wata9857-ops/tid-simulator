@@ -362,12 +362,14 @@ const DISPATCH = {
     depotOut(game, cmd) {
         const dep = DEPOTS[cmd.depot];
         if (!dep) return { ok: false, msg: "留置場が見つかりません。" };
-        const t = game.getTrain(cmd.trainId);
-        if (!t || t.state !== "in_depot") return { ok: false, msg: "該当の車両が見つかりません。" };
         if (!cmd.dest) return { ok: false, msg: "行先を選んでください。" };
-
         const check = depotOutRoute(game, cmd.depot, cmd.dest, cmd.type);
         if (!check.ok) return { ok: false, msg: check.msg };
+        // 待機編成 (在庫) を選んだときは、ここで出区を待つ列車にする (js/04-depots.js)
+        const t = (typeof cmd.trainId === "string" && cmd.trainId.indexOf("pool:") === 0)
+            ? depotTrainFromPool(game, cmd.depot, cmd.trainId.slice(5))
+            : game.getTrain(cmd.trainId);
+        if (!t || t.state !== "in_depot") return { ok: false, msg: "該当の車両が見つかりません。" };
         const dir = check.dir;
 
         t.type = cmd.type;
