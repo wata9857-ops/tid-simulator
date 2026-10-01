@@ -560,6 +560,8 @@ class Renderer {
             ctx.beginPath(); ctx.moveTo(blks[s].x - 35, blks[s].y); ctx.lineTo(blks[e].x + 35, blks[s].y); ctx.stroke();
         };
         for (const m of this.game.trackMgr.manualSuspensions) drawLine(m.trackId, m.start, m.end, "#ff00ff");
+        // 終電後の線路閉鎖 (保守作業)
+        for (const c of (this.game.trackMgr.workClosures || [])) drawLine(c.trackId, c.start, c.end, "#ff9900");
         for (const tid in this.game.trackMgr.suspendedSections) {
             this.game.trackMgr.suspendedSections[tid].forEach(s => drawLine(tid, s.start, s.end, CONFIG.jammed));
         }

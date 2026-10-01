@@ -287,7 +287,9 @@ Train.prototype.checkHold = function (isStarting) {
                                      
                                      if (isSameDestination) {
                                          // 1. 種別優先度が高い列車がいれば無条件で譲る
-                                         if (otherPri > myPri) {
+                                         /* 追い抜きをしない駅 (徳庵・放出) では、優等列車だからといって譲らない
+                                            (着いた順に出る。利用者の指摘 ②) */
+                                         if (otherPri > myPri && NO_PASSING_STATIONS.indexOf(currentStName) < 0) {
                                              // ★前段階予測: 優等列車が前方詰まり等で15秒以上発車できずにいる場合は譲らずに逃げ切る
                                              if (l.stuckTime > 15) {
                                                  // 譲らない (デッドロック回避のため自分が先に出る)

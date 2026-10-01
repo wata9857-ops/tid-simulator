@@ -780,6 +780,9 @@ class FleetManager {
     /** いま組んでいる編成が、その運用の条件を満たしているか */
     satisfies(vehicles, prof) {
         if (!vehicles || !vehicles.length) return false;
+        // 修繕待ち・修繕中の編成は、どの運用にも入れない (js/38b-night-work.js の修繕の手配)
+        //   (修繕のための回送で工場へ向かっているあいだは、その回送に乗っているのでよい)
+        if (vehicles.some(v => v && v.repair && v.repair.state !== "transfer")) return false;
 
         // --- 特急運用: その列車名の専用編成でなければ不可
         if (prof.express) {
@@ -897,6 +900,8 @@ class FleetManager {
             //   運用中の本数を数えられなくなっていた。
             if (ServiceRules.giveBack(v, nearName)) return;
             if (v.isFreight || v.isExpress) return;
+            // 修繕の要る編成は在庫に戻さず、修繕の置き場へ (次の運用に入れない)
+            if (v.repair && typeof fleetHoldForRepair === "function") { fleetHoldForRepair(this, v, nearName); return; }
             const loc = this.homeForVehicle(v, nearName);
             if (loc && this.pools[loc]) { v.at = loc; this.pools[loc].push(v); }
         });

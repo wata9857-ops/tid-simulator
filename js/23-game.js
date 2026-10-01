@@ -283,6 +283,10 @@ class GameSystem {
         this.spawner.update(this.currentTime);
         if (this.events) this.events.update(this.currentTime);   // 催しの臨時輸送
         this.ops.update(this.currentTime); // 出区計画・間隔の穴埋め
+        // 修繕の手配・事業用列車・終電後の線路閉鎖 (js/38b-night-work.js)。障害のときも止めない
+        if (this.ops.checkRepairs) this.ops.checkRepairs(this.currentTime);
+        if (this.ops.checkNightWorks) this.ops.checkNightWorks(this.currentTime);
+        if (this.spawner.checkWorkPatterns) this.spawner.checkWorkPatterns(this.currentTime);
         this.comms.update();               // 指令と現場のやりとり
         this.trains = this.trains.filter(t => t.state !== "finished");
         this.trains.sort((a,b)=>PRIORITY[b.type]-PRIORITY[a.type]);

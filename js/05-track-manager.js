@@ -402,6 +402,10 @@ class TrackManager {
      */
     isSuspended(trackId, idx, train) {
         for(let m of this.manualSuspensions) if(m.trackId===trackId && idx>=m.start && idx<=m.end) return true;
+        /* 終電後の線路閉鎖 (js/38b-night-work.js)。事業用の列車 (workPermit) だけは入れる */
+        if (this.workClosures && !(train && train.workPermit)) {
+            for (const c of this.workClosures) if (c.trackId === trackId && idx >= c.start && idx <= c.end) return true;
+        }
         for (const r of this.recoveryHolds) {
             if (r.trackId !== trackId || idx < r.start || idx > r.end) continue;
             if (train && r.grant && r.grant === train.id) continue;

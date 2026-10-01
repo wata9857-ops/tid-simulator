@@ -19,12 +19,13 @@ function ok(label, cond, detail) {
 }
 
 // 種類を増やす前の重み (2026-09 時点の js/26-incidents.js)
-const BEFORE = { jinshin: 7, kasen: 4, shingo: 5, tentetsu: 4, shishobutsu: 5,
-                 syaryo: 8, door: 7, fumikiri: 7, kyubyonin: 8, kikikosho: 5 };
+// ★2026-10: 人身事故を 7 → 5.3 に下げ (利用者の指摘)、沿線・自然 (gaibu) 3.4 を足した
+const BEFORE = { jinshin: 5.3, kasen: 4, shingo: 5, tentetsu: 4, shishobutsu: 5,
+                 syaryo: 8, door: 7, fumikiri: 7, kyubyonin: 8, kikikosho: 5, gaibu: 3.4 };
 const BEFORE_NAMES = { jinshin: '人身事故', kasen: '架線障害', shingo: '信号設備故障',
                        tentetsu: '転てつ器故障', shishobutsu: '線路支障', syaryo: '車両故障',
                        door: 'ドア故障', fumikiri: '踏切障害', kyubyonin: '急病人救護',
-                       kikikosho: '車内設備故障' };
+                       kikikosho: '車内設備故障', gaibu: '沿線・自然' };
 
 console.log('種類: ' + INCIDENT_TYPES.length + ' (以前は 10)');
 const fam = {};

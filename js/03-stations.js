@@ -301,7 +301,8 @@ const INTERVALS = { "普通": 650, "快速": 1250, "新快速": 1100, "特急": 
 /* ★回送は新快速と同じ格 (利用者の指摘 ⑤)。以前は 7 で何よりも先に通していたが、
      逆に新快速と同格にしておかないと「新快速が来るから回送が待避する」「回送が来るから新快速が待つ」の
      どちらかが起きる。同格どうしは譲り合わない (先に出られる方が出る)。 */
-const PRIORITY = { "回送":5, "貨物":6, "特急":5, "臨時":4, "新快速":5, "快速":3, "普通":2 };
+/* 「留置」は駅で夜を明かしている編成 (js/27-operations.js の駅泊)。動かないので誰にも譲らせない。 */
+const PRIORITY = { "回送":5, "貨物":6, "特急":5, "臨時":4, "新快速":5, "快速":3, "普通":2, "留置":0 };
 
 /**
  * ブロックが表している駅の名前を返す。
@@ -538,9 +539,8 @@ const timeToSec = (h, m, s) => h*3600 + m*60 + s;
           機関車はその時刻に始発駅に居るときだけ走る (居場所は前の列車の終着で決まる)。
    ★以前は工臨・単機も電車の「臨時」として走らせ、通勤形の編成が充てられていた (利用者の指摘)。
      また 6割を乱数で運休にしていたので、機関車の行き来がつながらなかった。工臨・単機は毎日走らせる。 */
+/* ★試6780M/6781M・試9161M/9160M は、決まった筋の組 (js/38b-night-work.js の WORK_PATTERNS) へ移した。 */
 const EXTRA_TRAINS = [
-    { name: "試6780M", start: "吹田貨", dest: "向日町操", time: timeToSec(9,59,0), type: "臨時", dir: 1, hoppo: true },
-    { name: "試6781M", start: "向日町操", dest: "吹田貨", time: timeToSec(11,55,0), type: "臨時", dir: -1, hoppo: false },
     { name: "8862レ", start: "吹田貨", dest: "京都", time: timeToSec(5,8,0), type: "臨時", dir: 1, hoppo: true, work: { loco: "freight" } },
     // --- 工臨 (EF65・DD51 が工事用貨車を引く)。朝に保守基地へ出て、昼に戻る
     { name: "工9384レ", start: "網干", dest: "向日町操", time: timeToSec(4,23,0), type: "臨時", dir: 1, hoppo: false, work: { loco: "ef65", cars: "chiki" } },
@@ -561,9 +561,7 @@ const EXTRA_TRAINS = [
     { name: "回7781M", start: "西明石", dest: "姫路", time: timeToSec(4,57,0), type: "臨時", dir: -1, hoppo: false },
     { name: "試9230D", start: "宮原操", dest: "京都", time: timeToSec(11,18,0), type: "臨時", dir: 1, hoppo: true },
     { name: "回9331D", start: "向日町操", dest: "姫路", time: timeToSec(5,15,0), type: "臨時", dir: -1, hoppo: false },
-    { name: "回9751M", start: "向日町操", dest: "吹田貨", time: timeToSec(6,45,0), type: "臨時", dir: -1, hoppo: false },
-    { name: "試9161M", start: "向日町操", dest: "宮原操", time: timeToSec(10,59,0), type: "臨時", dir: -1, hoppo: false },
-    { name: "試9160M", start: "宮原操", dest: "向日町操", time: timeToSec(11,42,0), type: "臨時", dir: 1, hoppo: true }
+    { name: "回9751M", start: "向日町操", dest: "吹田貨", time: timeToSec(6,45,0), type: "臨時", dir: -1, hoppo: false }
 ];
 
 /**

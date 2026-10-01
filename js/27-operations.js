@@ -1613,7 +1613,10 @@ OperationsManager.prototype.tryStableOvernight = function (t, stName) {
     const oldNo = t.trainNo;
     g.spawner.activeTrainNos.delete(t.trainNo);
     t.overnightStable = { st: stName, slot: slot, since: now, leaveAt: leaveAt, assignAt: leaveAt - 900 };
-    t.type = "回送";
+    /* ★回送ではなく「留置」(利用者の指摘 ③)。回送 (新快速と同格) にしていたので、留置中の編成が
+         ホームの発車順の調停で最優先になり、並んだ普通・快速がその「発車」を待ち続けていた。
+         次の運用 (翌朝の始発) が付くまでは留置のまま。優先度はいちばん低い (PRIORITY["留置"] = 0)。 */
+    t.type = "留置";
     t.trainNo = "";
     t.dutyName = "";
     t.dest = stName;
@@ -1850,7 +1853,9 @@ OperationsManager.prototype.planOvertakes = function (ct) {
     const dwell = (t, b) => (isRealStationBlock(b) && t.passengerStopsAt(blockStationName(b)))
         ? ((STATIONS[b.stationIdx] && STATIONS[b.stationIdx].stopTime) || 45) : 0;
     const waitNow = (t) => (["stopped", "holding", "waiting_start"].indexOf(t.state) >= 0 ? Math.max(0, t.timer || 0) : 0);
-    const isRefuge = (b) => isRealStationBlock(b) && b.lanes.length >= 2;
+    /* 待避できる駅は PASSING_STATIONS だけ。★2線あっても徳庵・放出のように追い抜きをしない駅では待避させない
+       (以前は線の数だけで見ていたので、徳庵・放出で普通が快速を待ち、大きく遅れていた。利用者の指摘 ②) */
+    const isRefuge = (b) => isRealStationBlock(b) && b.lanes.length >= 2 && PASSING_STATIONS.indexOf(blockStationName(b)) >= 0;
     const set = (t, act, st, by, force) => {
         const old = plans.get(t.id);
         if (old && old.force && !force) return;

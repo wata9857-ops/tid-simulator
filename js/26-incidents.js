@@ -60,10 +60,11 @@ const INCIDENT_MAX_BLOCK_SEC = 3600;
 const INCIDENT_TYPES = [
     // ================================================================ 人身事故 (7)
     {
-        id: "jinshin", family: "jinshin", name: "人身事故", weight: 4, needTrain: true, radio: true,
+        /* ★利用者の指摘 ⑥ (2026-10): 起きにくく (重み 4 → 3)、起きたら長く (25〜45分 → 40〜70分) */
+        id: "jinshin", family: "jinshin", name: "人身事故", weight: 3, needTrain: true, radio: true,
         cat: "事故", depts: ["警察", "消防", "保線区", "車両所"],
         block: { tracks: "parallel", radius: 5 },
-        hold: [1500, 2700], suspend: [1500, 2700],
+        hold: [2400, 4200], suspend: [2400, 4200],
         slow: { sec: 900, factor: 1.5 },
         after: "deadhead",
         cause: "人身事故",
@@ -85,11 +86,11 @@ const INCIDENT_TYPES = [
         ]
     },
     {
-        id: "jinshin_home", family: "jinshin", name: "人身事故 (駅構内)", weight: 2, needTrain: true, radio: true,
+        id: "jinshin_home", family: "jinshin", name: "人身事故 (駅構内)", weight: 1.5, needTrain: true, radio: true,
         atStation: true,
         cat: "事故", depts: ["警察", "消防", "駅", "車両所"],
         block: { tracks: "parallel", radius: 3 },
-        hold: [1200, 2400], suspend: [1200, 2400],
+        hold: [1800, 3300], suspend: [1800, 3300],
         slow: { sec: 600, factor: 1.4 },
         after: "deadhead",
         cause: "人身事故",
@@ -1111,6 +1112,8 @@ class IncidentSystem {
             if (inc.type.after === "deadhead" && !["回送", "貨物"].includes(t.type)) {
                 // 自力走行はできるが営業は打ち切り。最寄りの車両所へ回送する。
                 const oldNo = t.trainNo;
+                // 編成に修繕の印を付ける (軽修繕 / 重修繕。js/38b-night-work.js)。直るまで次の運用に入れない
+                if (this.game.ops.markForRepair) this.game.ops.markForRepair(t, inc.type);
                 if (this.game.ops.convertToRecoveryDeadhead(t, inc.type.name) && this.game.records) {
                     this.game.records.incidentAction(inc.id,
                         `当該列車 ${oldNo} の営業を取りやめ、${t.trainNo}(回送) として ${t.dest} へ入区させる`, "指令");

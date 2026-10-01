@@ -80,6 +80,9 @@ const SK_LEAD = {
 };
 const SK_MIN_PER_STATION = 108 / 27;   // 線路図の駅1つあたりの所要 (姫路〜大阪 27駅)
 const SK_HORIZON = 190 * 60;
+/* 大阪を出る最終の新快速の時刻 (時)。以前は 0:00 ごろまで出していて遅すぎた (利用者の指摘 ⑤)。
+   23:15 ごろを最終にする (それより後の大阪の枠は作らない)。 */
+const SK_LAST_OSAKA = 23.25;
 
 /** その駅から大阪までの所要 (秒)。大阪を通らない向きなら null */
 Spawner.prototype.skLeadFrom = function (stName, dir, atTime) {
@@ -107,7 +110,9 @@ Spawner.prototype.checkShinkaisokuSlots = function (ct) {
         let guard = 0;
         while (S.next <= ct + SK_HORIZON && guard++ < 50) {
             const per = ttPerHour("main", dirName, "新快速", (S.next / 3600) % 24);
-            if (per > 0) S.slots.push({ t: S.next, state: "free", step: 3600 / per });
+            // ★最終の新快速を早める (利用者の指摘 ⑤)。大阪 SK_LAST_OSAKA 以降の枠は作らない
+            const late = ttAbsHour((S.next / 3600) % 24) >= SK_LAST_OSAKA;
+            if (per > 0 && !late) S.slots.push({ t: S.next, state: "free", step: 3600 / per });
             S.next = ttNextTime(S.next, per > 0 ? per : 4, phase);
         }
         // 2. 枠ごとに始発駅を決め、3. 出す
