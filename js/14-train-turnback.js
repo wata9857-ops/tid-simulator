@@ -262,7 +262,7 @@ Train.prototype.executeTurnBack = function () {
              線区ごとの終電 (js/10-timetable.js の TT_SERVICE_END) まで折り返し、
              そのあとは その駅の留置線 → 近くの車両所への回送 の順で留置する。
              列車を消すのは、そのどちらもできないときだけ。 */
-        if (!ttInService(ttLineOf(this), hOfDay)) {
+        if (!ttInService(ttLineOf(this), hOfDay, this)) {
             this.nextAction = "depot";
             this.retiredByBudget = true;         // 折り返しを試させない
             if (this.type !== "貨物" && this.type !== "特急" && DEPOTS[stName]) {

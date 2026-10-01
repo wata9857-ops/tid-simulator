@@ -854,9 +854,17 @@ class FleetManager {
            車両所グループの縛りは掛けない。実際にも、その駅の
            電留線・引上線には所属に関わらず置ける
            (どの車両所の運用に入れるかは別の判定 profileFor が見る)。 */
+        /* ★本線・分岐線は駅インデックスを共有しているので、番号が同じでも別の線区の駅のことがある
+             (本線のある駅と学研都市線の祝園が同じ番号)。線区が違えば「同じ場所」ではない。
+             以前はここで網干の223系 (V編成) が祝園・木津の留置線に置かれていた (利用者の指摘 ③)。
+           ★学研都市線の留置場 (祝園・木津など) には、そこに滞泊できる車両所グループしか置かない。 */
+        const lineOf = (n) => (typeof stationBranchLine === "function") ? (stationBranchLine(n) || "main") : "main";
+        const nearLine = lineOf(nearName);
         if (nIdx !== null) {
             for (const b of FLEET_BASES) {
                 if (this.baseIndex[b.name] !== nIdx || !this.pools[b.name]) continue;
+                if (b.name !== nearName && lineOf(b.name) !== nearLine) continue;
+                if (DEPOTS[b.name] && DEPOTS[b.name].line === "Tozai" && b.groups.indexOf(veh.group) < 0) continue;
                 // 留置線の長さに限りがある所 (祝園) は、満線ならほかへ
                 if (b.maxCars && this.carsAt(b.name) + (veh.cars || 0) > b.maxCars) continue;
                 return b.name;

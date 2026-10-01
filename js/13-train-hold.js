@@ -214,6 +214,14 @@ Train.prototype.checkHold = function (isStarting) {
                  }
                  // 【追加終了】
 
+                 /* ★待避・先行の先読み (js/27-operations.js の planOvertakes。利用者の指摘 ⑥)。
+                      優等列車との追いつき・満線を前もって見積もった決定があれば、それに従う。
+                      "yield" … ここで待避する / "go" … 待避せずに先行する (下の待避の判定を飛ばす)。
+                      続行間隔・閉塞の判定はそのまま通す。 */
+                 const ovPlan = (this.game.ops && this.game.ops.overtakePlanFor) ? this.game.ops.overtakePlanFor(this, currentStName) : null;
+                 if (ovPlan === "yield") { this._routineHold = true; return true; }
+                 const planGo = (ovPlan === "go");
+
                  // ★修正: 三ノ宮など独立した並走駅での謎の抑止を防ぐため、別線路(In/Out)のチェックは合流・待避駅に限定
                  const isMergeOrOvertake = OVERTAKE_STATIONS.includes(currentStName) || !!FREIGHT_TERMINALS[currentStName] || ["草津", "京都", "高槻", "新大阪", "大阪", "尼崎", "芦屋", "西明石", "兵庫"].includes(currentStName);
 
@@ -313,7 +321,7 @@ Train.prototype.checkHold = function (isStarting) {
                          }
                          if (shouldYieldToSameStation) break;
                      }
-                     if (shouldYieldToSameStation) { this._routineHold = true; return true; }
+                     if (shouldYieldToSameStation && !planGo) { this._routineHold = true; return true; }
                  }
                  // ====================================================================
 
@@ -436,7 +444,7 @@ Train.prototype.checkHold = function (isStarting) {
                      // ★確実な抑止: 厳格な駅では最大10分(600秒)まで優等列車を待ち続ける。
                      // これにより、西明石で300秒待機する新規生成の快速を、普通列車が確実に待つようになる。
                      let maxWaitTime = isStrictPriorityStation ? 600 : 360;
-                     if (yieldToHigher && this.stuckTime < maxWaitTime) { this._routineHold = true; return true; }
+                     if (yieldToHigher && !planGo && this.stuckTime < maxWaitTime) { this._routineHold = true; return true; }
                  }
 
              // ----- 琵琶湖線内での新快速 待避優先ロジック -----
@@ -462,7 +470,7 @@ Train.prototype.checkHold = function (isStarting) {
                          }
                          if (approachingSpecialRapid) break;
                      }
-                     if (approachingSpecialRapid && this.stuckTime < 420) { this._routineHold = true; return true; }
+                     if (approachingSpecialRapid && !planGo && this.stuckTime < 420) { this._routineHold = true; return true; }
                  }
              }
              // ---------------------------------------------------
@@ -681,6 +689,9 @@ Train.prototype.checkHold = function (isStarting) {
                             }
                        }
                        
+                       // 先読みで「先行」と決めた列車は待避しない
+                       if (approaching && planGo) return false;
+
                        // ★満線デッドロック回避の強化 (芦屋駅・大阪駅などでの内側線詰まりを解消)
                        // 自線路が満線で、優等列車が接近している場合は待避を打ち切り先行発車する
                        if (approaching && myTrackFreeLanes === 0) {

@@ -294,7 +294,9 @@ class OperationsManager {
         this.checkLocalGapFill(ct);
         this.checkStockBalance(ct);
         this.checkNightReturn(ct);
-        this.checkStationStabling(ct);   // 駅の夜間留置 (四条畷・松井山手)
+        this.checkStationStabling(ct);   // 駅の夜間留置 (四条畷・須磨・堅田・宝塚など)
+        this.checkShortTurns(ct);        // 見合わせ区間・長い抑止の手前での折り返し
+        this.planOvertakes(ct);          // 待避・先行の先読み
     }
 
     /* ------------------------------------------------------------ 夜の入区 (翌朝の始発の手配)
@@ -347,7 +349,7 @@ class OperationsManager {
         let best = null, bestD = Infinity;
         for (const t of g.trains) {
             if (t.state === "finished" || t.state === "in_depot" || t.state === "turning_back") continue;
-            if (nr.dirs.indexOf(t.dir) < 0 || !/^Tozai_/.test(t.trackId)) continue;
+            if (nr.dirs.indexOf(t.dir) < 0 || !stablingLineTrack(nr.line || "Tozai", t.trackId)) continue;
             if (nr.types.indexOf(t.type) < 0 || t.specialEvent || t.nightReturn) continue;
             if (!t.vehicles || !t.vehicles.length || t.dest === nr.depot) continue;
             if (t.nextAction === "remove" || t.nextAction === "in_depot_remove") continue;
@@ -394,8 +396,11 @@ class OperationsManager {
         // 在庫の少ない留置場 (少ない順)
         /* ★放出 (学研都市線・JR東西線) は、編成の数ではなく「7両が何本組めるか」で見る。
            3両ばかり残っていても7両は組めず、始発が出せない。 */
+        /* ★祝園・木津 (学研都市線の南の端) は返却回送の送り先にしない (利用者の指摘 ③)。
+             祝園は留置線が2本しかないので在庫はいつも「2本以下」に見え、用も無いのに
+             放出から祝園へ回送が出続けていた。南の端の在庫は夜の入区 (NIGHT_RETURN) で戻す。 */
         const short = FLEET_BASES
-            .filter(b => fleet.pools[b.name] && DEPOTS[b.name])
+            .filter(b => fleet.pools[b.name] && DEPOTS[b.name] && b.name !== "祝園" && b.name !== "木津")
             .map(b => ({ name: b.name, groups: b.groups,
                          n: (b.name === "放出") ? fleet.sevenCarSets(b.name) : fleet.pools[b.name].length }))
             .filter(b => b.n <= 2)
@@ -422,7 +427,7 @@ class OperationsManager {
             // その編成を受け入れられる、いちばん近い「余っている」留置場
             const toIdx = fleetIndexOf(to.name);
             const from = FLEET_BASES
-                .filter(b => fleet.pools[b.name] && fleet.pools[b.name].length >= 5)
+                .filter(b => fleet.pools[b.name] && fleet.pools[b.name].length >= 5 && b.name !== "祝園")
                 .filter(b => !to.byGroup || fleet.pools[b.name].filter(v => v.group === to.byGroup).length >= 4)
                 .filter(b => b.groups.some(g => to.groups.indexOf(g) >= 0))
                 .filter(b => fleetIndexOf(b.name) !== toIdx)
@@ -1092,7 +1097,7 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     const h = (this.game.currentTime / 3600) % 24;
 
     // 終電のあとは入区させる (折り返しても走る先が無い)。線区ごとの終電で見る
-    if (!ttInService(ttLineOf(train), h)) return false;
+    if (!ttInService(ttLineOf(train), h, train)) return false;
     // 大きく遅れている列車は運用を切って車両所へ戻す
     if (train.delayTime > 1800) return false;
     /* ★その線区のその種別が目安を大きく（3割）超えているときは折り返さない。
@@ -1487,10 +1492,87 @@ OperationsManager.prototype.watchdog = function (ct) {
              松井山手は上下1線ずつなので1本 (もう1本は朝の京橋方からの列車に空けておく)
      dir   … 翌朝の始発の向き (-1 = 京橋・尼崎方)
      leave … 翌朝の始発の発車時刻 (時。1本目・2本目 …)
-     as / dest … 翌朝の始発の種別・行先 (いまの編成で入れる行先を順に探す) */
+     as / dest … 翌朝の始発の種別・行先 (いまの編成で入れる行先を順に探す)
+     line  … 線区 (main / Tozai / Kosei / Fukuchi)
+   ■ 利用者の指摘 ①② (2026-10)
+     ・本線 (須磨・神戸・加古川・長浜)・湖西線 (堅田・近江舞子)・JR宝塚線 (宝塚) にも駅泊を入れた。
+       翌朝の始発をその駅で夜を明かした編成で出すので、朝の送り込み回送が要らなくなる。
+     ・四条畷で、最後の折り返し列車がまだ来ていないのに2本が先に留置され、
+       その2本が番線をふさいで最後の列車が駅の手前で止まったままになっていた。
+       留置してよいのは、
+         (1) その駅を通る (折り返して戻ってくるものを含む) 列車がもう無いとき、または
+         (2) 留置しても、翌朝の向きの番線にまだ1本以上の空きが残るとき (その日はもう使わない番線)
+       に限る (stablingSafe)。 */
 const STATION_STABLING = {
-    "四条畷":   { max: 2, dir: -1, leave: [4.85, 5.2], as: "普通", dest: ["西明石", "尼崎", "京橋"] },
-    "松井山手": { max: 1, dir: -1, leave: [5.05],      as: "普通", dest: ["尼崎", "西明石", "京橋"] }
+    "四条畷":   { max: 2, dir: -1, leave: [4.85, 5.2], as: "普通", dest: ["西明石", "尼崎", "京橋"], line: "Tozai" },
+    "松井山手": { max: 1, dir: -1, leave: [5.05],      as: "普通", dest: ["尼崎", "西明石", "京橋"], line: "Tozai" },
+    "須磨":     { max: 2, dir: 1,  leave: [4.95, 5.3], as: "普通", dest: ["高槻", "京都", "大阪"],   line: "main" },
+    "神戸":     { max: 1, dir: 1,  leave: [5.1],       as: "普通", dest: ["高槻", "京都"],           line: "main" },
+    "加古川":   { max: 2, dir: 1,  leave: [4.9, 5.25], as: "普通", dest: ["京都", "高槻", "大阪"],   line: "main" },
+    "長浜":     { max: 2, dir: -1, leave: [5.05, 5.4], as: "普通", dest: ["京都", "西明石", "姫路"], line: "main" },
+    "堅田":     { max: 2, dir: -1, leave: [5.0, 5.35], as: "普通", dest: ["京都"],                   line: "Kosei" },
+    "近江舞子": { max: 1, dir: -1, leave: [5.2],       as: "普通", dest: ["京都"],                   line: "Kosei" },
+    "宝塚":     { max: 2, dir: 1,  leave: [4.95, 5.3], as: "普通", dest: ["大阪", "尼崎", "京橋"],   line: "Fukuchi" }
+};
+
+/** 線区の線路か (駅泊の設定の line) */
+function stablingLineTrack(line, trackId) {
+    if (line === "main") return /^(Up|Down)_(In|Out)$/.test(trackId);
+    return trackId.indexOf(line + "_") === 0;
+}
+/** 駅泊の線区の終電 (js/10-timetable.js の TT_SERVICE_END) */
+function stablingLineEnd(line) {
+    const k = { main: "main", Tozai: "tozai", Kosei: "kosei", Fukuchi: "fukuchi" }[line] || "main";
+    return TT_SERVICE_END[k] !== undefined ? TT_SERVICE_END[k] : 24.0;
+}
+/** 上り線・下り線をひとまとめにした線路の組 (Up_In と Down_In、Tozai_Up と Tozai_Down) */
+function stablingTrackPair(trackId) {
+    return /^(Up|Down)_/.test(trackId) ? trackId.replace(/^(Up|Down)_/, "") : trackId.split("_")[0];
+}
+
+/** 列車をその駅で反対向きにしたときに入る線路の名前 (moveToOppositeTrack と同じ決め方) */
+function oppositeTrackAt(trackId, newDir, stName) {
+    let id;
+    if (trackId.indexOf("Kosei") === 0)        id = newDir === 1 ? "Kosei_Up" : "Kosei_Down";
+    else if (trackId.indexOf("Fukuchi") === 0) id = newDir === 1 ? "Fukuchi_Up" : "Fukuchi_Down";
+    else if (trackId.indexOf("Tozai") === 0)   id = newDir === 1 ? "Tozai_Up" : "Tozai_Down";
+    else if (trackId.indexOf("Hoppo") >= 0)    id = newDir === 1 ? "Up_Hoppo" : "Down_Hoppo";
+    else id = (newDir === 1 ? "Up_" : "Down_") + (trackId.indexOf("In") >= 0 ? "In" : "Out");
+    const hereIdx = STATION_MAP[stName];
+    if (hereIdx !== undefined && id.indexOf("In") >= 0 &&
+        (hereIdx < STATION_MAP["西明石"] || hereIdx > STATION_MAP["草津"])) id = id.replace("In", "Out");
+    return id;
+}
+
+/**
+ * その駅でいま留置してよいか (利用者の指摘 ②)。
+ *   ・翌朝の向きの線路でその駅をこれから通る列車、反対向きで駅を過ぎていて折り返して戻ってくる列車が
+ *     1本も無ければ (その日の最後の列車が済んでいれば) よい。
+ *   ・まだあるときは、留置したあとも翌朝の向きの番線に空きが1本以上残るときだけよい
+ *     (残る列車の邪魔にならない番線にだけ置く)。
+ */
+OperationsManager.prototype.stablingSafe = function (t, stName, cfg, morningTrack) {
+    const g = this.game;
+    const mb = stationBlockOn(g, morningTrack, stName);
+    if (!mb) return false;
+    const pair = stablingTrackPair(morningTrack);
+    let pending = 0;
+    for (const o of g.trains) {
+        if (o === t || o.state === "finished" || o.state === "in_depot" || o.overnightStable) continue;
+        if (stablingTrackPair(o.trackId) !== pair) continue;
+        const ob = stationBlockOn(g, o.trackId, stName);
+        if (!ob) continue;
+        const ahead = (ob.index - o.currBlockIndex) * o.dir;
+        if (o.dir === cfg.dir) {
+            if (ahead >= 0) pending++;                       // これからその駅を通る
+        } else if (ahead < 0 && o.nextAction === "turnback" && !o.nightReturn && !o.stableTarget) {
+            pending++;                                       // 駅を過ぎて、先で折り返して戻ってくる
+        }
+    }
+    if (!pending) return true;
+    const mine = mb.lanes.indexOf(t) >= 0 ? 1 : 0;
+    const free = mb.lanes.filter(x => !x).length;
+    return free - (1 - mine) >= 1;
 };
 
 /** その駅で朝まで留置している列車 */
@@ -1509,13 +1591,15 @@ OperationsManager.prototype.tryStableOvernight = function (t, stName) {
     const now = g.currentTime;
     const h = (now / 3600) % 24;
     const a = ttAbsHour(h);
-    if (a < 23.4 || a >= 27.5) return false;
+    if (a < stablingLineEnd(cfg.line) - 0.85 || a >= 27.5) return false;
     if (["普通", "快速", "回送"].indexOf(t.type) < 0 || t.specialEvent || t.eventTrain) return false;
-    if (!/^Tozai_/.test(t.trackId) || !t.vehicles || !t.vehicles.length) return false;
+    if (!stablingLineTrack(cfg.line, t.trackId) || !t.vehicles || !t.vehicles.length) return false;
     const here = this.stabledAt(stName);
     if (here.length >= cfg.max) return false;
-    const morningTrack = cfg.dir === 1 ? "Tozai_Up" : "Tozai_Down";
+    const morningTrack = (t.dir === cfg.dir) ? t.trackId : oppositeTrackAt(t.trackId, cfg.dir, stName);
     if (!cfg.dest.some(d => g.fleet.canServe(t.vehicles, stName, cfg.as, morningTrack, d, null))) return false;
+    // その日の最後の列車がまだ来るなら、邪魔にならない番線が残るときだけ留置する
+    if (!this.stablingSafe(t, stName, cfg, morningTrack)) return false;
     // 翌朝の始発の向きの番線へ先に移す (夜のうちに方向を変えておく)
     if (t.dir !== cfg.dir && !this.moveToOppositeTrack(t, stName, cfg.dir)) return false;
 
@@ -1618,18 +1702,20 @@ OperationsManager.prototype.stabledStep = function (t) {
 OperationsManager.prototype.checkStationStabling = function (ct) {
     if (globalThis.__NO_STATION_STABLING) return;
     const a = ttAbsHour((ct / 3600) % 24);
-    if (a < 23.3 || a >= 24.25) return;
+    if (a < 23.0 || a >= 24.6) return;
     if (ct < (this.stableNext || 0)) return;
     this.stableNext = ct + 60;
     const g = this.game;
     for (const st in STATION_STABLING) {
         const cfg = STATION_STABLING[st];
+        const end = stablingLineEnd(cfg.line);
+        if (a < end - 0.95 || a >= end) continue;
         const inbound = g.trains.filter(t => t.state !== "finished" && t.state !== "in_depot" && !t.overnightStable &&
-            /^Tozai_/.test(t.trackId) && t.dest === st && t.type !== "貨物").length;
+            stablingLineTrack(cfg.line, t.trackId) && t.dest === st && t.type !== "貨物").length;
         if (this.stabledAt(st).length + inbound >= cfg.max) continue;
         const key = "st#" + st;
         if (ct < (this[key] || 0)) continue;
-        const cand = this.pickNightReturnTrain({ depot: st, dirs: [1], types: ["普通", "快速"] });
+        const cand = this.pickNightReturnTrain({ depot: st, dirs: [-cfg.dir], types: ["普通", "快速"], line: cfg.line });
         if (!cand) continue;
         const oldDest = cand.dest;
         cand.dest = st;
@@ -1640,4 +1726,209 @@ OperationsManager.prototype.checkStationStabling = function (ct) {
         g.ui.updateBanner(`【夜間留置の手配】翌朝の始発に備え、${cand.trainNo} の行先を ${oldDest} から ${st} に変更し、` +
                           `${st}駅で朝まで留置します。`, "banner-blue");
     }
+};
+
+/* ------------------------------------------------------------------ 支障の手前での折り返し (利用者の指摘 ④)
+
+   ■ なぜ要るか
+     以前は、見合わせ区間のすぐ手前の駅で7分以上止まった普通だけを、10%の確率で折り返していた。
+     後ろから来る列車はそのまま支障の手前まで進み、駅間に並んで動けなくなっていた。
+   ■ どうするか (1分ごと)
+     ・支障 = 運転見合わせの区間 (指令・輸送障害) と、故障・抑止で20分以上動けない列車。
+     ・支障の手前でいちばん近い「その向きで折り返せる駅」を折り返し駅にする。
+     ・折り返し駅より先 (支障まで) に残す列車を KEEP 本まで数え、それを超えて後ろから来る列車を
+       折り返し駅止まりにする。全部を折り返すと、運転を再開したときに支障の先を走る列車が無くなるため。
+     ・折り返せるのは、その駅に停まる普通・快速・新快速で、いまの編成でその区間の運用に入れるものだけ。 */
+const SHORT_TURN_KEEP = 2;          // 折り返し駅より先に残す本数 (支障の向こうへ行く列車)
+const SHORT_TURN_SCAN = 10;         // 折り返し駅を探す範囲 (駅数)
+
+OperationsManager.prototype.shortTurnZones = function () {
+    const tm = this.game.trackMgr;
+    const zones = [];
+    for (const m of tm.manualSuspensions) zones.push({ trackId: m.trackId, start: m.start, end: m.end, why: "運転見合わせ" });
+    for (const tid in tm.suspendedSections) {
+        for (const s of tm.suspendedSections[tid] || []) zones.push({ trackId: tid, start: s.start, end: s.end, why: "運転見合わせ" });
+    }
+    for (const t of this.game.trains) {
+        if (t.state === "finished" || t.state === "in_depot" || t.overnightStable) continue;
+        if (!(t.minorTrouble || t.isManuallySuspended || t.commIncident) || t.stuckTime < 1200) continue;
+        zones.push({ trackId: t.trackId, start: t.currBlockIndex, end: t.currBlockIndex, why: `${t.trainNo} の長時間抑止`, by: t });
+    }
+    return zones;
+};
+
+OperationsManager.prototype.checkShortTurns = function (ct) {
+    if (ct < (this.shortTurnNext || 0)) return;
+    this.shortTurnNext = ct + 60;
+    if (globalThis.__NO_SHORT_TURN) return;
+    const g = this.game;
+    const zones = this.shortTurnZones();
+    if (!zones.length) return;
+    const h = (ct / 3600) % 24;
+    for (const z of zones) {
+        const blks = g.trackMgr.blocks[z.trackId];
+        if (!blks) continue;
+        for (const dir of [1, -1]) {
+            const edge = dir === 1 ? z.start : z.end;          // 支障の手前の端
+            // 折り返し駅: 支障の手前で、その向きに着いて折り返せるいちばん近い駅
+            let tb = null;
+            for (let k = 1; k <= UNITS_PER_STATION * SHORT_TURN_SCAN; k++) {
+                const b = blks[edge - dir * k];
+                if (!b) break;
+                if (b.x === -1000 || !isRealStationBlock(b)) continue;
+                if (g.trackMgr.isSuspended(z.trackId, b.index)) continue;
+                const nm = blockStationName(b);
+                if (canReverseAtDir(nm, dir)) { tb = b; break; }
+            }
+            if (!tb) continue;
+            const tbName = blockStationName(tb);
+            // その線路を同じ向きに走る列車 (支障に近い順)
+            const list = g.trains.filter(t => t !== z.by && t.trackId === z.trackId && t.dir === dir &&
+                t.state !== "finished" && t.state !== "in_depot" && !t.overnightStable &&
+                (edge - t.currBlockIndex) * dir >= 0 &&
+                (edge - t.currBlockIndex) * dir <= UNITS_PER_STATION * (SHORT_TURN_SCAN + 8))
+                .sort((a, b) => (edge - a.currBlockIndex) * dir - (edge - b.currBlockIndex) * dir);
+            let kept = 0, changed = 0;
+            for (const t of list) {
+                const beyond = (t.currBlockIndex - tb.index) * dir > 0;   // もう折り返し駅を過ぎている
+                if (beyond || t.currBlockIndex === tb.index) {
+                    if (!t.shortTurnAt) kept++;
+                    continue;
+                }
+                if (t.shortTurnAt === tbName || t.dest === tbName) continue;
+                // 行先が折り返し駅より手前なら、もともと支障まで行かない
+                const db = stationBlockOn(g, t.trackId, t.dest);
+                if (db && (db.index - tb.index) * dir <= 0) continue;
+                if (kept < SHORT_TURN_KEEP) { kept++; continue; }
+                if (changed >= 3) break;
+                if (["普通", "快速", "新快速"].indexOf(t.type) < 0 || t.specialEvent || t.serviceChange) continue;
+                if (t.isManuallySuspended || t.commIncident || t.state === "turning_back") continue;
+                if (!t.passengerStopsAt(tbName)) continue;
+                if (!ttInService(ttLineOf(t), h)) continue;
+                if (!g.fleet.canServe(t.vehicles, tbName, t.type, t.trackId, tbName, t.dutyName)) continue;
+                const oldDest = t.dest;
+                t.dest = tbName;
+                t.nextAction = "turnback";
+                t.isFinalStop = false;
+                t.shortTurnAt = tbName;
+                changed++;
+                this.stats.shortTurn = (this.stats.shortTurn || 0) + 1;
+                g.ui.updateBanner(`【運転整理】${z.why}のため、${t.trainNo} (${oldDest}行き) は ${tbName}駅止まりとし、` +
+                                  `${tbName}で折り返します (支障の先へは ${SHORT_TURN_KEEP}本を残して運転再開に備えます)。`, "banner-orange");
+                if (g.records) g.records.noteDisposition(t, tbName, z.why, `${tbName}で折り返し`);
+            }
+        }
+    }
+};
+
+/* ------------------------------------------------------------------ 待避・先行の先読み (利用者の指摘 ⑥)
+
+   ■ なぜ要るか
+     待避の判断 (js/13-train-hold.js の checkHold) は、発車の瞬間に「すぐ後ろに優等列車がいるか」を
+     見るだけだった。駅が普通で埋まっていて後ろから優等列車が来ると、ぎりぎりまで誰も動かず、
+     最後に「どれを出すか」を決めていた。
+   ■ どうするか (毎Tick)
+     優等列車 H ごとに前方6駅を見て、前を走る普通・快速 L との「追いつき」を所要時間で見積もる。
+       ・L が待避できる駅 (2線以上ある駅) にいる
+           次の待避駅まで逃げ切れる (H がその手前に来るより先に L が入れる) … 先行 (go)
+           逃げ切れない、かつ ここに H の入る番線が残る                     … 待避 (yield)
+       ・H が停まる・通る駅が L で満線になっていて、H があと4分以内に着く
+           その駅で発車できる L を1本、先に出す (go)。H の番線を早めに空ける
+       ・待避先の空き番線を予約として数え、2本の L が同じ駅の最後の1線を取り合わないようにする
+     決めたことは ovPlans に置き、checkHold が見る。45秒で消えるので、状況が変われば次のTickで決め直す。 */
+const OV_LOOK_STATIONS = 6;
+const OV_FULL_ETA = 240;
+
+OperationsManager.prototype.planOvertakes = function (ct) {
+    if (globalThis.__NO_OV_PLAN) { this.ovPlans = null; return; }
+    if (ct < (this.ovNext || 0)) return;
+    this.ovNext = ct + CONFIG.TICK_SEC;
+    const g = this.game;
+    const plans = new Map();
+    const reserved = {};                                   // 待避の予約 (線路#ブロック → 本数)
+    const runOf = (t) => BLOCK_RUN_SEC[t.type] || BLOCK_RUN_SEC["普通"];
+    const dwell = (t, b) => (isRealStationBlock(b) && t.passengerStopsAt(blockStationName(b)))
+        ? ((STATIONS[b.stationIdx] && STATIONS[b.stationIdx].stopTime) || 45) : 0;
+    const waitNow = (t) => (["stopped", "holding", "waiting_start"].indexOf(t.state) >= 0 ? Math.max(0, t.timer || 0) : 0);
+    const isRefuge = (b) => isRealStationBlock(b) && b.lanes.length >= 2;
+    const set = (t, act, st, by, force) => {
+        const old = plans.get(t.id);
+        if (old && old.force && !force) return;
+        if (old && old.act === "yield" && act === "go" && !force) return;
+        plans.set(t.id, { act: act, st: st, by: by, force: !!force, until: ct + 45 });
+    };
+    const active = (t) => t.state !== "finished" && t.state !== "in_depot" && !t.overnightStable;
+
+    for (const H of g.trains) {
+        if (!active(H) || H.type === "普通" || H.type === "貨物" || H.minorTrouble || H.isManuallySuspended) continue;
+        if (H.stuckTime > 120) continue;                   // 止まっている優等列車は待たない
+        const pH = H.getPriority();
+        const blks = g.trackMgr.blocks[H.trackId];
+        if (!blks) continue;
+        // H の前方の到着見込み (ブロック → 秒)
+        const etaH = {};
+        let tH = waitNow(H);
+        const look = UNITS_PER_STATION * OV_LOOK_STATIONS;
+        for (let k = 1; k <= look; k++) {
+            const b = blks[H.currBlockIndex + H.dir * k];
+            if (!b || b.x === -1000) break;
+            tH += runOf(H);
+            etaH[b.index] = tH;
+            tH += dwell(H, b);
+        }
+        for (let k = 1; k <= look; k++) {
+            const b = blks[H.currBlockIndex + H.dir * k];
+            if (!b || b.x === -1000 || etaH[b.index] === undefined) break;
+            const here = blockStationName(b);
+            /* 1. H があと数分で着く駅が、待っている下位の列車で満線 → 1本を先に出す */
+            if (isRealStationBlock(b) && b.lanes.every(x => x) && etaH[b.index] < OV_FULL_ETA) {
+                const ready = b.lanes.filter(L => L && L !== H && L.dir === H.dir && L.getPriority() < pH &&
+                    ["stopped", "holding", "waiting_start"].indexOf(L.state) >= 0 && L.hasStoppedAtCurrent !== false &&
+                    !L.isManuallySuspended && !L.commIncident && !L.minorTrouble)
+                    .sort((a, c) => (a.timer || 0) - (c.timer || 0) || (c.stuckTime || 0) - (a.stuckTime || 0));
+                const nb = blks[b.index + H.dir];
+                if (ready.length && nb && nb.x !== -1000 && !nb.lanes.every(x => x)) set(ready[0], "go", here, H.trainNo, true);
+            }
+            /* 2. 前を走る下位の列車との追いつき */
+            for (const L of b.lanes) {
+                if (!L || L === H || L.dir !== H.dir || !active(L)) continue;
+                if (["普通", "快速"].indexOf(L.type) < 0 || L.getPriority() >= pH) continue;
+                if (!isRefuge(b) || ["stopped", "holding", "waiting_start"].indexOf(L.state) < 0) continue;
+                // L が次の待避駅 (または行先) に入るまでの見込み
+                let tL = waitNow(L), refuge = null;
+                for (let j = 1; j <= UNITS_PER_STATION * 10; j++) {
+                    const c = blks[b.index + L.dir * j];
+                    if (!c || c.x === -1000) break;
+                    tL += runOf(L);
+                    if (isRealStationBlock(c) && (blockStationName(c) === L.dest || isRefuge(c))) { refuge = c; break; }
+                    tL += dwell(L, c);
+                }
+                if (!refuge) continue;
+                // H が待避駅の1つ手前の閉塞に来る見込み (前方の見込みの外なら、H の走行時間で延ばす)
+                const before = refuge.index - L.dir;
+                const tHb = (etaH[before] !== undefined) ? etaH[before]
+                    : tH + Math.abs(before - (H.currBlockIndex + H.dir * look)) * runOf(H);
+                const destReached = blockStationName(refuge) === L.dest;
+                const key = L.trackId + "#" + refuge.index;
+                const refugeFree = refuge.lanes.filter(x => !x).length - (reserved[key] || 0);
+                if (tL + runOf(H) < tHb && (destReached || refugeFree >= 2)) {
+                    set(L, "go", here, H.trainNo, false);        // 逃げ切れる
+                    if (!destReached) reserved[key] = (reserved[key] || 0) + 1;
+                } else if (b.lanes.some(x => !x) || H.currBlockIndex === b.index) {
+                    set(L, "yield", here, H.trainNo, false);     // ここで待避 (H の番線は残っている)
+                } else {
+                    set(L, "go", here, H.trainNo, true);         // 満線で待てない。先に出して番線を空ける
+                }
+            }
+        }
+    }
+    this.ovPlans = plans;
+};
+
+/** checkHold から呼ぶ。その駅でのこの列車の決定 ("go" / "yield" / null) */
+OperationsManager.prototype.overtakePlanFor = function (t, stName) {
+    const p = this.ovPlans && this.ovPlans.get(t.id);
+    if (!p || p.st !== stName || this.game.currentTime > p.until) return null;
+    if (p.act === "yield" && t.stuckTime >= 480) return null;    // 待ちすぎない (これまでの上限と同じ)
+    return p.act;
 };

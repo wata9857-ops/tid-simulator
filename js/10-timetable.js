@@ -148,10 +148,17 @@ const TT_SERVICE_START = 4.5;
 /** 0〜4時を 24〜28時として扱った時刻 */
 function ttAbsHour(h) { return (h < TT_SERVICE_START) ? h + 24 : h; }
 
-/** その線区で、いま始発・折り返しの列車を出してよいか */
-function ttInService(line, h) {
+/* 折り返しの打ち切りを終電より早める時間 (時)。利用者の指摘 ② (2026-10)
+   「最後の運用の時刻を少し早めに、とくに優等列車は」。
+   着いた列車を折り返すかどうか (train を渡したとき) だけに効かせる。始発の生成には効かせない。
+   ★新快速の枠を受け持つ列車 (skTarget) は対象外 (新快速の本数は別に決めてあるので触らない)。 */
+const TT_TURNBACK_EARLY = { "普通": 0.1, "快速": 0.35, "新快速": 0.5, "特急": 0.5 };
+
+/** その線区で、いま始発・折り返しの列車を出してよいか (train を渡すと、その列車を折り返してよいか) */
+function ttInService(line, h, train) {
     const a = ttAbsHour(h);
-    const end = TT_SERVICE_END[line] !== undefined ? TT_SERVICE_END[line] : 24.0;
+    let end = TT_SERVICE_END[line] !== undefined ? TT_SERVICE_END[line] : 24.0;
+    if (train && !train.skTarget) end -= (TT_TURNBACK_EARLY[train.type] || 0);
     return a >= TT_SERVICE_START && a < end;
 }
 
