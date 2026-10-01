@@ -471,6 +471,24 @@ class TidRenderer {
                    停車中=赤) で示している。以前は在線の軌道回路を赤く
                    塗っていたので、列車の多い時間帯は線路がほぼ赤一色になり、
                    実物とまるで違う見え方になっていた。 */
+                /* 終電後の線路閉鎖 (保守作業。js/38b-night-work.js)。見合わせとは別の色 (橙の太い破線) */
+                const closure = (this.game.trackMgr.workClosures || []).find(c => c.trackId === row.id && i >= c.start && i <= c.end);
+                if (closure) {
+                    ctx.strokeStyle = "#FF8C00";
+                    ctx.lineWidth = 6;
+                    ctx.setLineDash([10, 4]);
+                    ctx.beginPath(); ctx.moveTo(x1, by); ctx.lineTo(x2, by); ctx.stroke();
+                    ctx.setLineDash([]);
+                    if (i === closure.start) {
+                        ctx.font = "bold 11px 'Meiryo UI', 'Yu Gothic', sans-serif";
+                        const tag = "線閉 第" + closure.no + "号 " + (closure.kind || "");
+                        const tw = ctx.measureText(tag).width + 8;
+                        ctx.fillStyle = "#FF8C00";
+                        ctx.fillRect(x1, by - 20, tw, 15);
+                        ctx.fillStyle = "#000";
+                        ctx.fillText(tag, x1 + 4, by - 8);
+                    }
+                } else
                 // 運転見合わせ・障害
                 if (this.game.trackMgr.isSuspended(row.id, i)) {
                     ctx.strokeStyle = TID_COLORS.fault;

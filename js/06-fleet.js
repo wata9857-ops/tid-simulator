@@ -821,6 +821,8 @@ class FleetManager {
      * 満たさないときだけ留置場へ返して別の編成を割り当てる。
      */
     reassign(stName, type, trackId, dest, trainNo, current) {
+        // 事業用の仕業の編成は差し替えない (仕業の最初から最後まで同じ編成。js/38b-night-work.js)
+        if (current && current.some(v => v && v._workSrc)) return current;
         const prof = this.profileFor(stName, type, trackId, dest, trainNo);
         if (this.satisfies(current, prof)) return current;
         this.release(stName, current);
@@ -900,6 +902,7 @@ class FleetManager {
             //   運用中の本数を数えられなくなっていた。
             if (ServiceRules.giveBack(v, nearName)) return;
             if (v.isFreight || v.isExpress) return;
+            if (v.workStock) return;      // 事業用の専用車両は在庫に入れない (仕業が戻す。js/38b-night-work.js)
             // 修繕の要る編成は在庫に戻さず、修繕の置き場へ (次の運用に入れない)
             if (v.repair && typeof fleetHoldForRepair === "function") { fleetHoldForRepair(this, v, nearName); return; }
             const loc = this.homeForVehicle(v, nearName);

@@ -150,61 +150,101 @@ OperationsManager.prototype.checkRepairs = function (ct) {
     }
 };
 
-/* ================================================================== 2. 決まった筋の事業用列車 */
+/* ================================================================== 2. 決まった筋の事業用列車 (仕業)
+
+   ★利用者の指摘 (2026-10 の11回目)
+     ・文書の ①〜⑩ は、それぞれが1つの仕業 (同じ編成で最初から最後まで走る運用)。
+       行きと帰りで別の編成を充ててはいけない。→ 仕業ごとに編成を1回だけ取り、最後の区間まで持ち続ける
+       (workRun.vehicles)。区間のあいだは、短ければその駅の番線で折り返しを待ち、長ければ構内 (留置線) で待つ。
+       どちらのあいだも編成は在庫に戻さないので、ほかの列車に使われることはない。
+     ・車両は文書の指定どおりに充てる (指定の車両が無ければ、その日は運転しない)。
+         ハンドル訓練 … 681系・683系 (京都) 3両 / 余力確保の回送 … 681系 6両 / 近畿車輛出場 … 新製の 227系 (Urara)・273系 (やくも)
+         東西線夜間訓練 … 321系 7両 / 網干出場 … 223系・225系 / 後藤入場 … 瑞風 (87系) またはキハ189系 (はまかぜ)
+         上郡訓練 … DE10 + チキ 2両 / EF65 (下関) + 12系 3両 / 吹田出場 … 指定なし (宮原操にいる電車)
+     ・途中の長い停車 (訓練・待ち合わせ) を再現する。区間ごとの stops に「その駅を発車する時刻」を持ち、
+       その時刻まで駅で止める (checkHold の先頭。js/13-train-hold.js)。
+   stock … 編成の種類 (WORK_STOCK_KIND)。loco/cars … 機関車と貨車・客車 (WORK_LOCO_FLEET)。 */
 
 const _wt = (h, m) => h * 3600 + m * 60;
-/* 組 (1日に走るかを1回抽選する単位)
-     p     … その日に走る確率
-     uses  … 使う機関車 (同じ機関車の組は同じ日に1つだけ)
-     legs  … 区間 { no, from, dest, at (始発の時刻), dir, hoppo, track, loco, cars, stock, next }
-              loco … 機関車 (js/24-service-rules.js の WORK_LOCO_FLEET) / stock … 電車をその場所の在庫から ("tozai7" など)
-              next … "remove" (着いた所で次の区間が受け持つ・または線路図の外へ) / "depot" (入区) */
+
+/* 事業用の専用車両 (在庫の電車とは別に持つ。仕業が終わればここへ戻る) */
+const WORK_STOCK_DEFS = {
+    k681_3:   [{ type: "681系0番台",  id: "V13", cars: 3, base: "吹田総合車両所京都支所" },
+               { type: "683系0番台",  id: "V31", cars: 3, base: "吹田総合車両所京都支所" }],
+    k681_6:   [{ type: "681系0番台",  id: "W13", cars: 6, base: "吹田総合車両所京都支所" }],
+    kinsha:   [{ type: "227系500番台 (Urara・新製)", id: "R16", cars: 2, base: "近畿車輛 (新製車)" },
+               { type: "273系 (やくも・新製)",      id: "Y5",  cars: 4, base: "近畿車輛 (新製車)" }],
+    mizukaze: [{ type: "87系 (TWILIGHT EXPRESS 瑞風)", id: "瑞風", cars: 10, base: "下関総合車両所" }]
+};
+let _workStockPool = null;
+function workStockPool() {
+    if (_workStockPool) return _workStockPool;
+    _workStockPool = {};
+    for (const k in WORK_STOCK_DEFS) {
+        _workStockPool[k] = WORK_STOCK_DEFS[k].map(d => {
+            const v = new Vehicle(d.type, d.id, d.cars, "事業用・試運転の専用車両", d.base, "WORK");
+            v.workStock = k;
+            return v;
+        });
+    }
+    return _workStockPool;
+}
+
 const WORK_PATTERNS = [
-    { id: "kamigori", name: "上郡駅構内乗務員訓練 (配給)", p: 0.35, uses: "de10", legs: [
-        { no: "配9951", from: "向日町操", dest: "上郡",     at: _wt(8, 57),  dir: -1, loco: "de10", cars: "chiki2" },
-        { no: "配9952", from: "上郡",     dest: "向日町操", at: _wt(17, 28), dir: 1,  loco: "de10", cars: "chiki2" }
+    { id: "kamigori", name: "① 上郡駅構内乗務員訓練 (DE10 + チキ2両)", p: 0.35, uses: "de10", loco: "de10", cars: "chiki2", legs: [
+        { no: "配9951", from: "向日町操", dest: "上郡", at: _wt(8, 57), dir: -1,
+          stops: [["山崎", 9, 14], ["吹田", 9, 43], ["西明石", 10, 44], ["御着", 11, 17], ["姫路", 11, 25]] },
+        // 上郡で構内の乗務員訓練 (12:00〜17:28)
+        { no: "配9952", from: "上郡", dest: "向日町操", at: _wt(17, 28), dir: 1,
+          stops: [["姫路", 18, 6], ["御着", 18, 15], ["西明石", 18, 52], ["兵庫", 19, 16], ["尼崎", 20, 3], ["吹田", 20, 25]] }
     ]},
-    { id: "kyokamotsu", name: "京都貨物への単機回送", p: 0.35, uses: "de10", legs: [
-        { no: "単9384", from: "向日町操", dest: "西大路",   at: _wt(6, 59),  dir: 1,  loco: "de10" },
-        { no: "単9383", from: "西大路",   dest: "向日町操", at: _wt(14, 26), dir: -1, loco: "de10" }
+    { id: "kyokamotsu", name: "① 京都貨物への単機 (DE10)", p: 0.3, uses: "de10", loco: "de10", legs: [
+        { no: "単9384", from: "向日町操", dest: "西大路", at: _wt(6, 59), dir: 1 },
+        { no: "単9383", from: "西大路", dest: "向日町操", at: _wt(14, 26), dir: -1 }
     ]},
-    { id: "handle", name: "京都電車区ハンドル訓練 (681系・683系 3両)", p: 0.5, legs: [
-        { no: "試9161M", from: "向日町操", dest: "宮原操",   at: _wt(10, 59), dir: -1 },
-        { no: "試9160M", from: "宮原操",   dest: "向日町操", at: _wt(11, 42), dir: 1, hoppo: true },
-        { no: "試9163M", from: "向日町操", dest: "宮原操",   at: _wt(13, 29), dir: -1 },
-        { no: "試9162M", from: "宮原操",   dest: "向日町操", at: _wt(14, 4),  dir: 1, hoppo: true },
-        { no: "試9165M", from: "向日町操", dest: "宮原操",   at: _wt(16, 9),  dir: -1 },
-        { no: "試9164M", from: "宮原操",   dest: "向日町操", at: _wt(16, 56), dir: 1, hoppo: true }
+    { id: "handle", name: "② 京都電車区ハンドル訓練 (681系・683系 3両)", p: 0.5, stock: "k681_3", legs: [
+        { no: "試9161M", from: "向日町操", dest: "宮原操", at: _wt(10, 59), dir: -1 },
+        { no: "試9160M", from: "宮原操", dest: "向日町操", at: _wt(11, 42), dir: 1, hoppo: true, stops: [["吹田", 12, 0], ["吹田貨", 12, 0]] },
+        { no: "試9163M", from: "向日町操", dest: "宮原操", at: _wt(13, 29), dir: -1 },
+        { no: "試9162M", from: "宮原操", dest: "向日町操", at: _wt(14, 4), dir: 1, hoppo: true,
+          stops: [["吹田", 14, 14], ["吹田貨", 14, 14], ["茨木", 14, 29]] },
+        { no: "試9165M", from: "向日町操", dest: "宮原操", at: _wt(16, 9), dir: -1, stops: [["吹田", 16, 36]] },
+        { no: "試9164M", from: "宮原操", dest: "向日町操", at: _wt(16, 56), dir: 1, hoppo: true }
     ]},
-    { id: "suita_out", name: "吹田出場試運転", p: 0.45, legs: [
-        { no: "試6780M", from: "吹田貨",   dest: "向日町操", at: _wt(9, 59),  dir: 1, hoppo: true },
-        { no: "試6781M", from: "向日町操", dest: "吹田貨",   at: _wt(11, 55), dir: -1 }
+    { id: "suita_out", name: "③ 吹田出場試運転 (車両指定なし)", p: 0.45, stock: "suita", legs: [
+        { no: "試6780M", from: "吹田貨", dest: "向日町操", at: _wt(9, 59), dir: 1, hoppo: true },
+        { no: "試6781M", from: "向日町操", dest: "吹田貨", at: _wt(11, 55), dir: -1, stops: [["茨木", 12, 23]] }
     ]},
-    { id: "kinsha", name: "近畿車輛出場公式試運転 (227系・273系など)", p: 0.15, legs: [
-        { no: "試9745M", from: "吹田貨", dest: "網干", at: _wt(12, 35), dir: -1, hoppo: true },
-        { no: "試9765M", from: "網干",   dest: "上郡", at: _wt(20, 30), dir: -1 }       // 上郡から先 (岡山) は線路図の外
+    { id: "kinsha", name: "④ 近畿車輛出場公式試運転 (227系 Urara・273系 やくも)", p: 0.15, stock: "kinsha", legs: [
+        { no: "試9745M", from: "吹田貨", dest: "網干", at: _wt(12, 35), dir: -1, hoppo: true,
+          stops: [["宮原操", 13, 1], ["尼崎", 13, 11], ["西明石", 14, 15]] },
+        // 網干で入区 (網干所 14:59〜20:14)、20:30 に網干から岡山へ (上郡から先は線路図の外)
+        { no: "試9765M", from: "網干", dest: "上郡", at: _wt(20, 30), dir: -1, stops: [["上郡", 21, 0]] }
     ]},
-    { id: "aboshi_out", name: "網干出場試運転 (223系・225系)", p: 0.45, legs: [
-        { no: "試6778M", from: "網干",     dest: "東加古川", at: _wt(14, 9),  dir: 1 },
-        { no: "試6779M", from: "東加古川", dest: "網干",     at: _wt(14, 58), dir: -1, next: "depot" }
+    { id: "aboshi_out", name: "⑤ 網干出場試運転 (223系・225系)", p: 0.45, stock: "aboshi", legs: [
+        { no: "試6778M", from: "網干", dest: "東加古川", at: _wt(14, 9), dir: 1 },
+        { no: "試6779M", from: "東加古川", dest: "網干", at: _wt(14, 58), dir: -1 }
     ]},
-    { id: "tozai_night", name: "東西線夜間訓練 (321系 7両)", p: 0.3, legs: [
-        { no: "試9501M", from: "放出", dest: "尼崎", at: _wt(0, 32), dir: -1, track: "Tozai_Down", stock: "tozai7" },
-        { no: "試9502M", from: "尼崎", dest: "放出", at: _wt(2, 54), dir: 1,  track: "Tozai_Up", stock: "tozai7", next: "depot" }
+    { id: "tozai_night", name: "⑥ 東西線夜間訓練 (321系 7両)", p: 0.3, stock: "tozai321", legs: [
+        { no: "試9501M", from: "放出", dest: "尼崎", at: _wt(0, 32), dir: -1, track: "Tozai_Down",
+          stops: [["京橋", 0, 37], ["北新地", 0, 43], ["海老江", 2, 34], ["御幣島", 2, 39]] },
+        { no: "試9502M", from: "尼崎", dest: "放出", at: _wt(2, 54), dir: 1, track: "Tozai_Up",
+          stops: [["御幣島", 3, 30], ["北新地", 4, 55], ["京橋", 5, 2]] }
     ]},
-    { id: "miyahara_dh", name: "宮原操車場の余力確保に伴う回送 (681系 6両)", p: 0.3, legs: [
-        { no: "回9861M", from: "向日町操", dest: "宮原操", at: _wt(13, 51), dir: -1, next: "depot" }
+    { id: "miyahara_dh", name: "⑦ 宮原操車場の余力確保に伴う回送 (681系 6両)", p: 0.3, stock: "k681_6", legs: [
+        { no: "回9861M", from: "向日町操", dest: "宮原操", at: _wt(13, 51), dir: -1 }
     ]},
-    { id: "goto", name: "後藤入場回送 (瑞風・はまかぜ)", p: 0.2, legs: [
-        { no: "回9547D", from: "宮原操",   dest: "向日町操", at: _wt(22, 13), dir: 1 },
-        { no: "回9528D", from: "向日町操", dest: "京都",     at: _wt(4, 44),  dir: 1 }
+    { id: "goto", name: "⑧ 後藤入場回送 (瑞風・はまかぜ)", p: 0.2, stock: "goto", legs: [
+        { no: "回9547D", from: "宮原操", dest: "向日町操", at: _wt(22, 13), dir: 1, stops: [["大阪", 22, 25]] },
+        // 向日町操で夜を明かし、翌朝 京都へ (31番のりば)
+        { no: "回9528D", from: "向日町操", dest: "京都", at: _wt(4, 44), dir: 1 }
     ]},
-    { id: "ef65_12", name: "EF65 (下関) + 12系客車 3両", p: 0.25, uses: "ef65", legs: [
-        { no: "回9404レ", from: "上郡", dest: "宮原操", at: _wt(1, 58), dir: 1, loco: "ef65", cars: "kei12" }
+    { id: "ef65_12", name: "⑨ EF65 (下関) + 12系客車 3両", p: 0.25, uses: "ef65", loco: "ef65", cars: "kei12", legs: [
+        { no: "回9404レ", from: "上郡", dest: "宮原操", at: _wt(1, 58), dir: 1, stops: [["姫路", 3, 16], ["西明石", 4, 27]] }
     ]}
 ];
 
-/** その日に走らせる組を選ぶ (同じ機関車を使う組は重ねない) */
+/** その日に走らせる仕業を選ぶ (同じ機関車を使う仕業は重ねない) */
 Spawner.prototype.pickWorkPatterns = function () {
     const used = {};
     const out = [];
@@ -217,64 +257,214 @@ Spawner.prototype.pickWorkPatterns = function () {
     return out;
 };
 
-Spawner.prototype.checkWorkPatterns = function (ct) {
-    if (globalThis.__NO_WORK_PATTERNS) return;
-    const day = Math.floor(ct / 86400);
-    if (!this.wp || this.wp.day !== day) {
-        const first = !this.wp;
-        this.wp = { day: day, legs: [] };
-        this.pickWorkPatterns().forEach(pt => pt.legs.forEach(L => {
-            const at = day * 86400 + L.at;
-            // 立ち上げのときに過ぎている区間は出さない
-            this.wp.legs.push({ L: L, pt: pt, at: at, done: first && at < ct - 60 });
-        }));
-        if (this.wp.legs.length) {
-            this.game.ui.updateBanner(`【事業用列車】本日の事業用列車: ` +
-                [...new Set(this.wp.legs.map(x => x.pt.name))].join("・"), "banner-blue");
-        }
+/** 仕業の編成を取る (文書の指定どおり。無ければ null) */
+Spawner.prototype.takeWorkSet = function (pt, L) {
+    const g = this.game, fleet = g.fleet;
+    const mark = (vs, src) => { vs.forEach(v => { v._workSrc = src; }); return vs; };
+    if (pt.loco) {
+        const vs = ServiceRules.takeWork(pt.loco, pt.cars || null, L.from, L.dest);
+        return vs ? mark(vs, "loco") : null;
     }
-    for (const e of this.wp.legs) {
-        if (e.done || ct < e.at) continue;
-        e.done = true;
-        this.spawnWorkLeg(e.L, e.pt);
+    const fromPool = (name, pred) => {
+        const pool = fleet.pools[name] || [];
+        const i = pool.findIndex(pred);
+        return i >= 0 ? mark([pool.splice(i, 1)[0]], "fleet") : null;
+    };
+    switch (pt.stock) {
+        case "tozai321": {
+            // 夜のうちに取り置いた 321系 (checkWorkPatterns)。無ければ放出の在庫から
+            if (this.wpReserve321) { const v = this.wpReserve321; this.wpReserve321 = null; return mark([v], "fleet"); }
+            return fromPool(L.from, v => /321系/.test(v.type) && v.cars === 7);
+        }
+        case "aboshi":   return fromPool(L.from, v => v.group === "ABOSHI" && /22[35]系/.test(v.type));
+        case "suita": {                                    // 吹田の工場を出た電車 (近くの留置線にいるもの)
+            for (const n of ["宮原操", "高槻", "向日町操", "尼崎", "京都"]) {
+                const vs = fromPool(n, v => !v.isExpress && !v.isFreight && !v.workKey && !v.repair);
+                if (vs) return vs;
+            }
+            return null;
+        }
+        case "goto": {
+            if (Math.random() < 0.5) {
+                const ex = ServiceRules.takeExpress("hamakaze", L.no);
+                if (ex && ex.length) return mark(ex, "express");
+            }
+            const p = workStockPool().mizukaze;
+            return p.length ? mark([p.shift()], "stock") : null;
+        }
+        default: {
+            const p = workStockPool()[pt.stock];
+            if (!p || !p.length) return null;
+            const i = Math.floor(Math.random() * p.length);
+            return mark(p.splice(i, 1), "stock");
+        }
     }
 };
 
-Spawner.prototype.spawnWorkLeg = function (L, pt) {
+/** 仕業が終わった (または取りやめた) 編成を元へ戻す */
+Spawner.prototype.giveBackWorkSet = function (vs, at) {
+    (vs || []).forEach(v => {
+        const src = v._workSrc;
+        v._workSrc = null;
+        if (src === "loco" || src === "express") ServiceRules.giveBack(v, at);
+        else if (src === "stock") workStockPool()[v.workStock].push(v);
+        else this.game.fleet.release(at, [v]);
+    });
+};
+
+/** 区間の途中停車を、その日の時刻 (秒) にする */
+function workStopsAbs(L, depAt) {
+    if (!L.stops) return null;
+    const out = {};
+    const day0 = depAt - (depAt % 86400);
+    L.stops.forEach(([st, h, m]) => {
+        let t = day0 + h * 3600 + m * 60;
+        if (t < depAt - 3600) t += 86400;        // 日付をまたぐ
+        out[st] = t;
+    });
+    return out;
+}
+
+Spawner.prototype.checkWorkPatterns = function (ct) {
+    if (globalThis.__NO_WORK_PATTERNS) return;
+    const day = Math.floor(ct / 86400);
+    this.workRuns = this.workRuns || [];
+    /* 東西線夜間訓練 (321系 7両の指定) のために、23時台に放出の 321系を1本取り置く。
+       終電のころには放出の 321系がすべて翌朝の始発に回っていて、0:32 の訓練に充てる編成が無かった。
+       訓練が無かった夜は 1時台に在庫へ戻す。 */
+    const hNow = (ct / 3600) % 24;
+    if (hNow >= 23.0 && hNow < 23.9 && !this.wpReserve321) {
+        const pool = this.game.fleet.pools["放出"] || [];
+        const i = pool.findIndex(v => /321系/.test(v.type) && v.cars === 7 && !v.repair);
+        if (i >= 0) this.wpReserve321 = pool.splice(i, 1)[0];
+    }
+    if (hNow >= 1.0 && hNow < 4.0 && this.wpReserve321) {
+        this.game.fleet.release("放出", [this.wpReserve321]);
+        this.wpReserve321 = null;
+    }
+    if (this.wpDay !== day) {
+        const first = this.wpDay === undefined;
+        this.wpDay = day;
+        const picked = this.pickWorkPatterns();
+        picked.forEach(pt => {
+            // 区間の時刻 (前の区間より前なら翌日)
+            let prev = -Infinity;
+            const times = pt.legs.map(L => { let t = day * 86400 + L.at; while (t < prev) t += 86400; prev = t; return t; });
+            if (first && times[0] < ct - 60) return;            // 立ち上げのときに過ぎている仕業は出さない
+            this.workRuns.push({ pt: pt, times: times, idx: 0, state: "wait", vehicles: null, at: pt.legs[0].from, train: null });
+        });
+        if (picked.length) {
+            this.game.ui.updateBanner(`【事業用列車】本日の事業用列車: ` + picked.map(p => p.name).join("・"), "banner-blue");
+        }
+    }
+    for (const run of this.workRuns) {
+        if (run.state !== "wait") continue;
+        const t0 = run.times[run.idx];
+        if (ct < t0) continue;
+        const L = run.pt.legs[run.idx];
+        /* 前の区間が遅れて着いたときは、着いてから出す (時刻を過ぎていても取りやめない)。
+           出られる状態になってから30分出られなければ、その仕業は取りやめ */
+        if (ct > Math.max(t0, run.readyAt || 0) + 1800) {
+            run.state = "done";
+            if (run.vehicles) { this.giveBackWorkSet(run.vehicles, run.at); run.vehicles = null; }
+            this.game.ui.updateBanner(`【事業用列車】${L.no} (${run.pt.name}) は発車できないため、以降の運転を取りやめます。`, "banner-blue");
+            continue;
+        }
+        this.spawnWorkLeg(run);
+    }
+    this.workRuns = this.workRuns.filter(r => r.state !== "done");
+};
+
+/** 仕業の次の区間を出す (編成は仕業で持っているものを使う) */
+Spawner.prototype.spawnWorkLeg = function (run) {
     const g = this.game;
+    const pt = run.pt, L = pt.legs[run.idx];
+    if (!run.vehicles) {
+        run.vehicles = this.takeWorkSet(pt, L);
+        if (!run.vehicles) {
+            run.state = "done";
+            g.ui.updateBanner(`【事業用列車】${L.no} (${pt.name}) は指定の車両が ${L.from}に居ないため運転を取りやめます。`, "banner-blue");
+            return false;
+        }
+    }
     const trackId = L.track || (L.hoppo ? (L.dir === 1 ? "Up_Hoppo" : "Down_Hoppo") : (L.dir === 1 ? "Up_Out" : "Down_Out"));
-    let vs = null, work = null;
-    if (L.loco) {
-        vs = ServiceRules.takeWork(L.loco, L.cars || null, L.from, L.dest);
-        if (!vs) {
-            g.ui.updateBanner(`【事業用列車】${L.no} (${pt.name}) は ${L.from}に機関車が居ないため運転を取りやめます。`, "banner-blue");
-            return false;
-        }
-        work = L.cars ? "工臨" : "単機";
-    } else if (L.stock === "tozai7") {
-        vs = g.fleet.assign(L.from, "普通", trackId, L.dest, L.no, { noBorrow: true });
-        if (!vs || !vs.length) {
-            g.ui.updateBanner(`【事業用列車】${L.no} (${pt.name}) は ${L.from}に充てる編成が無いため運転を取りやめます。`, "banner-blue");
-            return false;
-        }
-    }
     const cfg = { type: "臨時", dir: L.dir, trackId: trackId, dest: L.dest, startName: L.from,
-                  name: L.no, dutyName: L.no, nextAction: L.next || (L.loco ? "remove" : "depot") };
-    if (vs) cfg.vehicles = vs;
-    if (work) cfg.workTrain = work;
-    const ok = g.addTrain(cfg);
-    if (!ok) {
-        if (vs && L.loco) vs.forEach(v => ServiceRules.giveBack(v, L.from));
-        else if (vs) g.fleet.release(L.from, vs);
-        return false;
-    }
+                  name: L.no, dutyName: L.no, nextAction: "remove", vehicles: run.vehicles.slice() };
+    if (pt.loco) cfg.workTrain = pt.cars ? "工臨" : "単機";
+    if (!g.addTrain(cfg)) return false;                          // 番線が空かない。次のTickでやり直す
     const t = g.trains.find(x => x.trainNo === L.no && x.state !== "finished");
-    if (t) t.workPermit = true;                     // 線路閉鎖の区間にも入れる (事業用列車)
+    if (!t) return false;
+    this.armWorkTrain(t, run);
+    run.state = "running";
     this.wpStats = this.wpStats || { run: 0 };
     this.wpStats.run++;
-    g.ui.updateBanner(`【事業用列車】${L.no} ${L.from}→${L.dest} (${pt.name}) が発車します。`, "banner-blue");
+    g.ui.updateBanner(`【事業用列車】${L.no} ${L.from}→${L.dest} (${pt.name}・${t.vehicles.map(v => v.fullId || v.id).join("+")}) が発車します。`, "banner-blue");
     return true;
 };
+
+/** 事業用列車に、その区間の印 (線路閉鎖に入れる・途中停車・仕業) を付ける */
+Spawner.prototype.armWorkTrain = function (t, run) {
+    const L = run.pt.legs[run.idx];
+    t.workPermit = true;
+    t.workRun = run;
+    t.workStops = workStopsAbs(L, run.times[run.idx]);
+    run.train = t;
+};
+
+/**
+ * 事業用列車が区間の終点に着いた (Train.remove / enterDepot から呼ぶ)。
+ * 編成は在庫に戻さず仕業が持ち続ける。次の区間が同じ駅から45分以内ならその番線で折り返しを待ち、
+ * それより長ければ構内 (留置線) で待つ。最後の区間なら編成を元へ戻す。処理したら true。
+ */
+Spawner.prototype.workRunArrive = function (t) {
+    const run = t.workRun;
+    if (!run || run.train !== t) return false;
+    const g = this.game;
+    const blks = g.trackMgr.blocks[t.trackId];
+    const here = (blks && blks[t.currBlockIndex] && blockStationName(blks[t.currBlockIndex])) || t.dest;
+    const L = run.pt.legs[run.idx];
+    run.at = L.dest;
+    run.idx++;
+    run.readyAt = g.currentTime;
+    t.workRun = null;
+    const next = run.pt.legs[run.idx];
+    const now = g.currentTime;
+    // 次の区間を、この番線でそのまま待つ
+    if (next && next.from === here && run.times[run.idx] - now <= 2700 && !next.track && !next.hoppo) {
+        const ok = (t.dir === next.dir) || g.ops.moveToOppositeTrack(t, here, next.dir);
+        if (ok) {
+            g.spawner.activeTrainNos.delete(t.trainNo);
+            t.trainNo = next.no; t.dutyName = next.no;
+            g.spawner.activeTrainNos.add(next.no);
+            t.dest = next.dest; t.startName = here;
+            t.nextAction = "remove"; t.isFinalStop = false;
+            t.state = "waiting_start"; t.timer = Math.max(60, Math.round((run.times[run.idx] - now) / 15) * 15);
+            t.hasDeparted = false; t.hasStoppedAtCurrent = false; t.stuckTime = 0;
+            this.armWorkTrain(t, run);
+            run.state = "running";
+            g.ui.updateBanner(`【事業用列車】${L.no} は${here}に着き、同じ編成で ${next.no} (${next.dest}行き) として折り返します。`, "banner-blue");
+            return true;
+        }
+    }
+    // 構内で待つ (編成は仕業が持つ。線路図からは外す)
+    if (blks && blks[t.currBlockIndex] && t.lane >= 0) freeOwnLane(blks[t.currBlockIndex].lanes, t);
+    depotRemove(t);
+    run.vehicles = t.vehicles;
+    t.vehicles = [];
+    t.state = "finished";
+    g.spawner.activeTrainNos.delete(t.trainNo);
+    run.train = null;
+    if (next) {
+        run.state = "wait";
+        g.ui.updateBanner(`【事業用列車】${L.no} は${L.dest}に着き、${next.no} の発車 (${stabledClock((run.times[run.idx] / 3600) % 24)}) まで構内で待機します。`, "banner-blue");
+    } else {
+        run.state = "done";
+        this.giveBackWorkSet(run.vehicles, L.dest);
+        run.vehicles = null;
+    }
+    return true;
+};
+
 
 /* ================================================================== 3. 終電後の線路閉鎖 */
 

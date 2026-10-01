@@ -6,6 +6,13 @@ Train.prototype.checkHold = function (isStarting) {
            「異常で止まっている列車」と取り違えないために使う。 */
         this._routineHold = false;
         const blks = this.game.trackMgr.blocks[this.trackId];
+        /* 事業用列車の途中の長い停車 (訓練・待ち合わせ。js/38b-night-work.js の stops)。
+           その駅を発車する時刻まで止める */
+        if (this.workStops && blks && blks[this.currBlockIndex]) {
+            const until = this.workStops[blockStationName(blks[this.currBlockIndex])];
+            if (until && this.game.currentTime < until) { this._routineHold = true; this.workStopHold = true; return true; }
+        }
+        this.workStopHold = false;
         const nextIdx = this.currBlockIndex + this.dir;
         let targetTrackId = this.trackId; // ★変数のスコープを関数全体に広げてエラーを防止
 

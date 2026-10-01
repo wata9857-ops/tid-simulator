@@ -1,6 +1,8 @@
 /* このファイルは index.html から分割されたものです。
    Train: 消滅・入区・出区処理 */
 Train.prototype.remove = function () {
+        // 事業用の仕業: 編成は在庫に戻さず、次の区間へ持ち越す (js/38b-night-work.js)
+        if (this.workRun && this.game.spawner.workRunArrive && this.game.spawner.workRunArrive(this)) return;
         const blks = this.game.trackMgr.blocks[this.trackId];
         if (blks && blks[this.currBlockIndex] && this.lane >= 0) {
             freeOwnLane(blks[this.currBlockIndex].lanes, this);
@@ -36,6 +38,7 @@ Train.prototype.remove = function () {
 };
 
 Train.prototype.enterDepot = function (stName) {
+        if (this.workRun && this.game.spawner.workRunArrive && this.game.spawner.workRunArrive(this)) return;
         const blks = this.game.trackMgr.blocks[this.trackId];
         if (blks && blks[this.currBlockIndex] && this.lane >= 0) {
             freeOwnLane(blks[this.currBlockIndex].lanes, this);

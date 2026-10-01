@@ -203,6 +203,10 @@ class SimBus {
             depots: depots,
             suspensions: g.trackMgr.manualSuspensions.map(m => ({
                 trackId: m.trackId, start: m.start, end: m.end, owner: m.owner })),
+            // 終電後の線路閉鎖 (js/38b-night-work.js)
+            closures: (g.trackMgr.workClosures || []).map(c => ({
+                trackId: c.trackId, start: c.start, end: c.end, until: c.until, no: c.no,
+                label: c.label, kind: c.kind, who: c.who, first: c.first })),
             restrictions: g.trackMgr.speedRestrictions.map(r => ({
                 trackId: r.trackId, start: r.start, end: r.end,
                 factor: r.factor, reason: r.reason, until: r.until })),
@@ -235,6 +239,7 @@ class SimBus {
 
         // --- 線路の状態
         g.trackMgr.manualSuspensions = s.suspensions || [];
+        g.trackMgr.workClosures = s.closures || [];
         g.trackMgr.recoveryHolds = s.recoveryHolds || [];
         this._recovery = s.recovery || [];
         g.trackMgr.speedRestrictions = s.restrictions || [];

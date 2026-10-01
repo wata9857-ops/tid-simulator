@@ -1418,6 +1418,7 @@ OperationsManager.prototype.watchdog = function (ct) {
     const list = g.trains.slice();
     for (const t of list) {
         if (t.state === "finished" || t.state === "in_depot" || t.overnightStable) continue;
+        if (t.workStopHold) continue;               // 事業用列車の訓練・待ち合わせの停車 (止まっていてよい)
         const blks = g.trackMgr.blocks[t.trackId];
         const b = blks ? blks[t.currBlockIndex] : null;
 
