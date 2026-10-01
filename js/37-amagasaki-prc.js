@@ -301,3 +301,375 @@ function amaDwellAdjust(t, stName, sec) {
         return false;
     };
 })();
+
+/* ================================================================ 尼崎 PRC の作戦 (見積もりで選ぶ運転整理)
+
+   ■ なぜ要るか
+     上の A〜E は「番線の選び方」と「待つ上限」を賢くしただけで、待避する駅・発車の順番は
+     これまでの決まり (後ろに優等列車がいれば尼崎で待つ) のままだった。尼崎は宝塚線・神戸線・東西線の
+     列車が同じ番線を取り合うので、普通が尼崎で快速を待つと、そのあいだ宝塚線の列車が番線を失って
+     塚口〜尼崎で止まる、ということが朝夕に起きていた。
+   ■ どうするか (毎Tick、尼崎の上下それぞれの状況を見て、作戦ごとに「遅れ × 重み」の合計を見積もり、
+     いちばん小さいものを選ぶ。js/27-operations.js の待避の先読みの決定 (ovPlans) を上書きする)
+     F. 待避駅の繰り延べ … 尼崎で優等列車 H を待つ普通 L について
+          (a) 尼崎で待つ: L の待ち × L の重み ＋ そのあいだ番線を失うほかの列車の待ち × 重み
+          (b) 先に出して、次の待避駅 (上り 大阪・新大阪 / 下り 芦屋) で待つ:
+              L の待ち ＋ H が L の後ろを走ることになる遅れ × H の重み
+        を比べ、(b) が安ければ L を先に出し、その駅で H を待たせる (待つ駅は覚えておき、着いたら抑止する)。
+        宝塚線が詰まっている (尼崎の番線の需要が多い) ほど (a) が高くなり、繰り延べが選ばれる。
+     G. 手前の駅での順序の調整 … 尼崎の1つ手前の駅 (塚口・立花・加島・塚本) で発車する列車 T について、
+          ・尼崎で T の入れる番線が全部ふさがっていて、すぐには空かない → ホームで待つ (駅間で止めない)
+          ・ほかの線区から尼崎へ同じ線路へ出る、重みの大きい列車 H がほぼ同時に着く
+            → T が先に行くと H が T の後ろを走ることになるので、遅れ × 重みが小さくなるなら T をホームで待たせる
+            (例: 宝塚線の普通を塚口で待たせ、神戸線の快速を先に尼崎から大阪へ通す)
+     H. 交互の発車 … 尼崎で違う線区から来た2本が同じ線路へ同時に出ようとするとき、
+        重み・遅れ・待ち時間に「前に出たのと別の線区」の加点を足して順番を決める (同じ線区ばかり続けない)。
+     重み … 特急 3.0・新快速 2.4・快速 1.6・普通 1.0。行先が近い (残り 4駅以下) 列車は軽くする
+            (短い区間の列車は少し遅らせても影響が小さい)。遅れている列車は少し重くする。
+     どの作戦も待たせるのは最長 2〜5分 で、待たせる相手が止まっている (トラブル・長い抑止) ときは待たせない。
+   globalThis.__NO_AMA_STRAT = true でこの節だけ切れる。
+*/
+const AMA_STRAT = {
+    look: UNITS_PER_STATION * 3,                       // 尼崎の 3駅手前まで見る
+    refuges: { "1": ["大阪", "新大阪"], "-1": ["芦屋"] },
+    defers: new Map(),                                 // L.id → { st, hId, hNo, until }
+    srcOf: new Map(),                                  // 尼崎にいる列車 → 来た線路
+    lastSrc: {},                                       // 出ていく線路 → 最後に出た列車の来た線路
+    banner: 0,
+    stats: { deferGo: 0, deferYield: 0, preHoldFull: 0, preHoldPri: 0, alternate: 0 }
+};
+
+function amaStratOn() { return amaPrcOn() && !globalThis.__NO_AMA_STRAT; }
+
+const AMA_TYPE_W = { "特急": 3.0, "新快速": 2.4, "快速": 1.6, "普通": 1.0, "臨時": 1.2, "回送": 0.4, "貨物": 0.8 };
+
+/** 行先までの残りの駅の数 (自分の線路と、尼崎から出ていく線路を辿る。見つからなければ 15) */
+function amaRemainStations(t) {
+    const c = t.__amaRem;
+    if (c && c.at === t.currBlockIndex && c.tr === t.trackId) return c.n;
+    const g = t.game;
+    let n = 15, cnt = 0;
+    const walk = (tid, from) => {
+        const bs = g.trackMgr.blocks[tid];
+        if (!bs) return false;
+        for (let j = 1; j <= UNITS_PER_STATION * 15; j++) {
+            const b = bs[from + t.dir * j];
+            if (!b || b.x === -1000) return false;
+            if (!isRealStationBlock(b)) continue;
+            cnt++;
+            if (blockStationName(b) === t.dest) { n = cnt; return true; }
+            if (blockStationName(b) === AMA_PRC.station && tid !== amaOutTrack(t)) return false;
+        }
+        return false;
+    };
+    if (!walk(t.trackId, t.currBlockIndex)) {
+        const out = amaOutTrack(t);
+        const i0 = amaIndexOn(g, out);
+        if (out !== t.trackId && i0 >= 0) walk(out, i0);
+    }
+    t.__amaRem = { at: t.currBlockIndex, tr: t.trackId, n: n };
+    return n;
+}
+
+/** 列車の重み (遅らせたときの損の大きさ) */
+function amaWeight(t) {
+    let w = AMA_TYPE_W[t.type] || 1.0;
+    const rem = amaRemainStations(t);
+    if (rem <= 4) w *= 0.55 + 0.1 * rem;               // 短い区間の列車は融通が利く
+    if ((t.delayTime || 0) > 120) w *= 1 + Math.min(0.4, (t.delayTime - 120) / 900);
+    return w;
+}
+
+function amaWaitNow(t) {
+    return Math.max(0, t.timer || 0) + (t.state === "holding" ? 5 : 0);
+}
+function amaDwell(t, b) {
+    if (!isRealStationBlock(b)) return 0;
+    let stops = false;
+    try { stops = t.passengerStopsAt(blockStationName(b)); } catch (e) { stops = false; }
+    return stops ? ((STATIONS[b.stationIdx] && STATIONS[b.stationIdx].stopTime) || 45) : 0;
+}
+/** 線路 tid の from の次のブロックから to までの所要 (秒。to での停車は含めない) */
+function amaRunTime(g, t, tid, from, to) {
+    const bs = g.trackMgr.blocks[tid];
+    if (!bs) return Infinity;
+    const run = BLOCK_RUN_SEC[t.type] || 48;
+    let s = 0;
+    for (let i = from + t.dir; (to - i) * t.dir >= 0; i += t.dir) {
+        const b = bs[i];
+        if (!b || b.x === -1000) return Infinity;
+        s += run;
+        if (i !== to) s += amaDwell(t, b);
+    }
+    return s;
+}
+/** 尼崎に着くまでの見込み (秒)。もう尼崎にいれば 0 */
+function amaEtaToAma(t) {
+    const i0 = amaIndexOn(t.game, t.trackId);
+    if (i0 < 0) return Infinity;
+    const d = (i0 - t.currBlockIndex) * t.dir;
+    if (d < 0) return Infinity;
+    if (d === 0) return 0;
+    let s = amaWaitNow(t) + amaRunTime(t.game, t, t.trackId, t.currBlockIndex, i0);
+    if (t.stuckTime > 30) s += Math.min(120, t.stuckTime);   // 止まっている列車は遅れて着く
+    return s;
+}
+
+/** 尼崎へ近づいている列車 (3駅手前まで。近い順)。{ t, k, eta, lanes, out, w } */
+function amaDemand(g, dir) {
+    const list = [];
+    for (const tid of AMA_PRC.tracks) {
+        if (trackDirOf(tid) !== dir) continue;
+        const i0 = amaIndexOn(g, tid);
+        if (i0 < 0) continue;
+        const bs = g.trackMgr.blocks[tid];
+        for (let k = 1; k <= AMA_STRAT.look; k++) {
+            const b = bs[i0 - dir * k];
+            if (!b || b.x === -1000) break;
+            for (const l of b.lanes) {
+                if (!l || l.dir !== dir || l.trackId !== tid || l.state === "finished" || l.state === "in_depot") continue;
+                const out = amaOutTrack(l);
+                list.push({ t: l, k: k, eta: amaEtaToAma(l), out: out, w: amaWeight(l),
+                            lanes: amaCandidateLanes(l, out !== l.trackId ? out : null) });
+            }
+        }
+    }
+    return list.sort((a, b) => a.eta - b.eta);
+}
+
+function amaReady(t) {
+    return ["stopped", "holding", "waiting_start"].indexOf(t.state) >= 0 && !t.isManuallySuspended &&
+           !t.minorTrouble && !t.commIncident;
+}
+function amaHealthy(t) {
+    return !!t && t.state !== "finished" && t.state !== "in_depot" && !t.minorTrouble &&
+           !t.isManuallySuspended && t.stuckTime < 120;
+}
+
+/** 尼崎の番線 lane を w 秒ふさいだとき、ほかの列車が番線を失って待つ損 (遅れ × 重み) */
+function amaLaneBlockCost(amaBlk, lane, w, demand, except) {
+    let cost = 0;
+    const taken = new Set();
+    for (const a of demand) {
+        if (a.t === except || a.eta >= w || !a.lanes.length) continue;
+        const free = a.lanes.filter(l => l !== lane && amaBlk.lanes[l] === null && !taken.has(l));
+        if (free.length) { taken.add(free[0]); continue; }
+        if (a.lanes.indexOf(lane) < 0) continue;
+        cost += (w - a.eta) * a.w;
+    }
+    return cost;
+}
+
+/**
+ * F. 待避駅の繰り延べの見積もり。L は尼崎で発車を待つ普通・快速、H は後ろから来る優等列車。
+ *    繰り延べが得なら { refuge } を返す。
+ */
+function amaDeferDecision(g, L, H, out, demand) {
+    const dir = L.dir;
+    const iL = amaIndexOn(g, out);
+    const bs = g.trackMgr.blocks[out];
+    if (iL < 0 || !bs) return null;
+    const nb = bs[iL + dir];
+    if (!nb || nb.x === -1000 || nb.lanes.some(x => x && x.dir === dir)) return null;   // すぐには出られない
+    // 次の待避駅
+    let R = null;
+    for (let j = 1; j <= UNITS_PER_STATION * 8; j++) {
+        const b = bs[iL + dir * j];
+        if (!b || b.x === -1000) return null;
+        if (!isRealStationBlock(b)) continue;
+        const nm = blockStationName(b);
+        if (nm === L.dest) return null;                               // 先で降りる。ふつうの先読みに任せる
+        if (AMA_STRAT.refuges[String(dir)].indexOf(nm) >= 0) { R = b; break; }
+    }
+    if (!R || R.lanes.length < 2) return null;
+    const rn = blockStationName(R);
+    const freeR = R.lanes.map((x, i) => x === null ? i : -1).filter(i => i >= 0);
+    if (freeR.length < 2 || !freeR.some(i => laneHasPlatform(rn, out, i))) return null;
+    const runH = BLOCK_RUN_SEC[H.t.type] || 34;
+    const amaBlk = g.trackMgr.blocks[L.trackId][L.currBlockIndex];
+    const dwellHAma = amaDwell(H.t, amaBlk);
+    const tHatR = H.eta + dwellHAma + amaRunTime(g, H.t, out, iL, R.index);       // 邪魔が無いとき
+    // (a) 尼崎で待つ
+    const waitY = Math.max(0, H.eta + dwellHAma + 30 - amaWaitNow(L));
+    const costA = waitY * amaWeight(L) + amaLaneBlockCost(amaBlk, L.lane, waitY, demand, H.t);
+    // (b) 先に出て R で待つ
+    const tL = amaWaitNow(L) + amaRunTime(g, L, out, iL, R.index);
+    const hDelay = Math.max(0, tL + runH - tHatR);                                 // H が L の後ろを走る遅れ
+    const waitR = Math.max(0, tHatR + hDelay + amaDwell(H.t, R) + 30 - tL);
+    const costB = waitR * amaWeight(L) + hDelay * H.w * 1.3 + 0.15 * waitR;
+    const cap = amaRushBand(g) ? 60 : 90;
+    if (hDelay > cap || costB + 20 >= costA) return null;
+    return { refuge: rn, costA: costA, costB: costB, hDelay: hDelay };
+}
+
+function amaStratNote(g, msg) {
+    const ct = g.currentTime;
+    if (ct < AMA_STRAT.banner || !g.ui || !g.ui.updateBanner) return;
+    AMA_STRAT.banner = ct + 600;
+    try { g.ui.updateBanner("【尼崎PRC】" + msg, "banner-orange"); } catch (e) { /* 表示が無いとき */ }
+}
+
+const amaSrc = (t) => AMA_STRAT.srcOf.get(t.id) || t.trackId;
+
+/** 毎Tick。待避の先読みの決定 (ops.ovPlans) を、尼崎の作戦で上書きする */
+function amaCoordinate(ops, ct) {
+    const g = ops.game;
+    if (!ops.ovPlans) ops.ovPlans = new Map();
+    const plans = ops.ovPlans;
+    const setP = (t, act, st, by, life) => plans.set(t.id, { act: act, st: st, by: by, force: true, until: ct + (life || 45), prc: true });
+    const byId = new Map();
+    g.trains.forEach(t => byId.set(t.id, t));
+    const amaIdxSt = STATION_MAP[AMA_PRC.station];
+
+    // 尼崎にいる列車と、出ていった列車 (H の交互の発車のため、来た線路を覚える)
+    const atAma = [];
+    const seen = new Set();
+    for (const t of g.trains) {
+        if (t.state === "finished" || t.state === "in_depot" || AMA_PRC.tracks.indexOf(t.trackId) < 0) continue;
+        const b = (g.trackMgr.blocks[t.trackId] || [])[t.currBlockIndex];
+        if (b && b.stationIdx === amaIdxSt && b.isStation && !b.hoppoStationName) {
+            atAma.push(t); seen.add(t.id);
+            if (!AMA_STRAT.srcOf.has(t.id)) AMA_STRAT.srcOf.set(t.id, t.trackId);
+        }
+    }
+    for (const [id, src] of AMA_STRAT.srcOf) {
+        if (seen.has(id)) continue;
+        const t = byId.get(id);
+        if (t && t.state !== "finished") AMA_STRAT.lastSrc[t.trackId] = src;
+        AMA_STRAT.srcOf.delete(id);
+    }
+
+    for (const dir of [1, -1]) {
+        const demand = amaDemand(g, dir);
+        const here = atAma.filter(t => t.dir === dir);
+        // F. 待避駅の繰り延べ
+        for (const L of here) {
+            if (["普通", "快速"].indexOf(L.type) < 0 || L.dest === AMA_PRC.station || L.turnbackTrack) continue;
+            if (!amaReady(L) || AMA_STRAT.defers.has(L.id)) continue;
+            const out = amaOutTrack(L);
+            const pL = L.getPriority();
+            const H = demand.find(a => a.out === out && a.t.getPriority() > pL && amaHealthy(a.t) && a.eta < 420);
+            if (!H) continue;
+            const d = amaDeferDecision(g, L, H, out, demand);
+            if (!d) continue;
+            setP(L, "go", AMA_PRC.station, H.t.trainNo);
+            AMA_STRAT.defers.set(L.id, { st: d.refuge, hId: H.t.id, hNo: H.t.trainNo, until: ct + 900 });
+            AMA_STRAT.stats.deferGo++;
+            amaStratNote(g, `${L.trainNo}は尼崎で${H.t.trainNo}を待たずに先に出し、${d.refuge}で待ち合わせます (尼崎の番線を空ける)。`);
+        }
+        // H. 交互の発車 (違う線区から来て、同じ線路へ同時に出る2本)
+        const ready = here.filter(t => amaReady(t) && (t.timer || 0) <= 10 && t.hasDeparted !== false);
+        const groups = {};
+        ready.forEach(t => { const o = amaOutTrack(t); (groups[o] = groups[o] || []).push(t); });
+        for (const o in groups) {
+            const gs = groups[o];
+            if (gs.length < 2 || new Set(gs.map(amaSrc)).size < 2) continue;
+            const score = (t) => amaWeight(t) * (1 + (t.delayTime || 0) / 600) + t.stuckTime / 120 +
+                                 (amaSrc(t) !== AMA_STRAT.lastSrc[o] ? 0.35 : 0);
+            gs.sort((a, b) => score(b) - score(a));
+            const win = gs[0];
+            if (win.stuckTime >= 45) continue;                        // 勝った方が動けないなら譲らせない
+            for (const t of gs.slice(1)) {
+                const p = plans.get(t.id);
+                if (amaSrc(t) === amaSrc(win) || t.stuckTime >= 90 || (p && p.prc && p.act === "go")) continue;
+                setP(t, "yield", AMA_PRC.station, win.trainNo, 20);
+                AMA_STRAT.stats.alternate++;
+            }
+        }
+    }
+
+    // F の続き: 繰り延べた待避を、その駅で実行する
+    for (const [id, d] of AMA_STRAT.defers) {
+        const L = byId.get(id), H = byId.get(d.hId);
+        if (!L || ct > d.until || L.state === "finished" || !amaHealthy(H)) { AMA_STRAT.defers.delete(id); continue; }
+        // H が L を抜いた (同じ線路で L より前) → おしまい
+        if (H.trackId === L.trackId && (H.currBlockIndex - L.currBlockIndex) * L.dir > 0) { AMA_STRAT.defers.delete(id); continue; }
+        const bs = g.trackMgr.blocks[L.trackId] || [];
+        const b = bs[L.currBlockIndex];
+        const stHere = b && isRealStationBlock(b) ? blockStationName(b) : null;
+        if (stHere !== d.st) {
+            // 待避の駅を通り過ぎた → おしまい
+            const R = bs.find(x => x.x !== -1000 && isRealStationBlock(x) && blockStationName(x) === d.st);
+            if (!R || (L.currBlockIndex - R.index) * L.dir > 0) AMA_STRAT.defers.delete(id);
+            continue;
+        }
+        if (!amaReady(L) || L.stuckTime >= 300) continue;
+        // H が入る番線が残っているときだけ待つ (互いに待ち合わない)
+        const hereSame = H.trackId === L.trackId && H.currBlockIndex === L.currBlockIndex;
+        if (!hereSame && !b.lanes.some(x => x === null)) continue;
+        setP(L, "yield", d.st, d.hNo);
+        AMA_STRAT.stats.deferYield++;
+    }
+}
+
+/**
+ * G. 手前の駅での順序の調整 (checkHold の発車のとき)。true ならホームで待つ。
+ */
+function amaPreHold(t) {
+    if (!amaStratOn()) return false;
+    if (AMA_PRC.tracks.indexOf(t.trackId) < 0 || t.turnbackTrack || t.type === "貨物") return false;
+    const g = t.game;
+    const i0 = amaIndexOn(g, t.trackId);
+    if (i0 < 0 || (i0 - t.currBlockIndex) * t.dir !== UNITS_PER_STATION) return false;
+    const bs = g.trackMgr.blocks[t.trackId];
+    const here = bs[t.currBlockIndex];
+    if (!here || !isRealStationBlock(here) || AMA_PRC.approachStations.indexOf(blockStationName(here)) < 0) return false;
+    if (t.stuckTime >= (amaRushBand(g) ? 120 : 150)) return false;   // 待たせすぎない
+    const amaBlk = bs[i0];
+    const out = amaOutTrack(t);
+    const mine = amaCandidateLanes(t, out !== t.trackId ? out : null);
+    if (!mine.length) return false;
+    const runT = amaRunTime(g, t, t.trackId, t.currBlockIndex, i0);
+    // 1. 入れる番線が全部ふさがっていて、着くまでに空きそうにない → ホームで待つ
+    const free = mine.filter(l => amaBlk.lanes[l] === null);
+    if (!free.length) {
+        const soon = mine.some(l => {
+            const o = amaBlk.lanes[l];
+            return !o || o.state === "running" || (amaReady(o) && (o.timer || 0) + 20 < runT && o.stuckTime < 30);
+        });
+        if (soon) return false;
+        AMA_STRAT.stats.preHoldFull++;
+        t._holdWhy = "尼崎PRC: 番線待ち (手前の駅で待つ)";
+        return true;
+    }
+    // 2. 重みの大きい列車 H が別の線区からほぼ同時に着き、同じ線路へ出る (または最後の番線を取り合う)
+    const etaT = amaWaitNow(t) + runT;
+    const wT = amaWeight(t);
+    const freeAll = (a) => a.lanes.filter(l => amaBlk.lanes[l] === null);
+    for (const a of amaDemand(g, t.dir)) {
+        if (a.eta > etaT + 75) break;
+        if (a.t === t || a.t.trackId === t.trackId || !amaHealthy(a.t) || a.t.stuckTime > 20) continue;
+        const merge = a.out === out && t.dest !== AMA_PRC.station;
+        const laneFight = free.length === 1 && freeAll(a).length === 1 && freeAll(a)[0] === free[0];
+        if (!merge && !laneFight) continue;
+        if (a.w < wT * 1.25) continue;
+        // T が先に行くときの H の遅れ と、T が待つときの T の遅れ
+        const dwT = amaDwell(t, amaBlk), dwH = amaDwell(a.t, amaBlk);
+        const hDelay = Math.max(0, etaT + dwT + 40 - (a.eta + dwH)) + (merge ? 30 : 0);
+        const tWait = Math.max(0, a.eta + dwH + 40 - etaT);
+        if (a.w * hDelay > wT * tWait + 15) {
+            AMA_STRAT.stats.preHoldPri++;
+            t._holdWhy = `尼崎PRC: ${a.t.trainNo}を先に通す`;
+            return true;
+        }
+    }
+    return false;
+}
+
+(function () {
+    if (typeof OperationsManager === "function" && OperationsManager.prototype.planOvertakes) {
+        const basePlan = OperationsManager.prototype.planOvertakes;
+        OperationsManager.prototype.planOvertakes = function (ct) {
+            basePlan.call(this, ct);
+            if (!amaStratOn() || ct < (this.__amaNext || 0)) return;
+            this.__amaNext = ct + CONFIG.TICK_SEC;
+            amaCoordinate(this, ct);
+        };
+    }
+    const baseHold = Train.prototype.checkHold;
+    Train.prototype.checkHold = function (isStarting) {
+        if (baseHold.call(this, isStarting)) return true;
+        if (isStarting && this.hasDeparted && !this.forceStart && amaPreHold(this)) return true;
+        return false;
+    };
+})();
