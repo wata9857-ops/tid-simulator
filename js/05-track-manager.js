@@ -400,6 +400,13 @@ class TrackManager {
      * そのブロックに列車を進めてはいけないか (運転見合わせ・段階開通の抑止)。
      *   train … 渡すと、段階開通の区間で「確認列車」の許可を持つ列車は通す
      */
+    /** そのブロックにかかっている終電後の線路閉鎖 (無ければ null。js/38b-night-work.js) */
+    workClosureAt(trackId, idx) {
+        if (!this.workClosures) return null;
+        for (const c of this.workClosures) if (c.trackId === trackId && idx >= c.start && idx <= c.end) return c;
+        return null;
+    }
+
     isSuspended(trackId, idx, train) {
         for(let m of this.manualSuspensions) if(m.trackId===trackId && idx>=m.start && idx<=m.end) return true;
         /* 終電後の線路閉鎖 (js/38b-night-work.js)。事業用の列車 (workPermit) だけは入れる */

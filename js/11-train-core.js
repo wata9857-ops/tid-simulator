@@ -765,7 +765,8 @@ class Train {
                             // ★追加: まだ発車していない列車でも、前方が運転見合わせ区間で
                             //        足止めされている場合は遅延として積む。
                             //        (通常の続行間隔待ちは下の救済ロジックに任せ、遅延にしない)
-                            if (this.game.trackMgr.isSuspended(this.trackId, this.currBlockIndex + this.dir)) {
+                            /* 貨物列車が線路閉鎖の明けを待つのは遅れではない (js/38c-dispatch-rules.js の _workWait) */
+                            if (!this._workWait && this.game.trackMgr.isSuspended(this.trackId, this.currBlockIndex + this.dir)) {
                                 this.delayTime += CONFIG.TICK_SEC;
                             }
                             // 追加: 始発駅で5分(1200秒)以上発車できない場合の救済ロジック

@@ -466,69 +466,195 @@ Spawner.prototype.workRunArrive = function (t) {
 };
 
 
-/* ================================================================== 3. 終電後の線路閉鎖 */
+/* ================================================================== 3. 終電後の線路閉鎖
+
+   ★利用者の指摘 (2026-10 の13回目)
+     ・最終列車が走り終わる前に作業が始まり、列車が朝まで止められていた。
+       → 承認の前に「その線路をこれから通る列車」を区間の手前3駅だけでなく遠くまで見る (行先が区間の先にある列車)。
+         それでも閉鎖の手前で列車が4分以上止まったら、作業を一時中断して列車を通し、通ったあとに改めて閉鎖する
+         (checkNightWorks の「作業の中断」)。朝まで止めることはしない。
+     ・米原〜上郡の本線 (北方貨物線を含む) は夜も貨物列車が走る。複線の区間 (複々線の外・北方貨物線) と湖西線の作業は
+       間合いを短くし (40〜90分)、貨物列車は手前の貨物ターミナルや待避のできる駅で作業の明けを待つ。その待ちは遅れにしない
+       (js/38c-dispatch-rules.js の freightWorkWait・_workWait)。
+     ・複々線 (西明石〜草津) で外側線を閉鎖したときは、渡り線のある駅 (明石・芦屋・尼崎・大阪 …) のあいだだけ内側線を通す
+       (js/38c-dispatch-rules.js の workDetourSide)。例: 甲南山手付近の作業なら明石〜芦屋を内側線。
+     ・作業の種類を増やした (NIGHT_WORK_KINDS。保線・電力・信号通信・施設・工事で 28種)。一晩の中では同じ種類を重ねない。 */
 
 /* 作業の候補。tracks は閉鎖する線路 (上り・下り)。 */
 const NIGHT_WORK_SITES = [
     { line: "JR京都線",   from: "高槻",     to: "茨木",     tracks: ["Up_In", "Down_In"] },
     { line: "JR京都線",   from: "山崎",     to: "高槻",     tracks: ["Up_Out"] },
     { line: "JR京都線",   from: "向日町",   to: "長岡京",   tracks: ["Down_Out"] },
+    { line: "JR京都線",   from: "吹田",     to: "岸辺",     tracks: ["Up_Out", "Down_Out"] },
+    { line: "JR京都線",   from: "長岡京",   to: "山崎",     tracks: ["Up_In"] },
     { line: "JR神戸線",   from: "芦屋",     to: "西宮",     tracks: ["Up_In", "Down_In"] },
+    { line: "JR神戸線",   from: "芦屋",     to: "住吉",     tracks: ["Up_Out", "Down_Out"] },      // 甲南山手付近。明石〜芦屋は内側線
     { line: "JR神戸線",   from: "須磨",     to: "垂水",     tracks: ["Down_Out"] },
+    { line: "JR神戸線",   from: "鷹取",     to: "須磨",     tracks: ["Up_In"] },
     { line: "JR神戸線",   from: "大久保",   to: "西明石",   tracks: ["Up_Out", "Down_Out"] },
+    { line: "JR神戸線",   from: "土山",     to: "東加古川", tracks: ["Up_Out"] },
     { line: "JR神戸線",   from: "加古川",   to: "宝殿",     tracks: ["Up_Out"] },
+    { line: "JR神戸線",   from: "曽根",     to: "ひめじ別所", tracks: ["Down_Out"] },
+    { line: "JR神戸線",   from: "姫路",     to: "英賀保",   tracks: ["Up_Out", "Down_Out"] },
+    { line: "JR神戸線",   from: "網干",     to: "竜野",     tracks: ["Down_Out"] },
+    { line: "JR神戸線",   from: "相生",     to: "上郡",     tracks: ["Up_Out", "Down_Out"] },
+    { line: "北方貨物線", from: "宮原操",   to: "吹田貨",   tracks: ["Up_Hoppo", "Down_Hoppo"] },
+    { line: "北方貨物線", from: "宮原操",   to: "吹田貨",   tracks: ["Down_Hoppo"] },
     { line: "琵琶湖線",   from: "草津",     to: "南草津",   tracks: ["Down_In"] },
     { line: "琵琶湖線",   from: "野洲",     to: "守山",     tracks: ["Up_Out", "Down_Out"] },
+    { line: "琵琶湖線",   from: "篠原",     to: "近江八幡", tracks: ["Up_Out"] },
     { line: "琵琶湖線",   from: "近江八幡", to: "能登川",   tracks: ["Up_Out"] },
+    { line: "琵琶湖線",   from: "彦根",     to: "河瀬",     tracks: ["Up_Out", "Down_Out"] },
     { line: "湖西線",     from: "堅田",     to: "和邇",     tracks: ["Kosei_Up", "Kosei_Down"] },
     { line: "湖西線",     from: "近江舞子", to: "近江今津", tracks: ["Kosei_Down"] },
     { line: "JR宝塚線",   from: "川西池田", to: "宝塚",     tracks: ["Fukuchi_Up", "Fukuchi_Down"] },
     { line: "JR宝塚線",   from: "三田",     to: "新三田",   tracks: ["Fukuchi_Up"] },
+    { line: "JR宝塚線",   from: "塚口",     to: "伊丹",     tracks: ["Fukuchi_Down"] },
     { line: "学研都市線", from: "四条畷",   to: "松井山手", tracks: ["Tozai_Up", "Tozai_Down"] },
     { line: "学研都市線", from: "京田辺",   to: "同志社前", tracks: ["Tozai_Up", "Tozai_Down"] }
 ];
+/* 作業の種類。dur … 作業に要る時間 [時間] (承認から。4:10 を過ぎない)。on … その種類をする線区
+   ("main" 本線・北方貨物線 / "branch" 分岐線 / 無ければどこでも) */
 const NIGHT_WORK_KINDS = [
-    { kind: "軌道の徒歩巡回",           who: "保線区",       w: 3 },
-    { kind: "レール交換 (ロングレール)", who: "保線区",       w: 1.5 },
-    { kind: "分岐器の更新工事",         who: "保線区・工事会社", w: 1 },
-    { kind: "道床のつき固め (マルタイ)", who: "保線区",       w: 1.5 },
-    { kind: "架線・き電線の点検",       who: "電力区",       w: 2 },
-    { kind: "信号設備・軌道回路の点検", who: "信号通信区",   w: 2 },
-    { kind: "ホーム・橋りょうの補修工事", who: "工事会社",     w: 1 },
-    { kind: "レール探傷車による検査",   who: "保線区",       w: 1 }
+    { kind: "軌道の徒歩巡回",                 who: "保線区",           w: 3,   dur: [1.2, 2.0] },
+    { kind: "軌道検測 (検測車)",              who: "保線区",           w: 1,   dur: [1.0, 1.6], on: "main" },
+    { kind: "レール交換 (ロングレール)",      who: "保線区",           w: 1.5, dur: [2.4, 3.0] },
+    { kind: "レール削正 (削正車)",            who: "保線区・工事会社", w: 1,   dur: [1.8, 2.6] },
+    { kind: "レール探傷車による検査",         who: "保線区",           w: 1,   dur: [1.2, 1.8] },
+    { kind: "分岐器の更新工事",               who: "保線区・工事会社", w: 0.8, dur: [2.6, 3.1] },
+    { kind: "分岐器の点検・給油",             who: "保線区",           w: 1.5, dur: [1.0, 1.6] },
+    { kind: "道床のつき固め (マルタイ)",      who: "保線区",           w: 1.5, dur: [2.0, 2.8] },
+    { kind: "道床の更換 (バラスト交換)",      who: "工事会社",         w: 0.8, dur: [2.4, 3.0] },
+    { kind: "まくらぎの交換",                 who: "保線区・工事会社", w: 1,   dur: [2.0, 2.8] },
+    { kind: "レール締結装置の点検・締め直し", who: "保線区",           w: 1.2, dur: [1.2, 2.0] },
+    { kind: "架線・き電線の点検",             who: "電力区",           w: 2,   dur: [1.2, 2.0] },
+    { kind: "トロリ線の張り替え",             who: "電力区・工事会社", w: 0.8, dur: [2.4, 3.0] },
+    { kind: "がいしの交換・清掃",             who: "電力区",           w: 1,   dur: [1.4, 2.2] },
+    { kind: "き電停止を伴う変電設備の切替試験", who: "電力区",         w: 0.6, dur: [1.0, 1.5] },
+    { kind: "信号設備・軌道回路の点検",       who: "信号通信区",       w: 2,   dur: [1.2, 2.0] },
+    { kind: "ATS 地上子の交換",               who: "信号通信区",       w: 1,   dur: [1.0, 1.6] },
+    { kind: "転てつ機の点検・調整",           who: "信号通信区",       w: 1.2, dur: [1.0, 1.8] },
+    { kind: "踏切設備の点検",                 who: "信号通信区",       w: 1,   dur: [1.0, 1.6], on: "branch" },
+    { kind: "列車無線・沿線電話の工事",       who: "信号通信区",       w: 0.6, dur: [1.2, 2.0] },
+    { kind: "ホームの補修工事",               who: "工事会社",         w: 1,   dur: [1.8, 2.8] },
+    { kind: "ホーム柵の設置工事",             who: "工事会社",         w: 0.6, dur: [2.2, 3.0], on: "main" },
+    { kind: "橋りょうの点検 (高所作業車)",    who: "施設区",           w: 1,   dur: [1.4, 2.4] },
+    { kind: "高架橋の耐震補強工事",           who: "工事会社",         w: 0.6, dur: [2.4, 3.0] },
+    { kind: "トンネル覆工の打音検査",         who: "施設区",           w: 0.6, dur: [1.4, 2.4] },
+    { kind: "のり面・防音壁の工事",           who: "工事会社",         w: 0.8, dur: [2.0, 2.8] },
+    { kind: "沿線の樹木の伐採",               who: "施設区",           w: 0.8, dur: [1.4, 2.4] },
+    { kind: "駅の改良工事 (跨線橋)",          who: "工事会社",         w: 0.5, dur: [2.4, 3.0], on: "main" }
 ];
+const NW_END_CAP = 4.17;          // 4:10 までに必ず作業を終える (始発の前)
+const NW_FREIGHT_DUR = [0.67, 1.5];   // 貨物列車の走る区間の間合い (40〜90分)
 
-/** 毎晩の作業を決める (0時台に1回) */
+/** 本線 (北方貨物線を含む) の作業か */
+function nwIsMainSite(site) { return site.tracks.every(t => /^(Up|Down)_(In|Out|Hoppo)$/.test(t)); }
+/** 複々線 (西明石〜草津) の中の作業か */
+function nwIsQuadSite(site) {
+    if (!site.tracks.every(t => /^(Up|Down)_(In|Out)$/.test(t))) return false;
+    const a = STATION_MAP[site.from], b = STATION_MAP[site.to], w = STATION_MAP["西明石"], k = STATION_MAP["草津"];
+    return a !== undefined && b !== undefined && Math.min(a, b) >= w && Math.max(a, b) <= k;
+}
+/** 夜も貨物列車が走る区間か (米原〜上郡の複線・北方貨物線・湖西線)。間合いを短くし、貨物列車は待避して待つ */
+function nwFreightSite(site) {
+    if (site.tracks.some(t => /Kosei/.test(t))) return true;
+    if (!nwIsMainSite(site)) return false;
+    return !nwIsQuadSite(site);
+}
+/** その線路を閉鎖しても、渡り線のある駅のあいだで隣の線路を通せるか (複々線の外側線・内側線) */
+function nwDetourOk(site) { return nwIsQuadSite(site); }
+
+/** 毎晩の作業を決める (0時台に1回)。一晩の中では同じ種類を重ねない */
 OperationsManager.prototype.planNightWorks = function (ct) {
-    const n = 4 + Math.floor(Math.random() * 3);
-    const sites = NIGHT_WORK_SITES.slice().sort(() => Math.random() - 0.5).slice(0, n);
+    const n = 5 + Math.floor(Math.random() * 3);
+    const sites = NIGHT_WORK_SITES.slice().sort(() => Math.random() - 0.5);
     const base = ct - ((ct / 3600) % 24) * 3600;        // その日の0時
-    const total = NIGHT_WORK_KINDS.reduce((s, k) => s + k.w, 0);
-    return sites.map(s => {
-        let r = Math.random() * total, kind = NIGHT_WORK_KINDS[0];
-        for (const k of NIGHT_WORK_KINDS) { r -= k.w; if (r < 0) { kind = k; break; } }
-        return { site: s, kind: kind, state: "plan",
-                 from: base + (0.75 + Math.random() * 0.6) * 3600,        // 0:45〜1:21 に閉鎖を申し込む
-                 until: base + (3.83 + Math.random() * 0.4) * 3600,       // 3:50〜4:14 に作業終了
-                 giveUp: base + 2.5 * 3600 };
-    });
+    const usedKinds = new Set();
+    const usedPlace = new Set();
+    const out = [];
+    for (const s of sites) {
+        if (out.length >= n) break;
+        const place = s.line + s.from + s.to;
+        if (usedPlace.has(place)) continue;
+        const branch = !nwIsMainSite(s);
+        const kinds = NIGHT_WORK_KINDS.filter(k => !usedKinds.has(k.kind) &&
+            (!k.on || (k.on === "branch") === branch));
+        if (!kinds.length) break;
+        const total = kinds.reduce((a, k) => a + k.w, 0);
+        let r = Math.random() * total, kind = kinds[0];
+        for (const k of kinds) { r -= k.w; if (r < 0) { kind = k; break; } }
+        usedKinds.add(kind.kind);
+        usedPlace.add(place);
+        const freight = nwFreightSite(s);
+        // 貨物列車の走る区間は、貨物列車の合間に短く入れる (1:00〜2:40 に申し込み)
+        const from = freight ? base + (1.0 + Math.random() * 1.67) * 3600 : base + (0.75 + Math.random() * 0.6) * 3600;
+        const dur = freight
+            ? Math.max(NW_FREIGHT_DUR[0], Math.min(NW_FREIGHT_DUR[1], (kind.dur[0] + Math.random() * (kind.dur[1] - kind.dur[0])) * 0.5))
+            : kind.dur[0] + Math.random() * (kind.dur[1] - kind.dur[0]);
+        out.push({ site: s, kind: kind, state: "plan", from: from, dur: dur * 3600, freight: freight, detour: nwDetourOk(s),
+                   base: base, giveUp: base + (freight ? 3.17 : 2.5) * 3600 });
+    }
+    return out;
 };
 
-/** その線路のその区間 (と、手前の近づく範囲) に、事業用でない列車がいるか */
-OperationsManager.prototype.workSectionBusy = function (tid, lo, hi) {
-    const blks = this.game.trackMgr.blocks[tid];
+/**
+ * その線路のその区間を閉鎖してよいか (ふさがっていれば true)。
+ *   1. 区間の中に列車がいる (事業用の列車を除く)
+ *   2. 手前1駅半の内から近づく列車がいる (閉鎖すると駅間で止まる)
+ *   3. もっと遠くからでも、これから区間を通る列車 (行先が区間の先) がいる。
+ *      ただし貨物列車の走る区間の貨物列車 (待避して待つ)・隣の線路へ逃がせる列車は数えない
+ */
+OperationsManager.prototype.workSectionBusy = function (tid, lo, hi, w) {
+    const g = this.game;
+    const blks = g.trackMgr.blocks[tid];
     if (!blks) return true;
-    const near = UNITS_PER_STATION * 3;
-    for (const t of this.game.trains) {
+    const near = Math.ceil(UNITS_PER_STATION * 1.5);
+    const far = UNITS_PER_STATION * 40;
+    const tDir = trackDirOf(tid);
+    for (const t of g.trains) {
         if (t.state === "finished" || t.state === "in_depot" || t.workPermit) continue;
-        if (t.trackId !== tid) continue;
+        const onTrack = t.trackId === tid;
         const i = t.currBlockIndex;
-        if (i >= lo && i <= hi) return true;                                   // 区間の中
-        if (t.overnightStable) continue;
-        if (t.dir === 1 && i < lo && lo - i <= near) return true;              // 手前から近づく
-        if (t.dir === -1 && i > hi && i - hi <= near) return true;
+        if (onTrack && i >= lo && i <= hi) return true;                         // 区間の中
+        if (t.overnightStable || t.dir !== tDir) continue;
+        const d = t.dir === 1 ? lo - i : i - hi;                                  // 区間の手前までのブロック数
+        if (d <= 0 || d > far) continue;
+        /* 同じ線路か、これからこの線路へ移ってくる列車 (複々線の端で内側線へ入る普通・快速、
+           尼崎で本線へ合流する宝塚線・東西線の列車、外側線へ移る回送) */
+        const wantSide = (["普通", "快速"].indexOf(t.type) >= 0) ? "In" : "Out";
+        const sameCorridor = onTrack || (/^(Up|Down)_(In|Out)$/.test(tid) &&
+            /^(Up|Down)_(In|Out)$|^Fukuchi_Up$|^Tozai_Down$/.test(t.trackId) && tid.slice(-wantSide.length) === wantSide);
+        if (!sameCorridor) continue;
+        if (onTrack && d <= near) return true;                                    // 手前から近づく
+        if (!onTrack && d <= near) continue;
+        if (t.type === "貨物" && w && (w.freight || w.detour)) continue;          // 待避・隣の線路で待てる
+        if (w && w.detour && (/Out$/.test(tid) || PASSENGER_TYPES.indexOf(t.type) < 0)) continue;   // 隣の線路へ逃がせる
+        // 行先が区間の先か (分からなければ通るものとみなす)
+        const db = stationBlockOn(g, tid, t.dest);
+        if (db) {
+            const past = t.dir === 1 ? db.index >= lo : db.index <= hi;
+            if (!past) continue;
+        } else if (!onTrack) continue;
+        return true;
     }
     return false;
+};
+
+/** 作業の中断: 閉鎖の手前で列車 (待てる貨物列車を除く) が4分以上止まっているか */
+OperationsManager.prototype.workClosureVictim = function (c) {
+    const g = this.game, tm = g.trackMgr;
+    for (const t of g.trains) {
+        if (t.state === "finished" || t.state === "in_depot" || t.workPermit || t.overnightStable) continue;
+        if (t.type === "貨物" && c.freightOk) continue;
+        if (!(t.stuckTime > 240)) continue;
+        const ahead = t.turnbackTrack || t.trackId;
+        if (ahead !== c.trackId && t._safeHoldNo !== c.no) continue;
+        if (t._safeHoldNo === c.no) return t;
+        const nx = t.currBlockIndex + t.dir;
+        if (nx >= c.start && nx <= c.end) return t;
+    }
+    return null;
 };
 
 OperationsManager.prototype.checkNightWorks = function (ct) {
@@ -550,12 +676,35 @@ OperationsManager.prototype.checkNightWorks = function (ct) {
         tm.workClosures.splice(i, 1);
         if (c.first) g.ui.updateBanner(`【線路閉鎖 解除】第${c.no}号 ${c.label} の${c.kind}が終わり、線路閉鎖を解除しました (${c.who} 作業終了の報告)。`, "banner-blue");
     }
+    // 作業の中断: 閉鎖の手前で列車が止められている → いったん解いて通す (朝まで止めない)
+    const seenNo = new Set();
+    for (const c of tm.workClosures.slice()) {
+        if (seenNo.has(c.no)) continue;
+        seenNo.add(c.no);
+        const v = this.workClosureVictim(c);
+        if (!v) continue;
+        tm.workClosures = tm.workClosures.filter(x => x.no !== c.no);
+        this.stats.nightWorkPause = (this.stats.nightWorkPause || 0) + 1;
+        const w = c.work;
+        const left = c.until - ct;
+        if (w && (w.paused || 0) < 2 && left > 1800 && ct + 900 < w.base + NW_END_CAP * 3600 - 1800) {
+            w.state = "plan"; w.from = ct + 600; w.dur = left; w.giveUp = Math.max(w.giveUp, ct + 1800); w.waitNoted = true;
+            w.paused = (w.paused || 0) + 1;
+            g.ui.updateBanner(`【線路閉鎖 中断】第${c.no}号 ${c.label} の${c.kind}を一時中断し、${v.trainNo} を通します。` +
+                              `通過を確かめてから改めて閉鎖します。`, "banner-orange");
+        } else {
+            if (w) w.state = "done";
+            g.ui.updateBanner(`【線路閉鎖 打ち切り】第${c.no}号 ${c.label} の${c.kind}は、${v.trainNo} を通すため本日の作業を打ち切ります。`, "banner-orange");
+        }
+    }
     if (!this.nightWorks) return;
     for (const w of this.nightWorks) {
         if (w.state !== "plan" || ct < w.from) continue;
-        if (ct > w.giveUp) {
+        const cap = w.base + NW_END_CAP * 3600;
+        if (ct > w.giveUp || ct + Math.min(w.dur, 2400) > cap) {
             w.state = "cancel";
-            g.ui.updateBanner(`【線路閉鎖】${w.site.line} ${w.site.from}〜${w.site.to}間の${w.kind.kind}は、最終列車が通り切らないため本日は中止します。`, "banner-blue");
+            g.ui.updateBanner(`【線路閉鎖】${w.site.line} ${w.site.from}〜${w.site.to}間の${w.kind.kind}は、` +
+                              `${w.freight ? "貨物列車の合間が取れない" : "最終列車が通り切らない"}ため本日は中止します。`, "banner-blue");
             continue;
         }
         // 区間のブロック
@@ -569,21 +718,26 @@ OperationsManager.prototype.checkNightWorks = function (ct) {
             ranges.push({ tid: tid, lo: lo, hi: hi });
         }
         if (!ok) { w.state = "cancel"; continue; }
-        if (ranges.some(r => this.workSectionBusy(r.tid, r.lo, r.hi))) {
+        if (ranges.some(r => this.workSectionBusy(r.tid, r.lo, r.hi, w))) {
             if (!w.waitNoted) {
                 w.waitNoted = true;
-                g.ui.updateBanner(`【線路閉鎖】${w.site.line} ${w.site.from}〜${w.site.to}間 (${w.kind.who}) の線路閉鎖の申し込み。最終列車の通過を待って承認します。`, "banner-blue");
+                g.ui.updateBanner(`【線路閉鎖】${w.site.line} ${w.site.from}〜${w.site.to}間 (${w.kind.who}) の線路閉鎖の申し込み。` +
+                                  `${w.freight ? "貨物列車の合間を見て" : "最終列車の通過を待って"}承認します。`, "banner-blue");
             }
-            w.from = ct + 300;
+            w.from = ct + (w.freight ? 180 : 300);
             continue;
         }
         this.nwSeq = (this.nwSeq || 0) + 1;
+        const until = Math.min(ct + w.dur, cap);
         const label = `${w.site.line} ${w.site.from}〜${w.site.to}間 ${w.site.tracks.map(trackLabelOf).join("・")}`;
-        ranges.forEach((r, k) => tm.workClosures.push({ trackId: r.tid, start: r.lo, end: r.hi, until: w.until,
-            no: this.nwSeq, label: label, kind: w.kind.kind, who: w.kind.who, first: k === 0 }));
+        ranges.forEach((r, k) => tm.workClosures.push({ trackId: r.tid, start: r.lo, end: r.hi, until: until,
+            no: this.nwSeq, label: label, kind: w.kind.kind, who: w.kind.who, first: k === 0,
+            freightOk: !!(w.freight || w.detour), detour: !!w.detour, work: w }));
         w.state = "closed";
         this.stats.nightWork = (this.stats.nightWork || 0) + 1;
+        const note = w.freight ? " 貨物列車は手前の貨物ターミナル・待避駅で作業の明けを待ちます。"
+                   : (w.detour ? " 作業の間、渡り線のある駅のあいだは隣の線路を通します。" : "");
         g.ui.updateBanner(`【線路閉鎖 承認】第${this.nwSeq}号 ${label}。${w.kind.who}の${w.kind.kind}を承認します ` +
-                          `(区間内に列車なし・最終列車通過済みを確認。作業終了予定 ${stabledClock((w.until / 3600) % 24)})。`, "banner-blue");
+                          `(区間内に列車なし・${w.freight ? "貨物列車の合間" : "最終列車通過済み"}を確認。作業終了予定 ${stabledClock((until / 3600) % 24)})。${note}`, "banner-blue");
     }
 };

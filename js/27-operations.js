@@ -1899,6 +1899,8 @@ OperationsManager.prototype.planOvertakes = function (ct) {
             for (const L of b.lanes) {
                 if (!L || L === H || L.dir !== H.dir || !active(L)) continue;
                 if (["普通", "快速"].indexOf(L.type) < 0 || L.getPriority() >= pH) continue;
+                // 停車駅がほとんど同じなら格の差が無いものとして扱う (js/38c-dispatch-rules.js。利用者の指摘 ③)
+                if (typeof stopPatternSimilar === "function" && stopPatternSimilar(L, H)) continue;
                 if (!isRefuge(b) || ["stopped", "holding", "waiting_start"].indexOf(L.state) < 0) continue;
                 // L が次の待避駅 (または行先) に入るまでの見込み
                 let tL = waitNow(L), refuge = null;

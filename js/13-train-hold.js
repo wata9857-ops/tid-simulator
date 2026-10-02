@@ -296,7 +296,10 @@ Train.prototype.checkHold = function (isStarting) {
                                          // 1. 種別優先度が高い列車がいれば無条件で譲る
                                          /* 追い抜きをしない駅 (徳庵・放出) では、優等列車だからといって譲らない
                                             (着いた順に出る。利用者の指摘 ②) */
-                                         if (otherPri > myPri && NO_PASSING_STATIONS.indexOf(currentStName) < 0) {
+                                         /* 停車駅がほとんど同じ普通と快速は格の差が無いものとして扱う
+                                            (js/38c-dispatch-rules.js の stopPatternSimilar。利用者の指摘 ③) */
+                                         if (otherPri > myPri && NO_PASSING_STATIONS.indexOf(currentStName) < 0 &&
+                                             !(typeof stopPatternSimilar === "function" && stopPatternSimilar(this, l))) {
                                              // ★前段階予測: 優等列車が前方詰まり等で15秒以上発車できずにいる場合は譲らずに逃げ切る
                                              if (l.stuckTime > 15) {
                                                  // 譲らない (デッドロック回避のため自分が先に出る)
@@ -465,7 +468,8 @@ Train.prototype.checkHold = function (isStarting) {
                          let idx = this.currBlockIndex - (this.dir * k);
                          if (idx >= 0 && idx < blks.length) {
                              for(let l of blks[idx].lanes) {
-                                 if (l && l !== this && l.type === "新快速" && l.dir === this.dir) {
+                                 if (l && l !== this && l.type === "新快速" && l.dir === this.dir &&
+                                     !(typeof stopPatternSimilar === "function" && stopPatternSimilar(this, l))) {
                                      /* 新快速がこの駅へ入れないなら待たない (自分が新快速の入る番線を
                                         ふさいでいると、互いに待ち合う)。停まる新快速はホームのある番線に限る。 */
                                      const hb = blks[this.currBlockIndex];
@@ -831,6 +835,8 @@ function trainStalledAbnormally(l, thresholdSec) {
  *   複々線 (西明石より東) や他の線区は、これまでの判定のまま (true を返す)。
  */
 function overtakeWorthWaiting(t, l, k, stName) {
+    // 停車駅がほとんど同じなら待っても得が無い (js/38c-dispatch-rules.js。利用者の指摘 ③)
+    if (typeof stopPatternSimilar === "function" && stopPatternSimilar(t, l)) return false;
     if (!/^(Up|Down)_Out$/.test(t.trackId)) return true;
     const here = STATION_MAP[stName];
     const nishi = STATION_MAP["西明石"];
