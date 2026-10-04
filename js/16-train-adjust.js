@@ -261,7 +261,7 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                 if (distAhead <= 15 && distBehind <= 15 && this.canChangeTypeTo("普通", stationName)) {
                     this.game.spawner.activeTrainNos.delete(this.trainNo);
                     this.type = "普通";
-                    this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
+                    this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId, this.dest);
                     this.dutyName = this.trainNo;
                     this.startName = stationName;   // ★ここから始まる列車になる
                     const cut = this.shortenDowngradedWest();
@@ -275,7 +275,7 @@ Train.prototype.checkRapidDowngrade = function (stationName) {
                 this.canChangeTypeTo("普通", stationName)) {
                 this.game.spawner.activeTrainNos.delete(this.trainNo);
                 this.type = "普通";
-                this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId);
+                this.trainNo = this.game.spawner.generateTrainNumber("普通", this.dir, stationName, this.trackId, this.dest);
                 this.dutyName = this.trainNo;
                 this.startName = stationName;   // ★ここから始まる列車になる
                 let extraMsg = "";

@@ -51,7 +51,7 @@ function stopPatternSimilar(L, H) {
     let res = false;
     if (bs) {
         const runL = BLOCK_RUN_SEC[L.type] || 48, runH = BLOCK_RUN_SEC[H.type] || 40;
-        let tL = 0, tH = 0, n = 0;
+        let tL = 0, tH = 0, n = 0, same = true;
         for (let j = 1; j <= UNITS_PER_STATION * 10; j++) {
             const b = bs[L.currBlockIndex + L.dir * j];
             if (!b || b.x === -1000) break;
@@ -61,10 +61,15 @@ function stopPatternSimilar(L, H) {
             n++;
             if (nm === L.dest || nm === H.dest || (b.lanes.length >= 2 && PASSING_STATIONS.indexOf(nm) >= 0)) break;
             const dw = (STATIONS[b.stationIdx] && STATIONS[b.stationIdx].stopTime) || 45;
-            if (L.passengerStopsAt(nm)) tL += dw;
-            if (H.passengerStopsAt(nm)) tH += dw;
+            const sL = L.passengerStopsAt(nm), sH = H.passengerStopsAt(nm);
+            if (sL) tL += dw;
+            if (sH) tH += dw;
+            if (sL && !sH) same = false;
         }
-        res = n >= 1 && (tL - tH) <= SIMILAR_STOP_SEC;
+        /* ★停まる駅がまったく同じなら、走る速さの差 (BLOCK_RUN_SEC の種別ごとの値) だけで格上とはしない。
+           西明石より西の快速は各駅に停まるので、大久保で普通が快速を待っても追い抜かれず、
+           待つあいだ大久保の番線をふさいで、うしろの新快速が入れなくなっていた (利用者の指摘 ③ 2026-10) */
+        res = n >= 1 && ((tL - tH) <= SIMILAR_STOP_SEC || same);
     }
     _simCache.set(key, res);
     return res;
@@ -136,6 +141,7 @@ function priorityRuleHold(t) {
     for (const id of tracks) {
         for (const H of tm.blocks[id][idx].lanes) {
             if (!H || H === t || H.dir !== t.dir || !rulePriorityHealthy(H)) continue;
+            if (H.type === "回送" && westDoubleTrack(t, st)) continue;     // 西明石より西の複線では回送を先に通さない
             if (H.dest === st || (H.timer || 0) > 150) continue;
             if (H.state === "waiting_start" && !H.hasDeparted && (H.timer || 0) > 60) continue;
             if (departTrackAt(H, st) !== myOut || !trainOutranks(H, t)) continue;
@@ -153,6 +159,7 @@ function priorityRuleHold(t) {
             const isSt = isRealStationBlock(b);
             for (const H of b.lanes) {
                 if (!H || H.dir !== t.dir || H.trackId !== id || !rulePriorityHealthy(H)) continue;
+                if (H.type === "回送" && westDoubleTrack(t, st)) continue;
                 if (isSt && H.state !== "running") continue;      // 手前の駅に停まっている列車は、まだ駅間にいない
                 if (H.dest === st || !trainOutranks(H, t)) continue;
                 if (departTrackAt(H, st) !== myOut) continue;

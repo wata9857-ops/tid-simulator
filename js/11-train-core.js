@@ -16,7 +16,7 @@ class Train {
         this.trackId = config.trackId;
         this.startName = config.startName;
         this.dest = config.dest || game.spawner.getDestination(this.type, this.dir, config.startName, this.trackId);
-        this.trainNo = config.name ? config.name : game.spawner.generateTrainNumber(this.type, this.dir, config.startName, this.trackId);
+        this.trainNo = config.name ? config.name : game.spawner.generateTrainNumber(this.type, this.dir, config.startName, this.trackId, this.dest);
 
         /* 運用名 (dutyName)。
            車両の選定に使う「この列車が担当している運用の名前」。
@@ -534,7 +534,7 @@ class Train {
         }
 
         // ★追加: 機外停車や発車待ちによる長時間のスタック検知
-        if (this.stuckTime >= 900 && !this.notifiedEvents.passenger) {
+        if (this.stuckTime >= 900 && !this.notifiedEvents.passenger && trainCarriesPassengers(this)) {
             this.notifiedEvents.passenger = true;
             this.game.ui.updateBanner(`【乗務員連絡】${this.trainNo} ですが、車内のお客様から運転再開見込みの問い合わせが相次いでいます。アナウンスのための目安をお願いします。`, "banner-blue");
         }
@@ -547,7 +547,8 @@ class Train {
 
 
         // ★追加: 駅停車中の旅客対応トラブル (荷物挟まり / 急病人)
-        if (this.state === "stopped" && this.hasStoppedAtCurrent && this.timer > 0 && this.timer < 30) {
+        if (this.state === "stopped" && this.hasStoppedAtCurrent && this.timer > 0 && this.timer < 30 &&
+            trainCarriesPassengers(this)) {
             // 発生確率をさらに引き下げ (0.1%に変更)
             if (!this.notifiedEvents.stationEvent && Math.random() < 0.001) { 
                 this.notifiedEvents.stationEvent = true;
@@ -772,7 +773,8 @@ class Train {
                             // 追加: 始発駅で5分(1200秒)以上発車できない場合の救済ロジック
                             if (this.stuckTime > 1200 && ["普通", "快速"].includes(this.type)) {
                                 this.type = "回送";
-                                this.trainNo = "回" + (Math.floor(Math.random()*8000)+1000);
+                                this.game.spawner.activeTrainNos.delete(this.trainNo);
+                                this.trainNo = this.game.ops.deadheadNo("M", this.dir);
                                 
                                 // 回送先を決定
                                 // ★回送先は必ず進行方向の前方から選ぶ

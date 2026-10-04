@@ -634,6 +634,8 @@ Train.prototype.shouldStop = function (st) {
             if (this.type === "快速" && this.trackId.includes("Tozai")) {
                 const si = STATION_MAP[st.name];
                 if (si !== undefined && si > STATION_MAP["京橋"] && si < STATION_MAP["四条畷"]) {
+                    /* 区間快速 (js/38d-train-numbers.js) は鴫野・徳庵だけを通過する */
+                    if (typeof trainIsSectionRapid === "function" && trainIsSectionRapid(this)) return st.name !== "鴫野" && st.name !== "徳庵";
                     return ["放出", "住道"].includes(st.name);
                 }
                 return true;

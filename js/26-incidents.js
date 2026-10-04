@@ -779,6 +779,38 @@ function pickIncidentType() {
 }
 
 /** 並走する線路 (同じ向きの内・外、および反対方向) */
+/* 旅客の事象 (利用者の指摘 2026-10)。貨物・回送・事業用列車はお客様が乗っていないので、
+   これらの種類はお客様の乗っている列車 (trainCarriesPassengers) にしか起こさない。
+   ホーム上の人との事故 (人身事故・駅構内) は通過する貨物でも起きるので含めない。 */
+const PASSENGER_INCIDENT_IDS = [
+    "door", "tobasami", "homesaku", "doorcock",                       // ドア・ホーム柵 (客扱い)
+    "kyubyonin", "shanai_trouble", "fushinbutsu", "tenraku", "rakka", "sessoku",  // 旅客対応
+    "kikikosho", "kucho", "tsuho", "ishu"                             // 車内設備・車内の申告
+];
+function incidentNeedsPassengers(type) {
+    const id = (type.base && type.base.id) || type.id;
+    return type.passengerOnly === true || PASSENGER_INCIDENT_IDS.indexOf(id) >= 0;
+}
+
+/* 当該列車にお客様が乗っていないときの文面。車掌・車内・お客様の救済のくだりを文ごと除く
+   (ホーム上のお客様の誘導のように駅の側の話は残す)。種類の定義そのものは書き換えない。 */
+const PAX_TEXT_RE = /車掌|車内|乗客|お客様に|お客様を|お客様から|お客様の(荷物|救済|状態)|営業運転|客扱い/;
+function stripPassengerSentences(s, fallback) {
+    if (typeof s !== "string") return s;
+    const kept = s.split("。").filter(x => x && !PAX_TEXT_RE.test(x));
+    return kept.length ? kept.join("。") + "。" : fallback;
+}
+function incidentWithoutPassengers(type) {
+    const eff = Object.assign({}, type);
+    if (Array.isArray(eff.crew)) eff.crew = eff.crew.filter(c => !PAX_TEXT_RE.test(String(c[1]) + String(c[2])));
+    if (Array.isArray(eff.phases)) eff.phases = eff.phases.map(p =>
+        [p[0], p[1], stripPassengerSentences(p[2], "乗務員と関係箇所が対応しています。")]);
+    if (eff.stock) eff.stock = stripPassengerSentences(eff.stock, "当該編成を点検中。");
+    if (eff.causeText) eff.causeText = stripPassengerSentences(eff.causeText, eff.causeText);
+    if (!eff.base) eff.base = type;
+    return eff;
+}
+
 function parallelTracks(trackId) {
     if (trackId.indexOf("Kosei") === 0) return ["Kosei_Up", "Kosei_Down"];
     if (trackId.indexOf("Fukuchi") === 0) return ["Fukuchi_Up", "Fukuchi_Down"];
@@ -812,20 +844,22 @@ class IncidentSystem {
             t.state !== "finished" && t.state !== "in_depot" && t.currBlockIndex >= 0 &&
             !isFreightTerminalTrack(t.trackId));          // 貨物ターミナルの構内は本線の輸送障害の対象外
         if (type.needTrain) {
-            let pool = running;
+            // 旅客の事象 (急病人・戸挟み・車内設備 …) は、お客様の乗っている列車にだけ起こす
+            let pool = incidentNeedsPassengers(type) ? running.filter(trainCarriesPassengers) : running;
+            const base = pool;
             if (type.atStation) {
-                pool = running.filter(t => {
+                pool = base.filter(t => {
                     const b = this.game.trackMgr.blocks[t.trackId][t.currBlockIndex];
                     return b && (b.isStation || b.hoppoStationName) && t.state === "stopped";
                 });
                 // 停車中の列車が見つからなければ、駅にいる列車まで広げる
-                if (!pool.length) pool = running.filter(t => {
+                if (!pool.length) pool = base.filter(t => {
                     const b = this.game.trackMgr.blocks[t.trackId][t.currBlockIndex];
                     return b && (b.isStation || b.hoppoStationName);
                 });
             } else {
-                pool = running.filter(t => t.state === "running");
-                if (!pool.length) pool = running;
+                pool = base.filter(t => t.state === "running");
+                if (!pool.length) pool = base;
             }
             if (!pool.length) return null;
             const t = pool[Math.floor(Math.random() * pool.length)];
@@ -896,7 +930,9 @@ class IncidentSystem {
            種類の抽選とは別なので、起きやすさの割合は変わらない。 */
         const scen = (typeof pickIncidentScenario === "function")
             ? pickIncidentScenario(baseType, incidentScenarioCtx(this.game, loc.trackId, loc.index)) : null;
-        const type = (typeof applyIncidentScenario === "function") ? applyIncidentScenario(baseType, scen) : baseType;
+        let type = (typeof applyIncidentScenario === "function") ? applyIncidentScenario(baseType, scen) : baseType;
+        // 貨物・回送・事業用列車が当該なら、車掌・車内のお客様のくだりを除く
+        if (loc.train && !trainCarriesPassengers(loc.train)) type = incidentWithoutPassengers(type);
 
         const rnd = (a) => a[0] + Math.random() * (a[1] - a[0]);
         const suspendSec = type.suspend ? Math.min(INCIDENT_MAX_BLOCK_SEC, rnd(type.suspend)) : 0;

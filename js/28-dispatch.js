@@ -66,7 +66,7 @@ function dispatchTurnbackPlan(game, t, newDest) {
     t.nextAction = "turnback";
     t.serviceChange = {
         at: at, type: t.type, dest: newDest,
-        name: game.spawner.generateTrainNumber(t.type, newDir, at, sameSideTrackFor(t.trackId, newDir))
+        name: game.spawner.generateTrainNumber(t.type, newDir, at, sameSideTrackFor(t.trackId, newDir), newDest)
     };
     // すでにその駅に停まっているなら、ここで折り返しの手順に入る
     if (at === here && ["stopped", "waiting_start", "holding"].indexOf(t.state) >= 0) {
@@ -385,7 +385,7 @@ const DISPATCH = {
         t.dir = dir;
         if (t.trainNo) game.spawner.activeTrainNos.delete(t.trainNo);
         t.trainNo = game.spawner.generateTrainNumber(cmd.type, dir, cmd.depot,
-            depotTrackId(cmd.depot, dir, cmd.type));
+            depotTrackId(cmd.depot, dir, cmd.type), cmd.dest);
         t.dutyName = t.trainNo;
         /* 終着後の処置。指定が無ければ、回送は入区、営業列車は折り返し。
            ★以前は前の運用の値が残っていて、回送なのに折り返しを試みることがあった。 */

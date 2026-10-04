@@ -482,7 +482,7 @@ Train.prototype.tryConvertDeadhead = function (stName) {
         this.game.spawner.activeTrainNos.delete(this.trainNo);
         this.type = asRev ? "普通" : "回送";
         this.dest = targetDest;
-        this.trainNo = asRev ? rev.name : this.game.ops.deadheadNo();
+        this.trainNo = asRev ? rev.name : this.game.ops.deadheadNo("M", nextDir);
         this.dutyName = this.trainNo;
         this.game.spawner.activeTrainNos.add(this.trainNo);
         this.nextAction = "depot";

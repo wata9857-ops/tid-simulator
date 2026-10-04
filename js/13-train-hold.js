@@ -834,15 +834,27 @@ function trainStalledAbnormally(l, thresholdSec) {
  *   途中で停まる駅の停車時間から見積もる。
  *   複々線 (西明石より東) や他の線区は、これまでの判定のまま (true を返す)。
  */
+/**
+ * 西明石より西の複線 (外側線) の駅か。西明石そのものは、下りの発車 (複線へ出る) だけを含める
+ * (西明石の下りは内側線の番線から外側線へ出る列車もいるので、線路は Down_In / Down_Out のどちらでもよい)。
+ */
+function westDoubleTrack(t, stName) {
+    const here = STATION_MAP[stName];
+    if (here === undefined || !STATIONS[here] || STATIONS[here].name !== stName) return false;
+    const nishi = STATION_MAP["西明石"];
+    if (here === nishi) return t.dir === -1 && /^Down_(Out|In)$/.test(t.turnbackTrack || t.trackId);
+    return here < nishi && /^(Up|Down)_Out$/.test(t.trackId);
+}
+
 function overtakeWorthWaiting(t, l, k, stName) {
     // 停車駅がほとんど同じなら待っても得が無い (js/38c-dispatch-rules.js。利用者の指摘 ③)
     if (typeof stopPatternSimilar === "function" && stopPatternSimilar(t, l)) return false;
-    if (!/^(Up|Down)_Out$/.test(t.trackId)) return true;
+    /* ★西明石の下りの発車も含める (以前は西明石では必ず待っていた。利用者の指摘 ③ 2026-10) */
+    if (!westDoubleTrack(t, stName)) return true;
     const here = STATION_MAP[stName];
     const nishi = STATION_MAP["西明石"];
-    if (here === undefined || here >= nishi || STATIONS[here].name !== stName) return true;
     if (l.type === "回送") return false;
-    const blks = t.game.trackMgr.blocks[t.trackId];
+    const blks = t.game.trackMgr.blocks[t.dir === -1 ? "Down_Out" : "Up_Out"];
     if (!blks) return true;
     const runT = BLOCK_RUN_SEC[t.type] || BLOCK_RUN_SEC["普通"];
     const runL = BLOCK_RUN_SEC[l.type] || BLOCK_RUN_SEC["普通"];

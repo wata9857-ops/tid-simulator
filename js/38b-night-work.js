@@ -130,7 +130,7 @@ OperationsManager.prototype.checkRepairs = function (ct) {
             const dir = this.dirFromTo(r.at, to);
             if (!dir) continue;
             if (DEPOTS[r.at] && !depotHasRoom(r.at)) continue;
-            const no = this.deadheadNo();
+            const no = this.deadheadNo("M", dir);
             const cfg = { type: "回送", dir: dir, trackId: depotTrackId(r.at, dir, "回送"), dest: to, startName: r.at,
                           name: no, dutyName: no, vehicles: vs.slice(), nextAction: "remove" };
             vs.forEach(v => { v.repair.state = "transfer"; v.repair.to = to; });

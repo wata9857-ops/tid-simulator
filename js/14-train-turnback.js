@@ -147,7 +147,8 @@ Train.prototype.executeTurnBack = function () {
             const oldNo = this.trainNo;
             this.game.spawner.activeTrainNos.delete(this.trainNo);
             this.type = "回送";
-            this.trainNo = this.game.ops.deadheadNo();
+            // 番号の奇偶は宮原へ向かう向きで決める (向きを変えるなら変えたあとの向き)
+            this.trainNo = this.game.ops.deadheadNo("M", (fleetIndexOf("宮原操") > fleetIndexOf(stName)) ? 1 : -1);
             this.dutyName = this.trainNo;
             this.game.spawner.activeTrainNos.add(this.trainNo);
             this.dest = "宮原操";
@@ -200,7 +201,7 @@ Train.prototype.executeTurnBack = function () {
                     this.game.spawner.activeTrainNos.delete(this.trainNo);
                     this.type = "普通";
                     this.dest = extDest;
-                    this.trainNo = this.game.spawner.generateTrainNumber("普通", 1, "米原", this.trackId);
+                    this.trainNo = this.game.spawner.generateTrainNumber("普通", 1, "米原", this.trackId, this.dest);
                     // ★ここから始まる列車になるので始発駅も更新する
                     this.startName = stName || this.startName;
                     this.dutyName = this.trainNo;
@@ -228,7 +229,7 @@ Train.prototype.executeTurnBack = function () {
                 //        207系・321系や6000番台は快速に使えないので、その場合は普通のまま延長する。
                 this.type = this.game.fleet.canServe(this.vehicles, "米原", "快速", this.trackId, this.dest)
                     ? "快速" : "普通";
-                this.trainNo = this.game.spawner.generateTrainNumber(this.type, -1, "米原", this.trackId);
+                this.trainNo = this.game.spawner.generateTrainNumber(this.type, -1, "米原", this.trackId, this.dest);
                 // ★ここから始まる列車になるので始発駅も更新する
                 this.startName = stName || this.startName;
                 this.dutyName = this.trainNo;
@@ -312,7 +313,7 @@ Train.prototype.executeTurnBack = function () {
                 this.oldInfo = { type: this.type, dest: this.dest, trainNo: this.trainNo };
 
                 this.game.spawner.activeTrainNos.delete(this.trainNo);
-                let nextNo = this.game.spawner.generateTrainNumber(this.type, newDir, stName, this.trackId);
+                let nextNo = this.game.spawner.generateTrainNumber(this.type, newDir, stName, this.trackId, nextDest);
                 
                 this.depotOutConfig = { type: this.type, dest: nextDest, trainNo: nextNo,
                                         dir: newDir, dutyName: nextNo };
@@ -442,7 +443,7 @@ Train.prototype.executeTurnBack = function () {
                     //        207系・321系や6000番台は快速に使えないので、その場合は普通のまま延長する。
                     this.type = this.game.fleet.canServe(this.vehicles, "京都", "快速", this.trackId, this.dest)
                         ? "快速" : "普通";
-                    this.trainNo = this.game.spawner.generateTrainNumber(this.type, 1, "京都", this.trackId);
+                    this.trainNo = this.game.spawner.generateTrainNumber(this.type, 1, "京都", this.trackId, this.dest);
                     // ★ここから始まる列車になるので始発駅も更新する
                     this.startName = stName || this.startName;
                     this.dutyName = this.trainNo;
@@ -673,7 +674,7 @@ Train.prototype.executeTurnBack = function () {
                     this.dest = "米原";
                 }
                 this.game.spawner.activeTrainNos.delete(this.trainNo);
-                this.trainNo = this.game.spawner.generateTrainNumber(this.type, this.dir, stName, newTrackId);
+                this.trainNo = this.game.spawner.generateTrainNumber(this.type, this.dir, stName, newTrackId, this.dest);
                 this.dutyName = this.trainNo;
                 /* ★始発駅を先に更新してから経路を決める。以前は逆の順で、湖西線から来て京都で折り返した
                      列車の始発駅が近江今津のまま判定され、湖西線経由にならずに大津へ出ていた。 */
@@ -764,7 +765,7 @@ Train.prototype.executeTurnBack = function () {
                     }
 
                     this.game.spawner.activeTrainNos.delete(this.trainNo); // ★追加
-                    this.trainNo =this.game.spawner.generateTrainNumber(this.type, this.dir, stName, this.trackId);
+                    this.trainNo =this.game.spawner.generateTrainNumber(this.type, this.dir, stName, this.trackId, this.dest);
                     this.dutyName = this.trainNo;   // 一般の営業列車は運用名=列車番号
                     // ★折り返して別の列車になったので、始発駅もこの駅に更新する。
                     //   以前は最初に出区した駅のままだったため、
@@ -902,6 +903,8 @@ Train.prototype.triggerMinorTrouble = function () {
             } else if (r < 0.5) { // 車両・設備系
                 this.minorTroubleTimer = 180 + Math.floor(Math.random() * 120);
                 let subR = Math.random();
+                // 貨物・回送はドアを扱わないので、ドアの異常表示は床下点検にする
+                if (subR >= 0.33 && subR < 0.66 && !trainCarriesPassengers(this)) subR = 0;
                 if (subR < 0.33) {
                     this.troubleInfo = { active: true, cause: "異音感知", status: "床下点検中", timer: this.minorTroubleTimer, location: location };
                     this.game.ui.updateBanner(`【乗務員連絡】${location}走行中、床下から異音を感知しました。走行に支障はありませんが、念のため床下点検を行います。（${this.trainNo}）`, "banner-blue");
@@ -914,15 +917,16 @@ Train.prototype.triggerMinorTrouble = function () {
                 }
             } else { // 旅客系・沿線系
                 this.minorTroubleTimer = 300 + Math.floor(Math.random() * 1500);
+                /* pax … 車内のお客様の事象。貨物・回送・事業用列車には起こさない (trainCarriesPassengers) */
                 const causes = [
-                    { c: "急病人救護", m: "車内で急病人が発生しました。救急隊の手配と救護活動を行います。" },
-                    { c: "車内トラブル", m: "車内でお客様同士のトラブルが発生しています。警察の到着を待ちます。" },
-                    { c: "不審物発見", m: "車内に不審な荷物が放置されているのを発見しました。安全確認を行います。" },
+                    { c: "急病人救護", pax: true, m: "車内で急病人が発生しました。救急隊の手配と救護活動を行います。" },
+                    { c: "車内トラブル", pax: true, m: "車内でお客様同士のトラブルが発生しています。警察の到着を待ちます。" },
+                    { c: "不審物発見", pax: true, m: "車内に不審な荷物が放置されているのを発見しました。安全確認を行います。" },
                     { c: "線路内立入", m: "付近の線路内に人が立ち入ったとの情報があり、安全確認のため停車しています。" },
                     { c: "動物と接触", m: "走行中に小動物と接触したため、車両および線路の点検を行います。" },
                     { c: "架線付着物", m: "前方の架線に飛来物（ビニール等）が付着しているのを発見しました。撤去手配をお願いします。" },
                     { c: "信号トラブル", m: "前方の信号機が赤のまま切り替わらないため、指令の指示を待っています。" }
-                ];
+                ].filter(x => !x.pax || trainCarriesPassengers(this));
                 const selected = causes[Math.floor(Math.random() * causes.length)];
                 this.troubleInfo = { active: true, cause: selected.c, status: "確認中", timer: this.minorTroubleTimer, location: location };
                 this.game.ui.updateBanner(`【乗務員連絡】${location}での${this.trainNo}からの報告です。${selected.m}`, "banner-blue");

@@ -206,7 +206,10 @@ class SimBus {
             // 終電後の線路閉鎖 (js/38b-night-work.js)
             closures: (g.trackMgr.workClosures || []).map(c => ({
                 trackId: c.trackId, start: c.start, end: c.end, until: c.until, no: c.no,
-                label: c.label, kind: c.kind, who: c.who, first: c.first })),
+                label: c.label, kind: c.kind, who: c.who, first: c.first, nwId: c.nwId || null })),
+            // 夜間作業の報告書と、駅の番線の使用停止 (js/38e-night-work-detail.js)
+            nwReports: g.trackMgr.nwReports || [],
+            laneClosures: g.trackMgr.laneClosures || [],
             restrictions: g.trackMgr.speedRestrictions.map(r => ({
                 trackId: r.trackId, start: r.start, end: r.end,
                 factor: r.factor, reason: r.reason, until: r.until })),
@@ -240,6 +243,8 @@ class SimBus {
         // --- 線路の状態
         g.trackMgr.manualSuspensions = s.suspensions || [];
         g.trackMgr.workClosures = s.closures || [];
+        g.trackMgr.nwReports = s.nwReports || [];
+        g.trackMgr.laneClosures = s.laneClosures || [];
         g.trackMgr.recoveryHolds = s.recoveryHolds || [];
         this._recovery = s.recovery || [];
         g.trackMgr.speedRestrictions = s.restrictions || [];

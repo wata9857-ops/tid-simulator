@@ -305,6 +305,16 @@ const INTERVALS = { "普通": 650, "快速": 1250, "新快速": 1100, "特急": 
 const PRIORITY = { "回送":5, "貨物":6, "特急":5, "臨時":4, "新快速":5, "快速":3, "普通":2, "留置":0 };
 
 /**
+ * お客様が乗っている列車か。貨物・回送・留置と、事業用列車 (工臨・単機・試運転・訓練) は乗っていない。
+ * 急病人・車内トラブル・戸挟みなど旅客の事象は、乗っている列車にしか起こさない (利用者の指摘 2026-10)。
+ */
+function trainCarriesPassengers(t) {
+    if (!t) return false;
+    if (t.workPermit || t.workTrain || t.workRun || t.overnightStable) return false;
+    return ["貨物", "回送", "留置"].indexOf(t.type) < 0;
+}
+
+/**
  * ブロックが表している駅の名前を返す。
  *
  * ★重要: 湖西線・JR宝塚線・JR東西線・北方貨物線のブロックは、

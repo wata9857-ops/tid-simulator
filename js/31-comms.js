@@ -564,8 +564,9 @@ const COMM_SCENES = [
         id: "signal", level: "minor", cat: "shingo", title: "信号設備の確認", limit: 100,
         from: () => "信号通信区",
         find(game) {
+            // 作業で止まっている事業用列車・保守用車は信号の確認の対象にしない
             const c = game.trains.filter(t => t.state !== "finished" &&
-                t.state !== "in_depot" && (t.stuckTime || 0) >= 150);
+                t.state !== "in_depot" && (t.stuckTime || 0) >= 150 && !t.workPermit);
             if (!c.length) return null;
             const t = commOne(c);
             return { train: t, where: commWhere(game, t) };
@@ -640,8 +641,9 @@ const COMM_SCENES = [
         id: "onboard", level: "important", cat: "jomuin", title: "車内取り扱いの報告", limit: 90,
         from: (c) => c.train.trainNo + " 車掌",
         find(game) {
+            // 車掌が乗っていて車内を扱う列車だけ (貨物・回送・事業用列車には車内の取り扱いが無い)
             const c = game.trains.filter(t => t.state !== "finished" &&
-                t.state !== "in_depot" && t.minorTrouble);
+                t.state !== "in_depot" && t.minorTrouble && trainCarriesPassengers(t));
             if (!c.length) return null;
             const t = commOne(c);
             return { train: t, where: commWhere(game, t),
@@ -934,7 +936,7 @@ const COMM_SCENES = [
         from: () => "信号通信区",
         find(game) {
             const c = game.trains.filter(t => t.state !== "finished" &&
-                t.state !== "in_depot" && (t.stuckTime || 0) >= 180);
+                t.state !== "in_depot" && (t.stuckTime || 0) >= 180 && !t.workPermit);
             if (!c.length) return null;
             const t = commOne(c);
             return { train: t, where: commWhere(game, t),
@@ -1065,8 +1067,9 @@ const COMM_SCENES = [
         title: "車内急病人",
         from: (c) => c.train.trainNo + " 車掌",
         find(game) {
+            // 急病人はお客様の乗っている列車だけ
             const c = game.trains.filter(t => t.state !== "finished" &&
-                t.state !== "in_depot" && t.state !== "waiting_start");
+                t.state !== "in_depot" && t.state !== "waiting_start" && trainCarriesPassengers(t));
             if (c.length < 5) return null;
             const t = commOne(c);
             const at = commAheadStation(game, t,

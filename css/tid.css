@@ -504,3 +504,10 @@ body.tid-dock-tall .tid-grow { background: #0E58C8; color: #fff; }
 /* 催しの臨時列車の「臨」の印 (js/36-special-events.js) */
 .tid-rin { display: inline-block; margin-right: 3px; padding: 0 3px; background: #FFC400; color: #000; border-radius: 2px; font-size: 0.85em; }
 
+
+/* 夜間作業の一覧と報告書 (js/47-tid-nightwork.js / js/38e-night-work-detail.js) */
+.tid-nw { margin-top: 6px; border-top: 1px solid #554; padding-top: 4px; }
+.tid-nw-head { color: #FFB347; font-size: 12px; margin-bottom: 2px; }
+.tid-nw-head small { color: #aaa; font-weight: normal; }
+.tid-nw-row:hover { background: rgba(255, 140, 0, 0.12); }
+.nw-report th { width: 9em; }

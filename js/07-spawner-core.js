@@ -11,7 +11,10 @@ class Spawner {
         this.lastDay = 0;
         this.nextSpawnTime = { "Up":{}, "Down":{} };
         this.trainCounters = { "普通":1, "快速":1, "新快速":1, "特急":1, "貨物":1, "回送":1, "臨時":1 };
-        this.tokkyuCounters = { "Sはくと": {up:1, down:2}, "はまかぜ": {up:1, down:2}, "こうのとり": {up:1, down:2}, "サンダーバード": {up:1, down:2}, "はるか": {up:1, down:2} };
+        /* 号の数字は、列車としての下りが奇数 (利用者の指摘 ④ 2026-10。js/38d-train-numbers.js)。
+           はまかぜ・スーパーはくと・こうのとり・はるかは この線路図の下り (dir -1) が下り、
+           サンダーバードは 大阪→敦賀 (dir 1) が下り。以前はすべて上りを奇数にしていた */
+        this.tokkyuCounters = { "Sはくと": {up:2, down:1}, "はまかぜ": {up:2, down:1}, "こうのとり": {up:2, down:1}, "サンダーバード": {up:1, down:2}, "はるか": {up:2, down:1} };
         this.activeTrainNos = new Set();
         this.spawnedExtras = new Set();
         this.lastRapidStart = { "Up": "", "Down": "" };

@@ -235,6 +235,8 @@ const RAPID_OUTER_MORNING = { from: "高槻", to: "大阪", fromH: 6.0, toH: 9.0
  */
 function serviceTrackSide(train, stIdx, hour) {
     if (!innerTrackExists(stIdx)) return "out";
+    /* 夜間作業の保守用車・確認車は、作業する線路 (内側線の作業なら内側線) を離れない (js/38e-night-work-detail.js) */
+    if (train.nwWork && train.nwWork.geo && train.nwRole !== "rail") return /_In$/.test(train.nwWork.geo.tid) ? "in" : "out";
 
     const type = train.type;
     // 列車線を走る種別

@@ -188,7 +188,7 @@ class GameSystem {
                    入ることがあり、それを持たせると出区のときに
                    留置場が見つからず出られなくなる。 */
                 reserveTrain.startName = actualStart;
-                reserveTrain.trainNo = config.name || this.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId);
+                reserveTrain.trainNo = config.name || this.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId, config.dest);
                 reserveTrain.dutyName = dutyName || reserveTrain.trainNo;
                 reserveTrain.nextAction = config.nextAction || "turnback";
                 

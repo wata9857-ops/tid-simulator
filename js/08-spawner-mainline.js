@@ -281,53 +281,53 @@ Spawner.prototype.spawnTokkyu = function (dirName, forcedType = null) {
         if (dirName === "Up") { 
             let r = Math.random();
             if (r < 0.1) { 
-                num = this.tokkyuCounters["はまかぜ"].up; this.tokkyuCounters["はまかぜ"].up += 2;
+                num = this.tokkyuNext("はまかぜ", "up");
                 t = {type:"特急", dir:1, trackId:"Up_Out", dest:"大阪", startName:"姫路", name:`はまかぜ${num}号`, serviceChange:{ at:"大阪", type:"回送", dest:"向日町操", name:`回${num+8000}D` }};
             } else if (r < 0.2) { 
                 /* ★こうのとりは福知山線から来る (福知山・城崎温泉 → 新三田で線路図に入る)。
                      以前は尼崎から湧いていた。停車は 三田・宝塚・尼崎・大阪・新大阪 */
-                num = this.tokkyuCounters["こうのとり"].up; this.tokkyuCounters["こうのとり"].up += 2;
+                num = this.tokkyuNext("こうのとり", "up");
                 t = {type:"特急", dir:1, trackId:"Fukuchi_Up", dest:"新大阪", startName:"新三田", name:`こうのとり${num}号`, serviceChange:{ at:"新大阪", type:"回送", dest:"向日町操", name:`回${num+3000}M` }};
             } else if (r < 0.45) { 
-                num = this.tokkyuCounters["Sはくと"].up; this.tokkyuCounters["Sはくと"].up += 2;
+                num = this.tokkyuNext("Sはくと", "up");
                 // ★デッドロック対策: 京都駅到着後に消滅させる
                 /* スーパーはくとは智頭急行から上郡で山陽本線に入る
                    (姫路より西を線路図に入れたので、上郡から走らせる)。 */
                 t = {type:"特急", dir:1, trackId:"Up_Out", dest:"京都", startName:"上郡", name:`Sはくと${num}号`, nextAction: "depot"};
             } else if (r < 0.7) { 
                 // ★サンダーバード追加
-                num = this.tokkyuCounters["サンダーバード"].up; this.tokkyuCounters["サンダーバード"].up += 2;
+                num = this.tokkyuNext("サンダーバード", "up");
                 t = {type:"特急", dir:1, trackId:"Up_Out", dest:"敦賀", startName:"大阪", name:`サンダーバード${num}号`, nextAction: "depot"};
             } else { 
                 // ★はるか追加
-                num = this.tokkyuCounters["はるか"].up; this.tokkyuCounters["はるか"].up += 2;
+                num = this.tokkyuNext("はるか", "up");
                 t = {type:"特急", dir:1, trackId:"Up_Out", dest:"京都", startName:"新大阪", name:`はるか${num}号`, nextAction: "depot"};
             }
         } else { 
             let r = Math.random();
             if (forcedType === "hamakaze" || (forcedType === null && r < 0.1)) {
-                let deadheadNo = "回" + (4000 + Math.floor(Math.random()*100)) + "D";
-                num = this.tokkyuCounters["はまかぜ"].down; this.tokkyuCounters["はまかぜ"].down += 2;
+                let deadheadNo = this.allocTrainNo("回", 4, [0], "D", 1);   // 下りの回送は奇数
+                num = this.tokkyuNext("はまかぜ", "down");
                 t = {type:"回送", dir:-1, trackId:"Down_Out", dest:"大阪", startName:"向日町操", name:deadheadNo, serviceChange:{ at:"大阪", type:"特急", dest:"鳥取", name:`はまかぜ${num}号` }};
             } else if (forcedType === "kounotori" || (forcedType === null && r < 0.2)) {
-                let deadheadNo = "回" + (3000 + Math.floor(Math.random()*100)) + "M";
-                num = this.tokkyuCounters["こうのとり"].down; this.tokkyuCounters["こうのとり"].down += 2;
+                let deadheadNo = this.allocTrainNo("回", 3, [0, 1], "M", 1);
+                num = this.tokkyuNext("こうのとり", "down");
                 /* ★こうのとりの行先は尼崎ではない。尼崎から福知山線に入り、福知山・城崎温泉へ行く。
                      線路図の中では 新大阪・大阪・尼崎・宝塚・三田 に停まり、新三田で線路図の外へ出る。 */
                 const kDest = Math.random() < 0.7 ? "福知山" : "城崎温泉";
                 t = {type:"回送", dir:-1, trackId:"Down_Out", dest:"新大阪", startName:"向日町操", name:deadheadNo, serviceChange:{ at:"新大阪", type:"特急", dest:kDest, name:`こうのとり${num}号` }};
             } else if (forcedType === null) { 
                 if (r < 0.45) {
-                    num = this.tokkyuCounters["Sはくと"].down; this.tokkyuCounters["Sはくと"].down += 2;
+                    num = this.tokkyuNext("Sはくと", "down");
                     // ★デッドロック対策: 到着後に消滅させる
                     t = {type:"特急", dir:-1, trackId:"Down_Out", dest:"鳥取", startName:"京都", name:`Sはくと${num}号`, nextAction: "depot"};
                 } else if (r < 0.7) {
                     // ★サンダーバード追加
-                    num = this.tokkyuCounters["サンダーバード"].down; this.tokkyuCounters["サンダーバード"].down += 2;
+                    num = this.tokkyuNext("サンダーバード", "down");
                     t = {type:"特急", dir:-1, trackId:"Down_Out", dest:"大阪", startName:"敦賀", name:`サンダーバード${num}号`, nextAction: "depot"};
                 } else {
                     // ★はるか追加
-                    num = this.tokkyuCounters["はるか"].down; this.tokkyuCounters["はるか"].down += 2;
+                    num = this.tokkyuNext("はるか", "down");
                     t = {type:"特急", dir:-1, trackId:"Down_Out", dest:"新大阪", startName:"京都", name:`はるか${num}号`, nextAction: "depot"};
                 }
             }

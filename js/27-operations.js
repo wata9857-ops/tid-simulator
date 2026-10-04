@@ -228,7 +228,12 @@ class OperationsManager {
     }
 
     /** 回送列車番号を作る */
-    deadheadNo(suffix) {
+    deadheadNo(suffix, dir) {
+        /* 向き (dir) が分かるときは、下り = 奇数・上り = 偶数で、走っている列車と重ならない番号にする
+           (js/38d-train-numbers.js。利用者の指摘 ④ 2026-10) */
+        if (dir && this.game.spawner && this.game.spawner.allocTrainNo) {
+            return this.game.spawner.allocTrainNo("回", 1, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], suffix || "M", dir === -1 ? 1 : 0);
+        }
         this.deadheadSeq += 2;
         if (this.deadheadSeq > 9990) this.deadheadSeq = 1000;
         return "回" + this.deadheadSeq + (suffix || "M");
@@ -278,7 +283,7 @@ class OperationsManager {
         if (!g.fleet.canServe(cfg.vehicles, from, "普通", trackId, to, null)) return false;
         cfg.type = "普通";
         cfg.trackId = trackId;
-        cfg.name = g.spawner.generateTrainNumber("普通", cfg.dir, from, trackId);
+        cfg.name = g.spawner.generateTrainNumber("普通", cfg.dir, from, trackId, cfg.dest);
         if (!cfg.dutyName || /^回/.test(cfg.dutyName)) cfg.dutyName = cfg.name;
         cfg.revenueDeadhead = true;
         this.stats.revenueDh = (this.stats.revenueDh || 0) + 1;
@@ -439,7 +444,7 @@ class OperationsManager {
                放出なら 207系/321系 (JR東西線の規則) になる。 */
             const dir = this.dirFromTo(from.name, to.name);
             if (!dir) continue;                       // 方向転換なしには行けない
-            const no = this.deadheadNo();
+            const no = this.deadheadNo("M", dir);
             let vs = fleet.assign(from.name, to.byGroup ? "普通" : "回送",
                                   depotTrackId(from.name, dir, to.byGroup ? "普通" : "回送"),
                                   to.name, no, { noBorrow: true });
@@ -559,7 +564,7 @@ class OperationsManager {
         const dest = Array.isArray(w.dest) ? this.pick(w.dest) : w.dest;
         const via = w.via || depotName;
         const serviceNo = this.game.spawner.generateTrainNumber(
-            w.as, w.dir, via, w.dir === 1 ? "Up_In" : "Down_In");
+            w.as, w.dir, via, w.dir === 1 ? "Up_In" : "Down_In", dest);
 
         /* ★車両は「出区してすぐ入る営業運用」の条件で選ぶ。
            回送の条件で選ぶと、例えば向日町操から京都へ送り込む回送に
@@ -591,7 +596,7 @@ class OperationsManager {
         } else {
             const ddir = this.dirFromTo(depotName, via);
             cfg = { type: "回送", dir: ddir, trackId: depotTrackId(depotName, ddir, "回送"),
-                    dest: via, startName: depotName, name: this.deadheadNo(),
+                    dest: via, startName: depotName, name: this.deadheadNo("M", ddir),
                     dutyName: serviceNo,
                     serviceChange: { at: via, type: w.as, dest: dest, name: serviceNo } };
         }
@@ -660,7 +665,7 @@ class OperationsManager {
         const dir = this.dirFromTo(fromName, config.startName);
         if (!dir) return false;                            // 方向転換なしには送り込めない
         const serviceNo = config.name ||
-            this.game.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId);
+            this.game.spawner.generateTrainNumber(config.type, config.dir, config.startName, config.trackId, config.dest);
 
         /* ★車両は「送り込んだ先で入る営業運用」の条件で選ぶ。
 
@@ -679,7 +684,7 @@ class OperationsManager {
             type: "回送", dir: dir,
             trackId: depotTrackId(fromName, dir, "回送"),
             dest: config.startName, startName: fromName,
-            name: this.deadheadNo(), dutyName: serviceNo,
+            name: this.deadheadNo("M", dir), dutyName: serviceNo,
             vehicles: vs,
             serviceChange: { at: config.startName, type: config.type,
                              dest: config.dest, name: serviceNo }
@@ -734,7 +739,7 @@ class OperationsManager {
         if (!dir) return false;                           // 方向転換なしには送り込めない
 
         const serviceNo = config.name || this.game.spawner.generateTrainNumber(
-            config.type, config.dir, startName, config.trackId);
+            config.type, config.dir, startName, config.trackId, config.dest);
         const vs = fleet.assign(from, config.type, config.trackId, config.dest,
                                 serviceNo, { noBorrow: true });
         if (!vs || !vs.length) return false;
@@ -743,7 +748,7 @@ class OperationsManager {
             type: "回送", dir: dir,
             trackId: depotTrackId(from, dir, "回送"),
             dest: startName, startName: from,
-            name: this.deadheadNo(), dutyName: serviceNo,
+            name: this.deadheadNo("M", dir), dutyName: serviceNo,
             vehicles: vs,
             serviceChange: { at: startName, type: config.type,
                              dest: config.dest, name: serviceNo,
@@ -885,7 +890,7 @@ class OperationsManager {
                     if (tk && worstLo < tk.index) dest = "高槻";
                 }
                 if (this.dirFromTo(dname, dest) !== sc.dir) continue;
-                const no = this.game.spawner.generateTrainNumber("普通", sc.dir, dname, sc.trackId);
+                const no = this.game.spawner.generateTrainNumber("普通", sc.dir, dname, sc.trackId, dest);
                 // 車両は行先の運用の条件で選ぶ (東西線なら207系/321系 など)
                 const vs = this.game.fleet.assign(dname, "普通", sc.trackId, dest, no,
                                                   { noBorrow: true });
@@ -943,7 +948,7 @@ class OperationsManager {
         this.game.spawner.activeTrainNos.delete(train.trainNo);
         const oldNo = train.trainNo;
         train.type = "回送";
-        train.trainNo = this.deadheadNo();
+        train.trainNo = this.deadheadNo("M", train.dir);
         train.dutyName = train.trainNo;
         this.game.spawner.activeTrainNos.add(train.trainNo);
         train.dest = target.name;
@@ -1225,7 +1230,7 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     }
 
     // いまの編成でその運用に入れるかを確かめ、駄目なら差し替える
-    const nextNo = this.game.spawner.generateTrainNumber(train.type, newDir, stName, newTrackId);
+    const nextNo = this.game.spawner.generateTrainNumber(train.type, newDir, stName, newTrackId, nextDest);
     /* ★差し替えられないときに元の編成を失わない (tryReassign)。以前の reassign は失敗すると
          元の編成を留置線へ返してしまい、そのあと回送になった列車が編成の無いまま走っていた
          (塚口 → 新三田 の回送が「営業列車にできない」と判定されていた原因)。 */
@@ -1677,7 +1682,7 @@ OperationsManager.prototype.stabledStep = function (t) {
     dests.unshift(first);
     const dest = dests.find(d => g.fleet.canServe(t.vehicles, s.st, cfg.as, t.trackId, d, null));
     if (!dest) { t.overnightStable = null; t.remove(); return; }
-    const no = g.spawner.generateTrainNumber(cfg.as, cfg.dir, s.st, t.trackId);
+    const no = g.spawner.generateTrainNumber(cfg.as, cfg.dir, s.st, t.trackId, dest);
     t.overnightStable = null;
     t.type = cfg.as;
     t.dest = dest;
@@ -1732,33 +1737,103 @@ OperationsManager.prototype.checkStationStabling = function (ct) {
     }
 };
 
-/* ------------------------------------------------------------------ 支障の手前での折り返し (利用者の指摘 ④)
+/* ------------------------------------------------------------------ 支障の手前での折り返し (利用者の指摘 ④ / 2026-10 の見込みの時間)
 
    ■ なぜ要るか
      以前は、見合わせ区間のすぐ手前の駅で7分以上止まった普通だけを、10%の確率で折り返していた。
      後ろから来る列車はそのまま支障の手前まで進み、駅間に並んで動けなくなっていた。
+   ■ 見込みの時間を見る (2026-10 の利用者の指摘 ①)
+     支障がすぐ解けるときまで、見えている列車をすべて折り返していた。解けたときには
+     折り返し駅より先 (支障の向こう) を走る列車がほとんど無く、逆の向きに列車が偏って混雑していた。
+     いまは支障ごとに「解けるまであと何分か」を見積もり (shortTurnRemain)、
+       ・15分 (SHORT_TURN_MIN_SEC) より短い … 折り返さない (手前の駅で待たせるだけ)
+       ・30分まで … 先に4本、60分まで … 3本、それより長い・分からない … 2本 を残す (shortTurnKeep)
+       ・折り返し駅に着いて折り返すまでの時間が、解けるまでの時間より短い列車だけを折り返す。
+         着くころには解けている列車は、そのまま支障の先へ行かせる
+       ・支障が解けた、または見込みが短くなって折り返す意味が無くなったら、まだ折り返し駅に
+         着いていない列車の行先を元に戻す (shortTurnRestore)
    ■ どうするか (1分ごと)
      ・支障 = 運転見合わせの区間 (指令・輸送障害) と、故障・抑止で20分以上動けない列車。
      ・支障の手前でいちばん近い「その向きで折り返せる駅」を折り返し駅にする。
-     ・折り返し駅より先 (支障まで) に残す列車を KEEP 本まで数え、それを超えて後ろから来る列車を
-       折り返し駅止まりにする。全部を折り返すと、運転を再開したときに支障の先を走る列車が無くなるため。
+     ・折り返し駅より先 (支障まで) に残す列車を keep 本まで数え、それを超えて後ろから来る列車を
+       折り返し駅止まりにする。
      ・折り返せるのは、その駅に停まる普通・快速・新快速で、いまの編成でその区間の運用に入れるものだけ。 */
-const SHORT_TURN_KEEP = 2;          // 折り返し駅より先に残す本数 (支障の向こうへ行く列車)
-const SHORT_TURN_SCAN = 10;         // 折り返し駅を探す範囲 (駅数)
+const SHORT_TURN_KEEP = 2;           // 長い (または見込みの分からない) 支障で、折り返し駅より先に残す本数
+const SHORT_TURN_SCAN = 10;          // 折り返し駅を探す範囲 (駅数)
+const SHORT_TURN_MIN_SEC = 900;      // これより早く解ける見込みなら折り返さない
+const SHORT_TURN_TURN_SEC = 300;     // 折り返し駅での折り返しにかかる時間 (降車・方転)
+const SHORT_TURN_UNKNOWN = 3 * 3600; // 見込みの分からない支障 (指令の手動の見合わせなど)
+
+/** 解けるまでの見込みの秒数に応じて、折り返し駅より先に残す本数 */
+function shortTurnKeep(remain) {
+    if (remain <= 1800) return 4;
+    if (remain <= 3600) return 3;
+    return SHORT_TURN_KEEP;
+}
+
+/** 支障が解けるまでの見込み (秒)。輸送障害なら残りの時間、列車の故障なら処置の残り、分からなければ長いものとして扱う */
+OperationsManager.prototype.shortTurnRemain = function (owner, train) {
+    const g = this.game;
+    const incs = (g.incidents && g.incidents.active) || [];
+    if (owner === "comm") return 300;
+    if (owner) {
+        const inc = incs.find(i => i.id === owner);
+        if (inc) return Math.max(0, inc.timer || 0) + (inc.staged ? 900 : 300);   // 解いたあとの順次解除・段階開通のぶん
+    }
+    if (train) {
+        const ti = train.troubleInfo;
+        if (ti && ti.incidentId) {
+            const inc = incs.find(i => i.id === ti.incidentId);
+            if (inc) return Math.max(0, inc.timer || 0) + 300;
+        }
+        if (train.minorTrouble) return Math.max(0, train.minorTroubleTimer || 0, (ti && ti.timer) || 0) + 120;
+    }
+    return SHORT_TURN_UNKNOWN;
+};
 
 OperationsManager.prototype.shortTurnZones = function () {
     const tm = this.game.trackMgr;
     const zones = [];
-    for (const m of tm.manualSuspensions) zones.push({ trackId: m.trackId, start: m.start, end: m.end, why: "運転見合わせ" });
+    for (const m of tm.manualSuspensions) zones.push({ trackId: m.trackId, start: m.start, end: m.end, why: "運転見合わせ",
+        key: `m#${m.trackId}#${m.start}#${m.end}`, remain: this.shortTurnRemain(m.owner, null) });
     for (const tid in tm.suspendedSections) {
-        for (const s of tm.suspendedSections[tid] || []) zones.push({ trackId: tid, start: s.start, end: s.end, why: "運転見合わせ" });
+        for (const s of tm.suspendedSections[tid] || []) zones.push({ trackId: tid, start: s.start, end: s.end, why: "運転見合わせ",
+            key: `s#${tid}#${s.start}#${s.end}`, remain: SHORT_TURN_UNKNOWN });
     }
     for (const t of this.game.trains) {
         if (t.state === "finished" || t.state === "in_depot" || t.overnightStable) continue;
         if (!(t.minorTrouble || t.isManuallySuspended || t.commIncident) || t.stuckTime < 1200) continue;
-        zones.push({ trackId: t.trackId, start: t.currBlockIndex, end: t.currBlockIndex, why: `${t.trainNo} の長時間抑止`, by: t });
+        zones.push({ trackId: t.trackId, start: t.currBlockIndex, end: t.currBlockIndex, why: `${t.trainNo} の長時間抑止`, by: t,
+                     key: `t#${t.id}`, remain: this.shortTurnRemain(null, t) });
     }
     return zones;
+};
+
+/** 折り返し駅に着いて折り返し終わるまでの見込み (秒) */
+function shortTurnEta(t, tbIndex) {
+    const blocks = Math.max(0, (tbIndex - t.currBlockIndex) * t.dir);
+    const run = BLOCK_RUN_SEC[t.type] || BLOCK_RUN_SEC["普通"];
+    const wait = ["stopped", "holding", "waiting_start"].indexOf(t.state) >= 0 ? Math.max(0, t.timer || 0) : 0;
+    return wait + blocks * run + Math.floor(blocks / UNITS_PER_STATION) * 40 + SHORT_TURN_TURN_SEC;
+}
+
+/** 折り返しをやめて元の行先に戻す (まだ折り返し駅に着いていない列車だけ) */
+OperationsManager.prototype.shortTurnRestore = function (t, why) {
+    const p = t.shortTurnPrev;
+    if (!p || t.dest !== t.shortTurnAt || t.state === "turning_back") return false;
+    const tbName = t.shortTurnAt;
+    const tb = stationBlockOn(this.game, t.trackId, tbName);
+    if (!tb || (tb.index - t.currBlockIndex) * t.dir <= 0) return false;          // もう着いている・過ぎた
+    t.dest = p.dest;
+    t.nextAction = p.nextAction;
+    t.isFinalStop = p.isFinalStop;
+    t.shortTurnAt = null;
+    t.shortTurnPrev = null;
+    t.shortTurnKey = null;
+    this.stats.shortTurnRestored = (this.stats.shortTurnRestored || 0) + 1;
+    this.game.ui.updateBanner(`【運転整理】${why}ため、${t.trainNo} の ${tbName}駅止まりを取り消し、もとの ${p.dest}行きに戻します。`, "banner-blue");
+    if (this.game.records) this.game.records.noteDisposition(t, tbName, why, `${tbName}止まりを取り消し`);
+    return true;
 };
 
 OperationsManager.prototype.checkShortTurns = function (ct) {
@@ -1767,9 +1842,22 @@ OperationsManager.prototype.checkShortTurns = function (ct) {
     if (globalThis.__NO_SHORT_TURN) return;
     const g = this.game;
     const zones = this.shortTurnZones();
+    const zoneByKey = {};
+    zones.forEach(z => { zoneByKey[z.key] = z; });
+    // 解けた支障・すぐ解ける支障のために折り返す予定だった列車は、元の行先へ戻す
+    for (const t of g.trains) {
+        if (!t.shortTurnKey || t.state === "finished" || t.state === "in_depot") continue;
+        const z = zoneByKey[t.shortTurnKey];
+        if (!z) { this.shortTurnRestore(t, "支障が解けた"); continue; }
+        const tb = stationBlockOn(g, t.trackId, t.shortTurnAt);
+        if (z.remain < SHORT_TURN_MIN_SEC ||
+            (tb && shortTurnEta(t, tb.index) > z.remain + 300)) this.shortTurnRestore(t, "折り返し駅に着くころには運転を再開できる見込みの");
+    }
     if (!zones.length) return;
     const h = (ct / 3600) % 24;
     for (const z of zones) {
+        if (z.remain < SHORT_TURN_MIN_SEC) continue;        // すぐ解ける。折り返さず、手前の駅で待つ
+        const keep = shortTurnKeep(z.remain);
         const blks = g.trackMgr.blocks[z.trackId];
         if (!blks) continue;
         for (const dir of [1, -1]) {
@@ -1803,7 +1891,9 @@ OperationsManager.prototype.checkShortTurns = function (ct) {
                 // 行先が折り返し駅より手前なら、もともと支障まで行かない
                 const db = stationBlockOn(g, t.trackId, t.dest);
                 if (db && (db.index - tb.index) * dir <= 0) continue;
-                if (kept < SHORT_TURN_KEEP) { kept++; continue; }
+                if (kept < keep) { kept++; continue; }
+                // 折り返し駅に着くころには解けている見込みなら、そのまま先へ行かせる (これより後ろの列車も同じ)
+                if (shortTurnEta(t, tb.index) > z.remain) break;
                 if (changed >= 3) break;
                 if (["普通", "快速", "新快速"].indexOf(t.type) < 0 || t.specialEvent || t.serviceChange) continue;
                 if (t.isManuallySuspended || t.commIncident || t.state === "turning_back") continue;
@@ -1811,14 +1901,17 @@ OperationsManager.prototype.checkShortTurns = function (ct) {
                 if (!ttInService(ttLineOf(t), h)) continue;
                 if (!g.fleet.canServe(t.vehicles, tbName, t.type, t.trackId, tbName, t.dutyName)) continue;
                 const oldDest = t.dest;
+                t.shortTurnPrev = { dest: t.dest, nextAction: t.nextAction, isFinalStop: t.isFinalStop };
                 t.dest = tbName;
                 t.nextAction = "turnback";
                 t.isFinalStop = false;
                 t.shortTurnAt = tbName;
+                t.shortTurnKey = z.key;
                 changed++;
                 this.stats.shortTurn = (this.stats.shortTurn || 0) + 1;
-                g.ui.updateBanner(`【運転整理】${z.why}のため、${t.trainNo} (${oldDest}行き) は ${tbName}駅止まりとし、` +
-                                  `${tbName}で折り返します (支障の先へは ${SHORT_TURN_KEEP}本を残して運転再開に備えます)。`, "banner-orange");
+                const remTxt = z.remain >= SHORT_TURN_UNKNOWN ? "再開見込み未定" : `再開見込み 約${Math.ceil(z.remain / 60)}分後`;
+                g.ui.updateBanner(`【運転整理】${z.why} (${remTxt}) のため、${t.trainNo} (${oldDest}行き) は ${tbName}駅止まりとし、` +
+                                  `${tbName}で折り返します (支障の先へは ${keep}本を残して運転再開に備えます)。`, "banner-orange");
                 if (g.records) g.records.noteDisposition(t, tbName, z.why, `${tbName}で折り返し`);
             }
         }
@@ -1867,7 +1960,9 @@ OperationsManager.prototype.planOvertakes = function (ct) {
 
     for (const H of g.trains) {
         if (!active(H) || H.type === "普通" || H.type === "貨物" || H.minorTrouble || H.isManuallySuspended) continue;
-        if (H.stuckTime > 120) continue;                   // 止まっている優等列車は待たない
+        /* 止まっている優等列車は待たない (★120秒 → 60秒。止まった優等列車を待つあいだ待避駅の番線がふさがり、
+           ほかの優等列車まで入れなくなっていた。利用者の指摘 ③ 2026-10) */
+        if (H.stuckTime > 60) continue;
         const pH = H.getPriority();
         const blks = g.trackMgr.blocks[H.trackId];
         if (!blks) continue;
@@ -1901,6 +1996,8 @@ OperationsManager.prototype.planOvertakes = function (ct) {
                 if (["普通", "快速"].indexOf(L.type) < 0 || L.getPriority() >= pH) continue;
                 // 停車駅がほとんど同じなら格の差が無いものとして扱う (js/38c-dispatch-rules.js。利用者の指摘 ③)
                 if (typeof stopPatternSimilar === "function" && stopPatternSimilar(L, H)) continue;
+                // 西明石より西の複線では回送を先に通さない (overtakeWorthWaiting と同じ)
+                if (H.type === "回送" && westDoubleTrack(L, here)) continue;
                 if (!isRefuge(b) || ["stopped", "holding", "waiting_start"].indexOf(L.state) < 0) continue;
                 // L が次の待避駅 (または行先) に入るまでの見込み
                 let tL = waitNow(L), refuge = null;
@@ -1919,7 +2016,11 @@ OperationsManager.prototype.planOvertakes = function (ct) {
                 const destReached = blockStationName(refuge) === L.dest;
                 const key = L.trackId + "#" + refuge.index;
                 const refugeFree = refuge.lanes.filter(x => !x).length - (reserved[key] || 0);
-                if (tL + runOf(H) < tHb && (destReached || refugeFree >= 2)) {
+                /* 逃げ切れる … 次の待避駅に H より先に入れ、そこに H の番線も残る。
+                   ★H がまだ十分遠い (4分以上の余裕) なら、次の待避駅の空きは1線でよい
+                   (以前は2線を求めたので、加古川が1線ふさがっているだけで、遠くの新快速を大久保で長く待っていた) */
+                const margin = tHb - (tL + runOf(H));
+                if (margin > 0 && (destReached || refugeFree >= 2 || (refugeFree >= 1 && margin > 240))) {
                     set(L, "go", here, H.trainNo, false);        // 逃げ切れる
                     if (!destReached) reserved[key] = (reserved[key] || 0) + 1;
                 } else if (b.lanes.some(x => !x) || H.currBlockIndex === b.index) {
