@@ -840,7 +840,7 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                     return [{d:"姫路",w:92}, {d:"網干",w:8}];
                 }
                 if (type === "快速") {
-                    if (["大阪", "高槻"].includes(startName)) {
+                    if (startName === "大阪") {     // ★丹波路快速は大阪始発だけ (高槻からは出さない。2026-10)
                         return [{d:"篠山口",w:90}, {d:"福知山",w:10}];
                     }
                     return [{d:"網干",w:50}, {d:"加古川",w:31}, {d:"姫路",w:19}];

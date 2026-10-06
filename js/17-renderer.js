@@ -651,7 +651,7 @@ class Renderer {
         }
         {
             const bw = 100, bh = 24, tw = (t.type === "特急" ? 75 : 55), lx = x - bw / 2, ly = dy - bh / 2;
-            const cdata = CONFIG.colors[t.type] || CONFIG.colors["普通"];
+            const cdata = CONFIG.colors[trainColorKey(t)] || CONFIG.colors["普通"];
             let bgColor = cdata.bg;
             if (t.type === "新快速" && t.isKoseiRoute) bgColor = "#00bfff";
 

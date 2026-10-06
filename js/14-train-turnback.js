@@ -750,7 +750,15 @@ Train.prototype.executeTurnBack = function () {
                     const at = blk.lanes.indexOf(this);
                     if (at >= 0) blk.lanes[at] = null;
                 } else if (newB.lanes === blk.lanes && blk.lanes.indexOf(this) >= 0) {
-                    tl = blk.lanes.indexOf(this);          // 共有の番線: いまの枠のまま
+                    /* 共有の番線: いまの枠のまま。★ただし上下で番線を共有する駅 (京都・野洲など) で、
+                       その番線から折り返した先の線路へ出られないときは、出られる番線へ構内で移る (入換。2026-10) */
+                    const here = blk.lanes.indexOf(this);
+                    const allowed = STATION_SHARED_LANES[stName] === "all" ? stationRouteLanes(stName, newTrackId, "depart") : null;
+                    if (!allowed || allowed.indexOf(here) >= 0) tl = here;
+                    else {
+                        const alt = pickRouteLane(newB, stName, newTrackId, "depart", this.type, hOfDay, true);
+                        if (alt !== -1) { blk.lanes[here] = null; tl = alt; } else tl = here;
+                    }
                 }
                 this.trackId = newTrackId; this.dir = newDir; this.currBlockIndex = newB.index; this.lane = tl;
                 newB.lanes[tl] = this;

@@ -55,6 +55,7 @@ const TID_COLORS = {
 const TID_TYPE_COLORS = {
     "新快速": { bg: "#2036FB", text: "#FFFFFF" },
     "快速":   { bg: "#E57B1A", text: "#101014" },
+    "丹波路快速": { bg: "#c1ab05", text: "#101014" },   // ★丹波路快速は鮮やかな黄色 (利用者の指摘 2026-10)
     "普通":   { bg: "#A5F445", text: "#101014" },
     "特急":   { bg: "#7E1800", text: "#FFFFFF" },
     "回送":   { bg: "#3F4658", text: "#FFFFFF" },
@@ -1054,7 +1055,7 @@ function tidDrawTrainLabel(ctx, t, cx, cy, opt) {
         tidRecordBox("fleet", x0, y0, w0, h0, label);
         return { x: x0 - 12, y: y0 - 12, w: w0 + 24, h: h0 + 24 };
     }
-    const col = TID_TYPE_COLORS[t.type] || TID_TYPE_COLORS["普通"];
+    const col = TID_TYPE_COLORS[trainColorKey(t)] || TID_TYPE_COLORS["普通"];
     const h = TID_GEO.trainH;
     /* 列車番号の枡。特急は「サンダーバード1号」のように長い名前が入るので、
        必要なぶんだけ広げてから、それでも入らなければ字を小さくする。 */
@@ -1622,7 +1623,7 @@ function tidDrawPredictPlate(ctx, cx, cy, rowLabel, train) {
     ctx.fillRect(x, y, tick, h);
     ctx.fillRect(x + w - tick, y, tick, h);
     // 列車番号 (種別の色)
-    const col = TID_TYPE_COLORS[train.type] || TID_TYPE_COLORS["普通"];
+    const col = TID_TYPE_COLORS[trainColorKey(train)] || TID_TYPE_COLORS["普通"];
     ctx.fillStyle = col.bg;
     ctx.fillRect(x + tick, y, noWfit, h);
     ctx.fillStyle = col.text;

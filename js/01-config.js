@@ -5,7 +5,7 @@ const CONFIG = {
     bg: "#8faadd", lineMain: "#ffffff", lineSub: "#888888", stationGrid: "rgba(255,255,255,0.4)",
     route: "#00ff00", occupy: "#ff4444", stopped: "#ffff00", waiting: "#00ffff", jammed: "#ff69b4", node: "#ffffff",
     colors: {
-        "快速": {bg:"#FF883B", text:"#000"}, "新快速": {bg:"#0044FF", text:"#fff"}, "普通": {bg:"#20F80D", text:"#000"},
+        "快速": {bg:"#FF883B", text:"#000"}, "丹波路快速": {bg:"#c1ab05", text:"#000"}, "新快速": {bg:"#0044FF", text:"#fff"}, "普通": {bg:"#20F80D", text:"#000"},
         "特急": {bg:"#AB83B2", text:"#fff"}, "貨物": {bg:"#A12E00", text:"#fff"}, "回送": {bg:"#000000", text:"#fff"},
         "臨時": {bg:"#000000", text:"#fff"} 
     },

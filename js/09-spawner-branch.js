@@ -262,7 +262,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         if (ct >= this.nextFukuchiDown) {
             let type = Math.random() < 0.35 ? "快速" : "普通";
             let destOptions = (type === "快速")
-                ? [{d:"篠山口",w:60}, {d:"福知山",w:20}, {d:"新三田",w:20}]
+                ? [{d:"新三田",w:100}]   // ★篠山口・福知山行き (丹波路快速) は大阪始発だけ (利用者の指摘 2026-10)
                 : [{d:"新三田",w:45}, {d:"宝塚",w:35}, {d:"篠山口",w:15}, {d:"塚口",w:5}];
             let dest = this.weightedRandom(destOptions);
             

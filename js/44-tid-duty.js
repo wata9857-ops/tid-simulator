@@ -177,7 +177,7 @@ class TidDuty {
         const t = game.trains.find(x => x.trainNo === no && x.state !== "finished");
         const back = '<button class="tid-btn" data-duty-back="1" type="button">← 編成の行路へ戻る</button>';
         if (!L && !t) { e.innerHTML = back + '<p class="tid-empty">列車 ' + esc(no) + ' の記録はありません。</p>'; return; }
-        const col = TID_TYPE_COLORS[(t || L).type] || {};
+        const col = TID_TYPE_COLORS[t ? trainColorKey(t) : L.type] || {};
         const now = game.currentTime;
         let status = "運転を終えています";
         if (t) {
@@ -229,7 +229,7 @@ class TidDuty {
             ? (eventSpecialName(t) || "催し") : (L && L.special) || "";
         e.innerHTML = back +
             '<div class="tid-duty-head"><span class="tid-mini" style="background:' + (col.bg || "#666") + ";color:" + (col.text || "#fff") + '">' +
-            esc(no) + "</span><span>" + esc((special ? "臨時" : "") + (t ? trainTypeLabel(t) : L.type)) + "</span><span>" + route + "</span></div>" +
+            esc(no) + "</span><span>" + esc((special ? "臨時" : "") + (t ? trainServiceLabel(t) : L.type)) + "</span><span>" + route + "</span></div>" +
             (special ? kv("列車の種類", esc("臨時 (" + special + ") … 催しの臨時列車 (臨時列車番号 " + no + ")")) : "") +
             kv("現在", status) +
             kv("遅れ", delayMin ? delayMin + "分" : "定時") +
@@ -272,10 +272,10 @@ class TidDuty {
             const blk = blks ? blks[t.currBlockIndex] : null;
             const where = blk ? (blockStationName(blk) || "駅間") : "—";
             now = '<span class="tid-mini" style="background:' +
-                  ((TID_TYPE_COLORS[t.type] || {}).bg) + ";color:" +
-                  ((TID_TYPE_COLORS[t.type] || {}).text) + '">' +
+                  ((TID_TYPE_COLORS[trainColorKey(t)] || {}).bg) + ";color:" +
+                  ((TID_TYPE_COLORS[trainColorKey(t)] || {}).text) + '">' +
                   escapeLogHtml(t.trainNo) + "</span> " +
-                  escapeLogHtml(trainTypeLabel(t) + " " + (t.dest || "")) +
+                  escapeLogHtml(trainServiceLabel(t) + " " + (t.dest || "")) +
                   " / " + escapeLogHtml(where);
         } else if (depot) {
             now = "留置中（" + escapeLogHtml(depot) + "）運用に入っていません";

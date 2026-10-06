@@ -309,8 +309,8 @@ function trainServiceName(t) {
     const ends = [t.startName, t.dest];
     if (ends.some(n => ["篠山口", "福知山"].indexOf(n) >= 0) && ends.some(n => n === "大阪" || _tnMainIdx(n) > STATION_MAP["尼崎"])) return "丹波路快速";
     const sec = rapidSectionText(t);
-    // 朝の京都発の快速は京都〜高槻を外側線でノンストップ (js/24-service-rules.js の kyotoEarlyRapid)
-    if (t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo) return "快速 (京都〜高槻間 ノンストップ" + (sec ? "・" + sec + "間 快速" : "") + ")";
+    // 朝の京都発の快速は京都〜高槻で長岡京だけに停まる (js/24-service-rules.js の kyotoEarlyRapid)
+    if (t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo) return "快速 (京都〜高槻間 長岡京のみ停車" + (sec ? "・" + sec + "間 快速" : "") + ")";
     return sec ? "快速 (" + sec + "間 快速)" : "快速";
 }
 /** 短い種別 (表・札) */
@@ -384,3 +384,18 @@ function trainNoProblems(t) {
     if (t.type === "特急" && !(n < 100 || (n >= 1000 && n <= 9999 && Math.floor(n / 100) % 10 === 0))) out.push("特急の桁");
     return out;
 }
+
+/* ★丹波路快速 (大阪〜篠山口・福知山の快速) は、すべて大阪始発 (利用者の指摘 2026-10)。
+     尼崎・高槻など大阪以外の本線の駅から篠山口・福知山へ行く快速を作ろうとしたときは、新三田行きの快速にする。
+     JR東西線・学研都市線からの直通 (丹波路快速ではない快速) はそのまま。 */
+(function () {
+    const baseAdd = GameSystem.prototype.addTrain;
+    GameSystem.prototype.addTrain = function (c) {
+        if (c && c.type === "快速" && !globalThis.__NO_TANBAJI_OSAKA && ["篠山口", "福知山"].indexOf(c.dest) >= 0 &&
+            c.startName && c.startName !== "大阪" && _tnMainIdx(c.startName) !== undefined) {
+            c.dest = "新三田";
+            if (c.name && c.dutyName === c.name) c.dutyName = null;
+        }
+        return baseAdd.call(this, c);
+    };
+})();

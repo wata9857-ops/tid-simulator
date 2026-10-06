@@ -217,7 +217,7 @@ TidUI.prototype.renderStation = function () {
     const plan = stationPlatformPlan(this.game, name);
     const esc = escapeLogHtml;
     const chip = (x) => {
-        const c = TID_TYPE_COLORS[x.type] || {};
+        const c = TID_TYPE_COLORS[x.train || x.game ? trainColorKey(x.train || x) : x.type] || {};
         return `<span class="tid-mini" style="background:${c.bg};color:${c.text}">${(x.train && typeof isEventSpecialTrain === "function" && isEventSpecialTrain(x.train)) ? "臨" : ""}${esc(x.trainNo || "—")}</span>`;
     };
     const tl = (x) => trainTypeLabel(x.train || x);

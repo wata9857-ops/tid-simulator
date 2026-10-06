@@ -673,7 +673,7 @@ class TidUI {
                 t.minorTrouble ? "【障害】" :
                 t.state === "in_depot" ? "【留置】" : "";
             const veh = (t.vehicles && t.vehicles.length) ? " " + t.vehicles.map(v => v.id).join("+") : "";
-            return `<option value="${t.id}">${mark}${escapeLogHtml(t.trainNo || "(待機)")} ${escapeLogHtml(trainTypeLabel(t))}${escapeLogHtml(t.dest || "")}${escapeLogHtml(veh)}</option>`;
+            return `<option value="${t.id}">${mark}${escapeLogHtml(t.trainNo || "(待機)")} ${escapeLogHtml(trainServiceLabel(t))} ${escapeLogHtml(t.dest || "")}${escapeLogHtml(veh)}</option>`;
         }).join("");
 
         /* ★選んでいた列車が一覧から消えた (運用を終えた) 場合。
@@ -708,7 +708,7 @@ class TidUI {
         const prepText = trainPrepText(t, this.game.currentTime);
 
         e.innerHTML =
-            `<div class="tid-tno" style="background:${(TID_TYPE_COLORS[t.type] || {}).bg};color:${(TID_TYPE_COLORS[t.type] || {}).text}">` +
+            `<div class="tid-tno" style="background:${(TID_TYPE_COLORS[trainColorKey(t)] || {}).bg};color:${(TID_TYPE_COLORS[trainColorKey(t)] || {}).text}">` +
                 `${isEventSpecialTrain(t) ? "<span class=\"tid-rin\">臨</span>" : ""}${escapeLogHtml(t.trainNo || "—")}</div>` +
             `<div class="tid-tdest">${escapeLogHtml(eventSpecialTypeLabel(t))} ${escapeLogHtml(t.dest || "")} ${cars ? cars + "両" : ""}</div>` +
             row("在線", escapeLogHtml(where) + " / " +

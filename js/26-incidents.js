@@ -64,7 +64,7 @@ const INCIDENT_TYPES = [
         id: "jinshin", family: "jinshin", name: "人身事故", weight: 3, needTrain: true, radio: true,
         cat: "事故", depts: ["警察", "消防", "保線区", "車両所"],
         block: { tracks: "parallel", radius: 5 },
-        hold: [2400, 4200], suspend: [2400, 4200],
+        hold: [5400, 5400], suspend: [5400, 5400],   // ★人身事故の見合わせは標準 1時間30分 (利用者の指摘 2026-10)
         slow: { sec: 900, factor: 1.5 },
         after: "deadhead",
         cause: "人身事故",
@@ -90,7 +90,7 @@ const INCIDENT_TYPES = [
         atStation: true,
         cat: "事故", depts: ["警察", "消防", "駅", "車両所"],
         block: { tracks: "parallel", radius: 3 },
-        hold: [1800, 3300], suspend: [1800, 3300],
+        hold: [5400, 5400], suspend: [5400, 5400],   // ★人身事故 (駅構内) も標準 1時間30分
         slow: { sec: 600, factor: 1.4 },
         after: "deadhead",
         cause: "人身事故",

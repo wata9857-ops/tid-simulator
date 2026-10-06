@@ -231,7 +231,9 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                     let typeName = trainTypeLabel(t);
 
                     // 全種別に白枠（border: 2px solid #fff;）を追加
-                    if (t.type === "快速") {
+                    if (typeName === "丹波路快速") {
+                        typeStyle = "background:#c1ab05; color:#000; border:2px solid #fff;";
+                    } else if (t.type === "快速") {
                         typeStyle = "background:#F37021; color:#000; border:2px solid #fff;";
                     } else if (t.type === "新快速") {
                         typeStyle = "background:#0044ff; color:#fff; border:2px solid #fff;";

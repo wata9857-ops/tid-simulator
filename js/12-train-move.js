@@ -672,9 +672,9 @@ Train.prototype.shouldStop = function (st) {
         if (this.type === "快速") {
             const stIdx = STATION_MAP[st.name];
             if (stIdx >= 0 && stIdx <= STATION_MAP["西明石"]) return true;
-            // 朝の京都発の快速は京都〜高槻を外側線で通過する (js/24-service-rules.js の kyotoEarlyRapid)
+            // 朝の京都発の快速は京都〜高槻で長岡京だけに停まる (js/24-service-rules.js の kyotoEarlyRapid)
             if (this.kyotoEarlyNo && this.kyotoEarlyNo === this.trainNo &&
-                stIdx > STATION_MAP["高槻"] && stIdx < STATION_MAP["京都"]) return false;
+                stIdx > STATION_MAP["高槻"] && stIdx < STATION_MAP["京都"]) return KYOTO_EARLY_RAPID.stops.indexOf(st.name) >= 0;
             if (stIdx >= STATION_MAP["高槻"]) return true;
             if (isFreight) return false;
             return (stType >= 1);

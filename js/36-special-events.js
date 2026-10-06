@@ -358,14 +358,27 @@ function eventSpecialName(t) {
 
 /** 画面に出す種別 (臨時列車は「臨時普通」のように頭に付ける) */
 function eventSpecialTypeLabel(t) {
-    const ty = trainTypeLabel(t);
-    return isEventSpecialTrain(t) ? "臨時" + ty : ty;
+    const ty = trainServiceLabel(t);
+    return (isEventSpecialTrain(t) && ty.indexOf("臨時") !== 0) ? "臨時" + ty : ty;
 }
 
-/** 画面に出す種別 (区間快速・丹波路快速を見分ける。js/38d-train-numbers.js の trainServiceShort) */
+/** 画面に出す短い種別 (区間快速・丹波路快速・快速 …。駅の表・発車標など幅の狭い所)。js/38d-train-numbers.js の trainServiceShort */
 function trainTypeLabel(t) {
     if (!t) return "";
     return (typeof trainServiceShort === "function" && t.game) ? trainServiceShort(t) : (t.type || "");
+}
+/** 画面に出す詳しい種別 (「快速 (高槻〜西明石間 快速)」「快速 (京都〜高槻間 長岡京のみ停車…)」など)。
+    列車情報・列車一覧・行路表・編成情報など、種別を出す所はすべてこれを使う (利用者の指摘 2026-10) */
+function trainServiceLabel(t) {
+    if (!t) return "";
+    const base = (typeof trainServiceName === "function" && t.game) ? trainServiceName(t) : (t.type || "");
+    return (typeof isEventSpecialTrain === "function" && isEventSpecialTrain(t)) ? "臨時" + base : base;
+}
+/** 種別の色のキー (TID_TYPE_COLORS / CONFIG.colors)。丹波路快速は専用の色 (#c1ab05) */
+function trainColorKey(t) {
+    if (!t) return "普通";
+    if (t.type === "快速" && t.game && typeof trainServiceShort === "function" && trainServiceShort(t) === "丹波路快速") return "丹波路快速";
+    return t.type;
 }
 
 /** 重み付きで1つ選ぶ */

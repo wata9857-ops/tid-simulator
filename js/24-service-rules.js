@@ -244,9 +244,10 @@ function serviceTrackSide(train, stIdx, hour) {
     if (type === "普通") return "in";
 
     if (type === "快速") {
-        /* ★朝 5:30〜8:00 に京都を出る下りの快速は、京都〜高槻を外側線で走り、次は高槻に停まる
-             (利用者の指摘 4. 2026-10)。高槻から先はふだんの快速と同じ。 */
-        if (kyotoEarlyRapid(train, stIdx, hour) && stIdx > STATION_MAP["高槻"]) return "out";
+        /* ★朝 5:21〜8:05 に京都を出る下りの快速は、京都〜高槻を内側線で走り、長岡京だけに停まる
+             (利用者の指摘 2026-10。以前は外側線・ノンストップにしていた)。高槻〜大阪はふだんの快速と同じ
+             (平日朝ラッシュだけ外側線 = 下の RAPID_OUTER_MORNING)。 */
+        if (kyotoEarlyRapid(train, stIdx, hour) && stIdx > STATION_MAP["高槻"]) return "in";
         /* 快速は
              平日朝の 高槻 → 大阪 … 外側線
              それ以外・土休日      … 内側線
@@ -265,8 +266,8 @@ function serviceTrackSide(train, stIdx, hour) {
     return "in";
 }
 
-/* 朝の京都始発・京都発の快速 (京都〜高槻は外側線・ノンストップ)。京都を 5:30〜8:00 に出る下りの快速 */
-const KYOTO_EARLY_RAPID = { fromH: 5.5, toH: 8.0 };
+/* 朝の京都発の快速 (京都〜高槻は内側線で、長岡京だけに停まる)。京都を 5:21〜8:05 に出る下りの快速 */
+const KYOTO_EARLY_RAPID = { fromH: 5 + 21 / 60, toH: 8 + 5 / 60, stops: ["長岡京"] };
 /** 朝の京都発の快速か。京都 (の手前) でいるべき線路を決めるときに1回だけ決め、列車番号ごとに覚える */
 function kyotoEarlyRapid(train, stIdx, hour) {
     if (!train || train.type !== "快速" || train.dir !== -1 || globalThis.__NO_KYOTO_EARLY) return false;

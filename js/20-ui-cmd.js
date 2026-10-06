@@ -42,8 +42,10 @@ UIManager.prototype.updateCmdActionOptions = function () {
             if (t.vehicles && t.vehicles.length > 0) {
                 notes = t.vehicles.map(v => `[${v.fullId}] ${v.type} ${v.cars}両: ${v.notes || "特になし"}`).join("<br>");
             }
+            // ★種別 (区間快速・丹波路快速・快速の区間) と行先を、編成情報の先頭に出す (利用者の指摘 2026-10)
+            const svc = `<b>${t.trainNo || ""} ${trainServiceLabel(t)} ${t.dest || ""}行き</b><br>`;
             let vPanel = document.getElementById("vehicle-notes");
-            if (vPanel) vPanel.innerHTML = notes;
+            if (vPanel) vPanel.innerHTML = svc + notes;
         }
         this.updateActionOptions("cmd-action", dest);
 };
@@ -171,7 +173,7 @@ UIManager.prototype.updateTrainSelector = function () {
             let vehStr = (t.vehicles && t.vehicles.length > 0) ? `(${t.vehicles.map(v=>v.fullId).join("+")}編成) ` : "";
             let name = `${t.trainNo || `(待機) ${t.startName}`} ${vehStr}`;
             let st = t.isManuallySuspended?"(抑止)":t.state==="holding"?"(黄)":t.isDecelerating?"(減速)":t.state==="in_depot"?"(留置)":"";
-            let op = document.createElement("option"); op.value=t.id; op.text=`${name} [${t.type}] ${t.dest||""} ${st}`; sel.add(op);
+            let op = document.createElement("option"); op.value=t.id; op.text=`${name} [${trainServiceLabel(t)}] ${t.dest||""} ${st}`; sel.add(op);
         });
         sel.value = val;
 };
