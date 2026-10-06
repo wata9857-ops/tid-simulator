@@ -1173,6 +1173,7 @@ class TidRenderer {
         ctx.fillText("網干総合車両所宮原支所 (宮原操)", cx, Y.top - 12);
     }
 
+
     /* ------------------------------------------------------------ 駅の引上線 (js/03-stations.js の SIDINGS)
        駅の のど の外に、行き止まりの短い線として描く。入っている列車も描く。 */
     sidingGeom(stName) {
@@ -1198,6 +1199,9 @@ class TidRenderer {
             if (!G || Math.max(G.x0, G.x1) < xMin - 200 || Math.min(G.x0, G.x1) > xMax + 200) continue;
             const a = Math.min(G.x0, G.x1), b = Math.max(G.x0, G.x1);
             tidDrawRail(ctx, a, b, G.y);
+            // つながる線路への取付け (神戸 … 電車線の上下、松井山手 … 上下線)
+            const linkRows = st === "神戸" ? ["Down_In", "Up_In"] : ["Tozai_Down", "Tozai_Up"];
+            tidDrawLinks(ctx, G.x0, G.y, linkRows.map(r => this.trackY[r]).filter(y => y !== undefined), G.sgn);
             ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.moveTo(G.x1, G.y - 6); ctx.lineTo(G.x1, G.y + 6); ctx.stroke();   // 車止め
             tidDrawTurnoutBox(ctx, G.x0, G.y);
@@ -1221,14 +1225,19 @@ class TidRenderer {
         list.forEach((d, i) => {
             const tids = [];
             for (const tid in map) (map[tid] || []).forEach(e => { if (d.from.indexOf(e.label) >= 0 && tids.indexOf(tid) < 0) tids.push(tid); });
-            const ys = tids.map(t => this.trackY[t]).filter(y => y !== undefined);
+            /* ★分岐線の駅 (京橋など) の番線表は Up_Out/Down_Out で持っているが、線路図の行は Tozai_Up などなので読み替える。
+                 読み替えずに本線の行の高さを使っていたため、京橋の引上線が東海道本線の上に描かれていた (2026-10) */
+            const bl = stationBranchLine(stName);
+            const pre = { tozai: "Tozai", fukuchi: "Fukuchi", kosei: "Kosei", ako: "Ako" }[bl];
+            const rowOf = (t) => pre ? (pre + (/^Up_/.test(t) ? "_Up" : "_Down")) : t;
+            const ys = tids.map(t => this.trackY[rowOf(t)]).filter(y => y !== undefined);
             if (!ys.length) return;
             const lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
-            const y = hi > lo ? (lo + hi) / 2 : lo + (/^Up_/.test(tids[0]) ? 14 : -14);
+            const y = hi - lo > 12 ? (lo + hi) / 2 : lo + (/^Up_/.test(tids[0]) ? 14 : -14);
             const side = d.side === "W" ? "R" : "L";
             const sgn = side === "R" ? 1 : -1;
             const x0 = tidThroatX(cx, side) + sgn * 8 * i;
-            out.push({ x0: x0, x1: x0 + sgn * tidW(BLOCK_WIDTH) * 0.6, y: y, label: d.label });
+            out.push({ x0: x0, x1: x0 + sgn * tidW(BLOCK_WIDTH) * 0.6, y: y, label: d.label, ys: ys, sgn: sgn });
         });
         return out;
     }
@@ -1239,6 +1248,8 @@ class TidRenderer {
                 if (Math.max(G.x0, G.x1) < xMin - 200 || Math.min(G.x0, G.x1) > xMax + 200) continue;
                 const a = Math.min(G.x0, G.x1), b = Math.max(G.x0, G.x1);
                 tidDrawRail(ctx, a, b, G.y);
+                // ★つながる線路へ転てつ器の斜めの線で取り付ける (以前は線路から離れて浮いていた。2026-10)
+                tidDrawLinks(ctx, G.x0, G.y, G.ys, G.sgn);
                 ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
                 ctx.beginPath(); ctx.moveTo(G.x1, G.y - 6); ctx.lineTo(G.x1, G.y + 6); ctx.stroke();   // 車止め
                 tidDrawTurnoutBox(ctx, G.x0, G.y);
@@ -1373,4 +1384,16 @@ class TidRenderer {
         }
         return baseY + (t.lane > 0 ? t.lane * (t.dir === 1 ? 18 : -18) : 0);
     }
+}
+
+/** 引上線・側線の根元 (x0, y) から、つながる線路 (高さ ys) へ斜めに取り付ける。sgn は引上線の伸びる向き (根元は駅の側) */
+function tidDrawLinks(ctx, x0, y, ys, sgn) {
+    (ys || []).forEach(ty => {
+        if (Math.abs(ty - y) < 2) return;
+        const xt = x0 - sgn * Math.min(40, Math.abs(ty - y) * 0.8 + 10);
+        ctx.strokeStyle = TID_COLORS.railEdge; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(xt, ty); ctx.stroke();
+        ctx.strokeStyle = TID_COLORS.rail; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(xt, ty); ctx.stroke();
+    });
 }

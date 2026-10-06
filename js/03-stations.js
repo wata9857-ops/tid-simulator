@@ -95,9 +95,9 @@ Object.assign(STATION_PLATFORM_RULES, {
 });
 
 Object.assign(STATION_PLATFORM_RULES, {
-    "新三田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },"三田": { labels:["2","1"], lanes:[true,true] },"道場": { labels:["3","2","1"], lanes:[true,true,true] },"武田尾": { labels:["2","1"], lanes:[true,true] },
-    "西宮名塩": { labels:["2","1"], lanes:[true,true] },"生瀬": { labels:["2","1"], lanes:[true,true] },"宝塚": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "中山寺": { labels:["2","1"], lanes:[true,true] },
-    "川西池田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "北伊丹": { labels:["2","1"], lanes:[true,true] }, "伊丹": { labels:["2","1"], lanes:[true,true] },
+    "新三田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },"三田": { labels:["2","1"], lanes:[true,true] },"道場": { labels:["2","1"], lanes:[true,true] },"武田尾": { labels:["2","1"], lanes:[true,true] },
+    "西宮名塩": { labels:["2","1"], lanes:[true,true] },"生瀬": { labels:["2","1"], lanes:[true,true] },"宝塚": { labels:["3","2","1"], lanes:[true,true,true] }, "中山寺": { labels:["2","1"], lanes:[true,true] },
+    "川西池田": { labels:["3","2","1"], lanes:[true,true,true] }, "北伊丹": { labels:["2","1"], lanes:[true,true] }, "伊丹": { labels:["2","1"], lanes:[true,true] },
     "猪名寺": { labels:["2","1"], lanes:[true,true] }, "塚口": { labels:["3","2","1"], lanes:[true,true,true] }, "加島": { labels:["2","1"], lanes:[true,true] },
     "御幣島": { labels:["2","1"], lanes:[true,true] }, "海老江": { labels:["2","1"], lanes:[true,true] }, "新福島": { labels:["2","1"], lanes:[true,true] }, "北新地": { labels:["2","1"], lanes:[true,true] }, "大阪天満宮": { labels:["2","1"], lanes:[true,true] }, "大阪城北詰": { labels:["2","1"], lanes:[true,true] },
     /* JR東西線・学研都市線の京橋。1・2番のりばは大阪環状線 (この線路図の範囲外)。
@@ -768,15 +768,17 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
          if (rule.lanes.length > 2) yPositions.push(upOutY - 28);
         }
     } 
-    else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "宝塚", "川西池田", "放出", "住道", "四条畷"].includes(stationName)) {
+    else if (["大津京", "おごと温泉", "堅田", "近江舞子", "安曇川", "近江今津", "永原", "新三田", "放出", "住道", "四条畷"].includes(stationName)) {
         // ★湖西線・福知山線の待避可能駅 (2面4線)
         yPositions = [upOutY - 15, upOutY + 15, downOutY - 15, downOutY + 15];
     }
-    else if (["道場", "塚口"].includes(stationName)) {
-        // ★福知山線の待避可能駅 (2面3線)
+    else if (["塚口", "宝塚", "川西池田"].includes(stationName)) {
+        /* ★福知山線の2面3線 (配線略図 PDF hukuchiyamatakaradukakougashitu.pdf。2026-10)
+             下り本線 (単式) 1番 / 上り本線と、上り本線に両端でつながる中線・着発線 (島式) 2・3番。
+             宝塚・川西池田は以前 2面4線、道場は 2面3線 にしていたが、図では 宝塚・川西池田 は3線、道場 は2線 */
         yPositions = [upOutY - 15, upOutY + 15, downOutY];
     }
-    else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "鴫野", "京橋",
+    else if (["唐崎", "比叡山坂本", "小野", "和邇", "蓬莱", "志賀", "比良", "北小松", "近江高島", "新旭", "近江中庄", "マキノ", "三田", "道場", "武田尾", "西宮名塩", "生瀬", "中山寺", "北伊丹", "伊丹", "猪名寺", "加島", "御幣島", "海老江", "新福島", "北新地", "大阪天満宮", "大阪城北詰", "鴫野", "京橋",
               "鴻池新田", "野崎", "忍ケ丘", "寝屋川公園", "星田", "河内磐船", "津田", "藤阪", "長尾",
               "松井山手", "大住", "JR三山木", "祝園"].includes(stationName)) {
         // ★湖西線・福知山線・東西線の待避なし駅 (2面2線)
@@ -1853,7 +1855,7 @@ const STATION_REVERSE_BY_DRAWUP = {
 const STATION_NO_REVERSE_NOTE = {
     "長岡京":     "下り外↔下り内 と 上り内↔上り外 の片渡りだけ。上下はつながらない (画像694)",
     "西宮":       "外側線の待避線への転てつ器だけ。上下をつなぐ渡り線が無い (画像698)",
-    "川西池田":   "相対式2面2線。渡り線が無い (画像709)",
+    "川西池田":   "2面3線 (上り側に着発線)。上下をつなぐのは北伊丹方の片渡りだけで、着いた向きでは折り返せない (配線略図 PDF)",
     "おごと温泉": "相対式2面2線。渡り線も待避線も無い (画像703)",
     "向日町":     "島式2面4線。同じ向きどうしの渡り線だけ。折り返しは向日町操へ入る (画像694)",
     "茨木":       "島式2面4線＋上下の待避線。上下をつなぐ渡り線が無い (画像695)",
