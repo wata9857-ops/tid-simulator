@@ -1205,6 +1205,48 @@ class TidRenderer {
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText(SIDINGS[st].name, (a + b) / 2, G.y - 10);
         }
+        this.drawDrawUps(ctx, xMin, xMax);
+    }
+
+    /* ------------------------------------------------------------ 進路の表の引上線 (js/03-stations.js の STATION_ROUTES の drawUp)
+       ★以前は折り返しの判定にだけ使い、線路図には描いていなかった (吹田・大阪・京都・尼崎の引上線が見えなかった)。
+         のど の外に、つながる番線の線路のあいだ (1本の線路だけならその外側) へ行き止まりの線として描く。
+         side … "E" = 画面左 (京都・米原方) / "W" = 画面右 (神戸・網干方) */
+    drawUpGeoms(stName) {
+        const out = [];
+        const list = (typeof stationDrawUpTracks === "function") ? stationDrawUpTracks(stName) : [];
+        if (!list.length || STATION_MAP[stName] === undefined) return out;
+        const map = stationLaneMap(stName);
+        const cx = tidStationX(STATION_MAP[stName]);
+        list.forEach((d, i) => {
+            const tids = [];
+            for (const tid in map) (map[tid] || []).forEach(e => { if (d.from.indexOf(e.label) >= 0 && tids.indexOf(tid) < 0) tids.push(tid); });
+            const ys = tids.map(t => this.trackY[t]).filter(y => y !== undefined);
+            if (!ys.length) return;
+            const lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+            const y = hi > lo ? (lo + hi) / 2 : lo + (/^Up_/.test(tids[0]) ? 14 : -14);
+            const side = d.side === "W" ? "R" : "L";
+            const sgn = side === "R" ? 1 : -1;
+            const x0 = tidThroatX(cx, side) + sgn * 8 * i;
+            out.push({ x0: x0, x1: x0 + sgn * tidW(BLOCK_WIDTH) * 0.6, y: y, label: d.label });
+        });
+        return out;
+    }
+
+    drawDrawUps(ctx, xMin, xMax) {
+        for (const st in STATION_ROUTES) {
+            for (const G of this.drawUpGeoms(st)) {
+                if (Math.max(G.x0, G.x1) < xMin - 200 || Math.min(G.x0, G.x1) > xMax + 200) continue;
+                const a = Math.min(G.x0, G.x1), b = Math.max(G.x0, G.x1);
+                tidDrawRail(ctx, a, b, G.y);
+                ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(G.x1, G.y - 6); ctx.lineTo(G.x1, G.y + 6); ctx.stroke();   // 車止め
+                tidDrawTurnoutBox(ctx, G.x0, G.y);
+                ctx.font = "bold 9px 'Meiryo UI', sans-serif"; ctx.fillStyle = "#1B2440";
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText(G.label, (a + b) / 2, G.y - 10);
+            }
+        }
     }
 
     /** 引上線に居る列車の描く位置 */
