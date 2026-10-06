@@ -1583,3 +1583,56 @@ function localUseLane(stName, trackId, lane) {
         return lane;
     };
 })();
+
+/**
+ * ★列車の行く先を、線区・線路の境目を越えてたどる (編成検索の到着・発車の見込み。利用者の指摘 2026-10)。
+ * trainStationsAhead はいまの線路だけを見るので、宝塚線から東西線へ入る木津行きは尼崎まで、
+ * 外側線を走る列車は外側線の駅までしか出なかった。ここでは列車の動き (move / checkLogicUpdates) と同じ決まりで
+ *   尼崎 … amaOutTrack (宝塚線・東西線・本線の振り分け) / 山科・近江塩津 … 湖西線の分岐・合流 /
+ *   線路の端 (複々線の端・分岐線の端) … 同じ向きの続いている線路 (内側線⇔外側線・本線)
+ * へ乗り移りながら進む。戻り値 [{ name, blocks, trackId }] (blocks はいまの位置からの閉塞の数)。
+ */
+function trainRouteAhead(game, t, maxN) {
+    const out = [];
+    if (!t || !t.dir) return out;
+    const B = game.trackMgr.blocks;
+    let tid = t.turnbackTrack || t.trackId, i = t.currBlockIndex, steps = 0;
+    const dir = t.dir;
+    const ok = (id, k) => { const b = B[id] && B[id][k]; return !!(b && b.x !== -1000); };
+    for (let guard = 0; guard < 2000 && out.length < (maxN || 30); guard++) {
+        const b = B[tid] && B[tid][i];
+        if (!b || b.x === -1000) break;
+        if (isRealStationBlock(b)) {
+            const n = blockStationName(b);
+            if (n && (!out.length || out[out.length - 1].name !== n)) out.push({ name: n, blocks: steps, trackId: tid });
+            if (n === t.dest) break;
+            // 分岐・合流
+            if (n === "尼崎" && typeof amaOutTrack === "function") {
+                const o = amaOutTrack({ dir: dir, trackId: tid, dest: t.dest, type: t.type });
+                if (o && o !== tid && ok(o, i)) tid = o;
+            }
+            if (n === "山科") {
+                if (dir === -1 && tid === "Kosei_Down") tid = (t.type === "新快速" || t.type === "特急") ? "Down_Out" : "Down_In";
+                else if (dir === 1 && t.isKoseiRoute && tid.indexOf("Kosei") < 0 && ok("Kosei_Up", i)) tid = "Kosei_Up";
+            }
+            if (n === "近江塩津") {
+                if (dir === 1 && tid === "Kosei_Up") tid = "Up_Out";
+                else if (dir === -1 && t.isKoseiRoute && tid.indexOf("Kosei") < 0 && ok("Kosei_Down", i)) tid = "Kosei_Down";
+            }
+        }
+        let nx = i + dir;
+        if (!ok(tid, nx)) {
+            // 線路の端: 同じ向きの続いている線路へ
+            const cands = [];
+            if (/_In$/.test(tid)) cands.push(tid.replace("_In", "_Out"));
+            if (/_Out$/.test(tid)) cands.push(tid.replace("_Out", "_In"));
+            if (/Hoppo/.test(tid)) cands.push(dir === 1 ? "Up_Out" : "Down_Out");
+            if (/^(Kosei|Fukuchi|Tozai)_/.test(tid)) cands.push(dir === 1 ? "Up_In" : "Down_In", dir === 1 ? "Up_Out" : "Down_Out");
+            const c = cands.find(id => ok(id, nx));
+            if (!c) break;
+            tid = c;
+        }
+        i = nx; steps++;
+    }
+    return out;
+}

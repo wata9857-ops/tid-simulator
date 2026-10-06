@@ -309,19 +309,30 @@ function trainIsTanbaji(t) {
     if (/^Tozai/.test(t.trackId || "")) return false;
     return ends.some(n => _TN_SETS.fukuchi.has(n) && n !== "尼崎") || /^Fukuchi/.test(t.trackId || "");
 }
-/** 画面に出す種別。快速は次の5つのどれかだけを使う (利用者の指摘 2026-10。区間を書き足さない)
-     区間快速 / 快速 / 丹波路快速 / 快速（京都～高槻間快速） / 快速（高槻より先） */
+/** 画面に出す種別。快速は次のどれかだけを使う (利用者の指摘 2026-10。区間を書き足さない)
+     区間快速 / 快速 / 丹波路快速 / 快速（京都まで普通） / 快速（高槻まで普通） / 快速（京都から普通） / 快速（高槻から普通） */
 function trainServiceName(t) {
     if (!t) return "";
     if (t.type !== "快速") return t.type || "";
     if (trainIsSectionRapid(t)) return "区間快速";
     if (trainIsTanbaji(t)) return "丹波路快速";
-    // 朝の京都発の快速 (京都〜高槻で長岡京だけに停まる。js/24-service-rules.js の kyotoEarlyRapid)
-    if (t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo) return "快速（京都～高槻間快速）";
-    // 高槻より京都方 (高槻〜京都・琵琶湖線) まで走る快速。高槻から先は各駅に停まる
-    const mi = [t.startName, t.dest].map(n => _tnMainIdx(n)).filter(i => i !== undefined);
-    if (mi.some(i => i > STATION_MAP["高槻"])) return "快速（高槻より先）";
-    return "快速";
+    /* ★京都〜高槻を通る快速だけ、向きと停車駅で4つに分ける (利用者の指摘 2026-10)。通らない快速は「快速」。
+         下り (大阪方面): 京都まで普通 = 京都から快速 (朝の京都発。長岡京だけに停まる) / 高槻まで普通 = 京都〜高槻は各駅
+         上り (京都方面): 京都から普通 = 京都まで快速 / 高槻から普通 = 高槻から先は各駅 */
+    const pos = (n) => {
+        const i = _tnMainIdx(n);
+        if (i !== undefined) return i;
+        if (_TN_SETS.kosei.has(n)) return STATION_MAP["山科"];
+        if (_TN_SETS.tozai.has(n) || _TN_SETS.fukuchi.has(n)) return STATION_MAP["尼崎"];
+        if (_TN_SETS.ako.has(n)) return STATION_MAP["相生"];
+        return undefined;
+    };
+    const mi = [t.startName, t.dest].map(pos).filter(i => i !== undefined);
+    const covers = mi.length === 2 && Math.min(mi[0], mi[1]) <= STATION_MAP["高槻"] && Math.max(mi[0], mi[1]) >= STATION_MAP["京都"];
+    if (!covers) return "快速";
+    const early = !!(t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo);
+    if (t.dir === -1) return early ? "快速（京都まで普通）" : "快速（高槻まで普通）";
+    return t.upRapidToKyoto ? "快速（京都から普通）" : "快速（高槻から普通）";
 }
 /** 表・札・発車標に出す種別 (詳しい種別と同じ5つ) */
 function trainServiceShort(t) {

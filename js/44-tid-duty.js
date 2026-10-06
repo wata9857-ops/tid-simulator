@@ -199,18 +199,20 @@ class TidDuty {
         let ahead = "";
         if (t && t.state !== "in_depot") {
             const last = evs.length ? evs[evs.length - 1].st : null;
-            const list = trainStationsAhead(game, t, 30).filter(n => n !== last);
+            /* ★線区・線路の境目を越えて、列車が実際に走る道筋でたどる (js/13-train-hold.js の trainRouteAhead。2026-10) */
+            const list = trainRouteAhead(game, t, 40).filter(r => r.name !== last);
             const per = (typeof BLOCK_RUN_SEC !== "undefined" && BLOCK_RUN_SEC[t.type]) || 48;
-            let sec = Math.max(0, t.timer || 0), prevIdx = t.currBlockIndex;
-            const blks = game.trackMgr.blocks[t.trackId] || [];
-            ahead = list.map(n => {
-                const b = blks.find(x => x.x !== -1000 && isRealStationBlock(x) && blockStationName(x) === n);
-                if (b) { sec += Math.abs(b.index - prevIdx) * per; prevIdx = b.index; }
+            let sec = Math.max(0, t.timer || 0), prevBlocks = 0, stopsSoFar = 0;
+            ahead = list.map(r => {
+                const n = r.name;
+                sec += (r.blocks - prevBlocks) * per; prevBlocks = r.blocks;
                 let stops = false;
                 try {
                     const stObj = (STATION_MAP[n] !== undefined && STATIONS[STATION_MAP[n]] && STATIONS[STATION_MAP[n]].name === n)
                         ? STATIONS[STATION_MAP[n]] : { name: n };
-                    stops = n === t.dest || t.shouldStop(stObj);
+                    // その駅を走る線路で停車を判定する (宝塚線・東西線・湖西線で停車駅が違う)
+                    const v = Object.create(t); v.trackId = r.trackId;
+                    stops = n === t.dest || t.shouldStop.call(v, stObj);
                 } catch (x) { stops = false; }
                 const at = now + sec;
                 if (stops) sec += 40;
