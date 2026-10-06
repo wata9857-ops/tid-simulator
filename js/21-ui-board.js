@@ -232,7 +232,7 @@ UIManager.prototype.showDepartureBoard = function (stName) {
 
                     // 全種別に白枠（border: 2px solid #fff;）を追加
                     if (typeName === "丹波路快速") {
-                        typeStyle = "background:#FFF27A; color:#000; border:2px solid #fff;";
+                        typeStyle = "background:#FFD600; color:#000; border:2px solid #fff;";
                     } else if (t.type === "快速") {
                         typeStyle = "background:#F37021; color:#000; border:2px solid #fff;";
                     } else if (t.type === "新快速") {
