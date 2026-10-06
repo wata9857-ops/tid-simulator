@@ -53,10 +53,14 @@ const DEPOT_DUTIES = [
              丹波路快速は宮原へ引き上げる。そのぶんを宮原から出し直さないと、
              昼間のJR宝塚線の本数が 9本/時 → 3.7本/時 まで落ちる。
              実際の運用も、丹波路快速の編成は宮原で方向を変えて折り返す。 */
-        { h: [5.0, 9.0],  every: 2400, dir: -1, via: "尼崎", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 },
-        { h: [9.0, 16.0], every: 1800, dir: -1, via: "尼崎", as: "快速", dest: ["新三田", "篠山口"], ratio: 1.0 },
-        { h: [9.0, 16.0], every: 2400, dir: -1, via: "尼崎", as: "普通", dest: ["新三田"], ratio: 0.8 },
-        { h: [16.0, 21.5], every: 2400, dir: -1, via: "尼崎", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 }
+        /* ★宮原を出た編成は大阪を通って尼崎へ向かうので、丹波路快速・快速は大阪始発にする (利用者の指摘 3. 2026-10)。
+             以前はすべて尼崎始発で、大阪〜尼崎を回送で走っていた。実物も JR宝塚線の快速・丹波路快速は大阪始発。
+             普通は尼崎始発 (JR宝塚線の普通は尼崎で折り返すか JR東西線から来る) を残し、半分を大阪始発にする。 */
+        { h: [5.0, 9.0],  every: 2400, dir: -1, via: "大阪", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 },
+        { h: [9.0, 16.0], every: 1800, dir: -1, via: "大阪", as: "快速", dest: ["新三田", "篠山口"], ratio: 1.0 },
+        { h: [9.0, 16.0], every: 4800, dir: -1, via: "尼崎", as: "普通", dest: ["新三田"], ratio: 0.8 },
+        { h: [9.0, 16.0], every: 4800, dir: -1, via: "大阪", as: "普通", dest: ["新三田", "宝塚"], ratio: 0.8 },
+        { h: [16.0, 21.5], every: 2400, dir: -1, via: "大阪", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 }
     ]},
     /* --- 京都駅 留置線・引上線 (配線略図 スクリーンショット(693).png)
            京都始発のJR京都線 下り (大阪・西明石方面) と、
@@ -661,6 +665,16 @@ class OperationsManager {
         const depot = DEPOTS[fromName];
         if (!depot || !depotHasRoom(fromName)) return false;
         if (this.game.fleet.poolAt(fromName).length < 2) return false;
+
+        /* ★宮原から尼崎始発の下り (JR神戸線・JR宝塚線へ向かう列車) を送り込むときは、
+             送り込みの回送が通る大阪から営業列車にする (利用者の指摘 3. 2026-10)。
+             大阪〜尼崎を空で走らせる理由が無い。JR東西線へ入る列車 (上り) は大阪を通らないので尼崎始発のまま。 */
+        if (config.startName === "尼崎" && fromName === "宮原操" && config.dir === -1 &&
+            !/^Tozai/.test(config.trackId || "") && !globalThis.__NO_OSAKA_ORIGIN) {
+            config.startName = "大阪";
+            config.name = null;
+            if (/^Fukuchi/.test(config.trackId || "")) config.trackId = "Down_Out";
+        }
 
         const dir = this.dirFromTo(fromName, config.startName);
         if (!dir) return false;                            // 方向転換なしには送り込めない
@@ -1518,7 +1532,14 @@ const STATION_STABLING = {
     "長浜":     { max: 2, dir: -1, leave: [5.05, 5.4], as: "普通", dest: ["京都", "西明石", "姫路"], line: "main" },
     "堅田":     { max: 2, dir: -1, leave: [5.0, 5.35], as: "普通", dest: ["京都"],                   line: "Kosei" },
     "近江舞子": { max: 1, dir: -1, leave: [5.2],       as: "普通", dest: ["京都"],                   line: "Kosei" },
-    "宝塚":     { max: 2, dir: 1,  leave: [4.95, 5.3], as: "普通", dest: ["大阪", "尼崎", "京橋"],   line: "Fukuchi" }
+    "宝塚":     { max: 2, dir: 1,  leave: [4.95, 5.3], as: "普通", dest: ["大阪", "尼崎", "京橋"],   line: "Fukuchi" },
+    /* ★大きな駅にも駅泊を広げた (利用者の指摘 6. 2026-10)。大阪は留置線が無く、実物も終電のあと
+         何本かがホームで夜を明かし、朝の JR神戸線の始発になる。草津は複々線の東の端で、朝の始発を駅泊の編成で出す。
+         (京橋は上下1線ずつなので、駅泊すると放出からの朝の列車が通れなくなる。入れない)
+         どの駅も stablingSafe で最後の列車の番線を残し、翌朝の向きの番線にだけ置く。
+         大阪は終電まで下りの本数が多いので、下りの番線を3本以上空けておけるときだけ置く (minFree)。 */
+    "大阪":     { max: 2, dir: -1, leave: [4.9, 5.2], as: "普通", dest: ["西明石", "須磨", "姫路"], line: "main", minFree: 3 },
+    "草津":     { max: 2, dir: -1, leave: [4.95, 5.25], as: "普通", dest: ["京都", "高槻", "西明石"], line: "main" }
 };
 
 /** 線区の線路か (駅泊の設定の line) */
@@ -1578,7 +1599,7 @@ OperationsManager.prototype.stablingSafe = function (t, stName, cfg, morningTrac
     if (!pending) return true;
     const mine = mb.lanes.indexOf(t) >= 0 ? 1 : 0;
     const free = mb.lanes.filter(x => !x).length;
-    return free - (1 - mine) >= 1;
+    return free - (1 - mine) >= (cfg.minFree || 1);
 };
 
 /** その駅で朝まで留置している列車 */

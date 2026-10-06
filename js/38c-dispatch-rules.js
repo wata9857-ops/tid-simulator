@@ -437,3 +437,135 @@ function gakkenDaytimeCut(game, type, dir, trackId, dest, nextAction) {
         }
     };
 })();
+
+/* ------------------------------------------------------------------ ⑦ 単線の入口駅の詰まり (2026-10 利用者の指摘 1. 松井山手)
+
+   ■ 起きたこと
+     遅れのある中、松井山手の ① に同志社前行きの快速、② (下りの線) に松井山手止まりの普通がいて、
+     木津方の単線 (松井山手〜大住) には西明石方へ向かう列車が入っていた。普通は遅れが大きいため折り返さず
+     (preferTurnback)、「前方でいちばん近い車両所」= 祝園へ入区を兼ねた普通に変わった。
+     ② は単線から来る列車の入る唯一の番線なので、3本とも動けなくなった。
+   ■ どうするか
+     a. 入区先を選ぶとき、前方の車両所が単線区間の先にあり、その場で折り返して後方の車両所へ行けるなら後方を選ぶ
+     b. 終着列車が反対側の番線へ入る (terminalCrossArrival) のは、単線区間からその番線へ向かってくる列車が
+        いないときだけ。いれば手前 (複線) で自分の側の番線が空くのを待つ
+     c. それでも詰まったら (単線の中の列車が入る番線を、単線へ入ろうとする列車がふさいでいる)、
+        ふさいでいる列車をその場で折り返させ、後方の車両所へ向かわせる (指令の運転整理) */
+DISPATCH_RULE_STATS.singleJam = 0;
+
+/** 駅 here から行先 dest へ線路 trackId を進むと単線区間を通るか */
+function pathCrossesSingleTrack(trackId, hereName, destName) {
+    const a = STATION_MAP[hereName], b = STATION_MAP[destName];
+    if (a === undefined || b === undefined || a === b) return false;
+    const lo = Math.min(a, b) * UNITS_PER_STATION, hi = Math.max(a, b) * UNITS_PER_STATION;
+    for (let i = lo + 1; i < hi; i++) if (singleUnitAt(trackId, i)) return true;
+    return false;
+}
+
+/** 単線区間から駅 (ブロック stIdx) の線路 oppId へ、向き oppDir で向かってくる列車 (区間の中に入っている列車だけ)。
+    区間の先の交換駅で待っている列車は、この駅の番線が空いていなければ区間へ入らない (singleTrackBlocked) ので数えない。
+    数えると、終着の普通が自分の側の番線で折り返すことになり、後ろの快速を長く待たせた */
+function singleTrackOpposerComing(g, stIdx, oppId, oppDir, self) {
+    if (!singleUnitAt(oppId, stIdx - oppDir)) return null;
+    const bs = g.trackMgr.blocks[oppId];
+    if (!bs) return null;
+    for (let k = 1; k <= UNITS_PER_STATION; k++) {
+        const b = bs[stIdx - oppDir * k];
+        if (!b || b.x === -1000 || !singleUnitAt(oppId, b.index)) break;
+        for (const x of b.lanes) {
+            if (!x || x === self || x.dir !== oppDir || x.state === "finished" || x.state === "in_depot") continue;
+            const di = STATION_MAP[x.dest];
+            if (di !== undefined && (di * UNITS_PER_STATION - stIdx) * oppDir < 0) continue;   // 手前で止まる
+            return x;
+        }
+    }
+    return null;
+}
+
+(function () {
+    // a. 入区先: 単線の先の車両所より、折り返して後方の車両所へ
+    const baseNear = OperationsManager.prototype.nearestDepotAhead;
+    OperationsManager.prototype.nearestDepotAhead = function (train, hereName) {
+        const r = baseNear.call(this, train, hereName);
+        if (!r || !r.ahead || globalThis.__NO_SINGLE_GUARD || !train || !train.trackId) return r;
+        if (!pathCrossesSingleTrack(train.trackId, hereName, r.name)) return r;
+        if (!canReverseAtDir(hereName, train.dir)) return r;
+        const back = baseNear.call(this, Object.assign(Object.create(train), { dir: -train.dir }), hereName);
+        if (!back || !back.ahead || pathCrossesSingleTrack(train.trackId, hereName, back.name)) return r;
+        return Object.assign({}, back, { dist: -back.dist, ahead: false });
+    };
+
+    // b. 反対側の番線への到着は、単線から向かってくる列車の番線を取らないときだけ
+    const baseCross = Train.prototype.terminalCrossArrival;
+    Train.prototype.terminalCrossArrival = function (nextBlock) {
+        const r = baseCross.call(this, nextBlock);
+        if (!r || globalThis.__NO_SINGLE_GUARD) return r;
+        if (singleTrackOpposerComing(this.game, nextBlock.index, r.trackId, -this.dir, this)) return null;
+        return r;
+    };
+
+    // c. 詰まりをほどく
+    const baseUpd = OperationsManager.prototype.update;
+    OperationsManager.prototype.update = function (ct) {
+        baseUpd.call(this, ct);
+        if (globalThis.__NO_SINGLE_GUARD || ct < (this.singleJamNext || 0)) return;
+        this.singleJamNext = ct + 15;
+        const g = this.game, tm = g.trackMgr;
+        for (const o of g.trains) {
+            if (o.state === "finished" || o.state === "in_depot" || o.state === "running" || !o.dir) continue;
+            if (!(o.stuckTime >= 90) || !singleUnitAt(o.trackId, o.currBlockIndex)) continue;
+            // o が次に入る駅 (単線の先の交換駅)
+            const bs = tm.blocks[o.trackId];
+            let sb = null;
+            for (let k = 1; k <= UNITS_PER_STATION; k++) {
+                const b = bs && bs[o.currBlockIndex + o.dir * k];
+                if (!b || b.x === -1000) break;
+                if (isRealStationBlock(b)) { sb = b; break; }
+            }
+            if (!sb || singleUnitAt(o.trackId, sb.index) || o.findFreeLane(sb) !== -1) continue;
+            const stName = blockStationName(sb);
+            // o の番線をふさいでいて、単線へ入ろうとしている (o と向かい合う) 列車
+            const xs = sb.lanes.filter(x => x && x !== o && x.dir === -o.dir && x.state !== "running" &&
+                x.state !== "turning_back" && !x.overnightStable && !x.workPermit && x.type !== "貨物" &&
+                x.vehicles && x.vehicles.length);
+            if (!xs.length) continue;
+            xs.sort((a, b) => a.getPriority() - b.getPriority());
+            for (const x of xs) {
+                if (!canReverseAtDir(stName, x.dir)) continue;
+                const oldNo = x.trainNo, oldDest = x.dest;
+                if (!this.moveToOppositeTrack(x, stName, -x.dir)) continue;
+                x.turnbackTrack = null;
+                const back = this.nearestDepotAhead(x, stName);
+                const target = back && back.ahead ? back.name : null;
+                const rev = { type: "回送", dir: x.dir, startName: stName, dest: target, vehicles: x.vehicles };
+                const asRev = !!target && this.asRevenue(rev);
+                g.spawner.activeTrainNos.delete(x.trainNo);
+                if (target) {
+                    x.type = asRev ? "普通" : "回送";
+                    x.trainNo = asRev ? rev.name : this.deadheadNo("M", x.dir);
+                    x.dest = target;
+                    x.nextAction = "depot";
+                } else {
+                    x.trainNo = this.deadheadNo("M", x.dir);
+                    x.type = "回送";
+                    x.dest = stName;
+                    x.nextAction = "turnback";
+                }
+                x.dutyName = x.trainNo;
+                g.spawner.activeTrainNos.add(x.trainNo);
+                x.isFinalStop = false;
+                x.startName = stName;
+                x.state = "waiting_start";
+                x.timer = 30;
+                x.stuckTime = 0;
+                x.hasStoppedAtCurrent = false;
+                x.hasDeparted = false;
+                DISPATCH_RULE_STATS.singleJam++;
+                g.ui.updateBanner(`【運転整理】${stName}駅で単線区間から来る ${o.trainNo} の入る番線を ${oldNo} (${oldDest}行き) がふさいでいるため、` +
+                    `${oldNo} は${stName}止まりとし、折り返して ${x.trainNo}(${x.type}) ${x.dest}行きとします。`, "banner-orange");
+                if (g.records && g.records.noteDisposition) g.records.noteDisposition(x, stName, "単線区間の行き違い", `${stName}で折り返し`);
+                break;
+            }
+        }
+    };
+})();

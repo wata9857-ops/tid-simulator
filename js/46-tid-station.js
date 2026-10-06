@@ -220,6 +220,7 @@ TidUI.prototype.renderStation = function () {
         const c = TID_TYPE_COLORS[x.type] || {};
         return `<span class="tid-mini" style="background:${c.bg};color:${c.text}">${(x.train && typeof isEventSpecialTrain === "function" && isEventSpecialTrain(x.train)) ? "臨" : ""}${esc(x.trainNo || "—")}</span>`;
     };
+    const tl = (x) => trainTypeLabel(x.train || x);
     const MAX_ROWS = 4;
     const row = (x, kind) => {
         const when = x.here ? (x.stops ? "在線" : "通過中") : tidClock(x.at) + "頃";
@@ -234,7 +235,7 @@ TidUI.prototype.renderStation = function () {
         return `<tr class="${kind === "pass" ? "is-pass" : ""}${x.here ? " is-here" : ""}">` +
             `<td class="tid-pl-time">${esc(when)}</td>` +
             `<td>${chip(x)}</td>` +
-            `<td>${esc(x.type)}</td>` +
+            `<td>${esc(tl(x))}</td>` +
             `<td>${esc(x.dest || "")}</td>` +
             `<td>${badge}</td>` +
             `<td class="tid-pl-note">${esc(notes.join(" "))}` +
@@ -267,7 +268,7 @@ TidUI.prototype.renderStation = function () {
         }
         const occ = p.occupant;
         const occText = occ
-            ? `${chip(occ)} ${esc(occ.type)} ${esc(occ.dest || "")}` +
+            ? `${chip(occ)} ${esc(tl(occ))} ${esc(occ.dest || "")}` +
               ` <small>(${esc((ftHere && freightTerminalStage(occ, this.game.currentTime)) ||
                               { stopped: "停車中", holding: "抑止・信号待ち", waiting_start: "発車待ち",
                                  turning_back: "折り返し", running: "発車" }[occ.state] || occ.state)})</small>`
@@ -294,7 +295,7 @@ TidUI.prototype.renderStation = function () {
         sidings.forEach((occ, i) => {
             html += `<div class="tid-plat${occ ? " is-busy" : ""}"><div class="tid-plat-h"><b class="tid-plat-no">引上${sidings.length > 1 ? i + 1 : ""}</b>` +
                 `<span class="tid-plat-line">引上線 (ホームなし)</span><span class="tid-plat-occ">` +
-                (occ ? `${chip(occ)} ${esc(occ.type)} ${esc(occ.dest || "")} <small>(折り返し待ち・発車の約${Math.ceil(SIDING_RETURN_SEC / 60)}分前にホームへ)</small>`
+                (occ ? `${chip(occ)} ${esc(tl(occ))} ${esc(occ.dest || "")} <small>(折り返し待ち・発車の約${Math.ceil(SIDING_RETURN_SEC / 60)}分前にホームへ)</small>`
                      : '<span class="tid-free">空き</span>') + `</span></div></div>`;
         });
     }
@@ -315,7 +316,7 @@ TidUI.prototype.renderStation = function () {
         html += `<div class="tid-station-sub">留置場からの出区予定</div><table class="tid-pl-t"><tbody>` +
             plan.depotOut.slice(0, 6).map(x =>
                 `<tr><td class="tid-pl-time">${esc(tidClock(plan.at + x.inSec))}頃</td>` +
-                `<td>${chip(x)}</td><td>${esc(x.type)}</td><td>${esc(x.dest || "")}</td>` +
+                `<td>${chip(x)}</td><td>${esc(tl(x))}</td><td>${esc(x.dest || "")}</td>` +
                 `<td colspan="2"><small>${esc(x.vehicles.join("+"))}</small></td></tr>`).join("") +
             `</tbody></table>`;
     }

@@ -673,7 +673,7 @@ class TidUI {
                 t.minorTrouble ? "【障害】" :
                 t.state === "in_depot" ? "【留置】" : "";
             const veh = (t.vehicles && t.vehicles.length) ? " " + t.vehicles.map(v => v.id).join("+") : "";
-            return `<option value="${t.id}">${mark}${escapeLogHtml(t.trainNo || "(待機)")} ${escapeLogHtml(t.type)} ${escapeLogHtml(t.dest || "")}${escapeLogHtml(veh)}</option>`;
+            return `<option value="${t.id}">${mark}${escapeLogHtml(t.trainNo || "(待機)")} ${escapeLogHtml(trainTypeLabel(t))}${escapeLogHtml(t.dest || "")}${escapeLogHtml(veh)}</option>`;
         }).join("");
 
         /* ★選んでいた列車が一覧から消えた (運用を終えた) 場合。

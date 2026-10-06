@@ -358,7 +358,14 @@ function eventSpecialName(t) {
 
 /** 画面に出す種別 (臨時列車は「臨時普通」のように頭に付ける) */
 function eventSpecialTypeLabel(t) {
-    return isEventSpecialTrain(t) ? "臨時" + (t.type || "") : (t ? t.type : "");
+    const ty = trainTypeLabel(t);
+    return isEventSpecialTrain(t) ? "臨時" + ty : ty;
+}
+
+/** 画面に出す種別 (区間快速・丹波路快速を見分ける。js/38d-train-numbers.js の trainServiceShort) */
+function trainTypeLabel(t) {
+    if (!t) return "";
+    return (typeof trainServiceShort === "function" && t.game) ? trainServiceShort(t) : (t.type || "");
 }
 
 /** 重み付きで1つ選ぶ */

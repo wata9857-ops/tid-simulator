@@ -228,12 +228,11 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                     let timeStr = `${h}:${m.toString().padStart(2, '0')}`;
 
                     let typeStyle = "";
-                    let typeName = t.type;
-                    
+                    let typeName = trainTypeLabel(t);
+
                     // 全種別に白枠（border: 2px solid #fff;）を追加
-                    if (t.type === "快速" || t.trainNo.includes("丹波路快速")) {
+                    if (t.type === "快速") {
                         typeStyle = "background:#F37021; color:#000; border:2px solid #fff;";
-                        if (t.trainNo.includes("丹波路快速")) typeName = "丹波路快速";
                     } else if (t.type === "新快速") {
                         typeStyle = "background:#0044ff; color:#fff; border:2px solid #fff;";
                     } else if (t.type === "特急") {

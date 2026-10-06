@@ -244,6 +244,9 @@ function serviceTrackSide(train, stIdx, hour) {
     if (type === "普通") return "in";
 
     if (type === "快速") {
+        /* ★朝 5:30〜8:00 に京都を出る下りの快速は、京都〜高槻を外側線で走り、次は高槻に停まる
+             (利用者の指摘 4. 2026-10)。高槻から先はふだんの快速と同じ。 */
+        if (kyotoEarlyRapid(train, stIdx, hour) && stIdx > STATION_MAP["高槻"]) return "out";
         /* 快速は
              平日朝の 高槻 → 大阪 … 外側線
              それ以外・土休日      … 内側線
@@ -260,6 +263,21 @@ function serviceTrackSide(train, stIdx, hour) {
         return (stIdx <= hi && stIdx >= lo) ? "out" : "in";
     }
     return "in";
+}
+
+/* 朝の京都始発・京都発の快速 (京都〜高槻は外側線・ノンストップ)。京都を 5:30〜8:00 に出る下りの快速 */
+const KYOTO_EARLY_RAPID = { fromH: 5.5, toH: 8.0 };
+/** 朝の京都発の快速か。京都 (の手前) でいるべき線路を決めるときに1回だけ決め、列車番号ごとに覚える */
+function kyotoEarlyRapid(train, stIdx, hour) {
+    if (!train || train.type !== "快速" || train.dir !== -1 || globalThis.__NO_KYOTO_EARLY) return false;
+    if (/Kosei|Fukuchi|Tozai|Hoppo/.test(train.trackId || "")) return false;
+    if (train.kyotoEarlyNo === train.trainNo) return true;
+    if (stIdx !== STATION_MAP["京都"] || train.kyotoEarlyChecked === train.trainNo) return false;
+    train.kyotoEarlyChecked = train.trainNo;
+    if (hour === undefined) hour = (train.game.currentTime / 3600) % 24;
+    if (hour < KYOTO_EARLY_RAPID.fromH || hour >= KYOTO_EARLY_RAPID.toH) return false;
+    train.kyotoEarlyNo = train.trainNo;
+    return true;
 }
 
 /** その列車が、その駅でいるべき線路ID (内側線が無ければ外側線) */

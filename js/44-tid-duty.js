@@ -229,7 +229,7 @@ class TidDuty {
             ? (eventSpecialName(t) || "催し") : (L && L.special) || "";
         e.innerHTML = back +
             '<div class="tid-duty-head"><span class="tid-mini" style="background:' + (col.bg || "#666") + ";color:" + (col.text || "#fff") + '">' +
-            esc(no) + "</span><span>" + esc((special ? "臨時" : "") + (t || L).type) + "</span><span>" + route + "</span></div>" +
+            esc(no) + "</span><span>" + esc((special ? "臨時" : "") + (t ? trainTypeLabel(t) : L.type)) + "</span><span>" + route + "</span></div>" +
             (special ? kv("列車の種類", esc("臨時 (" + special + ") … 催しの臨時列車 (臨時列車番号 " + no + ")")) : "") +
             kv("現在", status) +
             kv("遅れ", delayMin ? delayMin + "分" : "定時") +
@@ -275,7 +275,7 @@ class TidDuty {
                   ((TID_TYPE_COLORS[t.type] || {}).bg) + ";color:" +
                   ((TID_TYPE_COLORS[t.type] || {}).text) + '">' +
                   escapeLogHtml(t.trainNo) + "</span> " +
-                  escapeLogHtml(t.type + " " + (t.dest || "")) +
+                  escapeLogHtml(trainTypeLabel(t) + " " + (t.dest || "")) +
                   " / " + escapeLogHtml(where);
         } else if (depot) {
             now = "留置中（" + escapeLogHtml(depot) + "）運用に入っていません";

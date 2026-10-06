@@ -309,6 +309,8 @@ function trainServiceName(t) {
     const ends = [t.startName, t.dest];
     if (ends.some(n => ["篠山口", "福知山"].indexOf(n) >= 0) && ends.some(n => n === "大阪" || _tnMainIdx(n) > STATION_MAP["尼崎"])) return "丹波路快速";
     const sec = rapidSectionText(t);
+    // 朝の京都発の快速は京都〜高槻を外側線でノンストップ (js/24-service-rules.js の kyotoEarlyRapid)
+    if (t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo) return "快速 (京都〜高槻間 ノンストップ" + (sec ? "・" + sec + "間 快速" : "") + ")";
     return sec ? "快速 (" + sec + "間 快速)" : "快速";
 }
 /** 短い種別 (表・札) */

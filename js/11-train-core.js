@@ -912,7 +912,12 @@ class Train {
                      内側線に居る状態を放置すると線路図と食い違うので、
                      次の駅まで待たずにその場で試す (元の動きと同じ)。 */
                 const mustMove = (serviceTrackSide(this, blk.stationIdx, timeH) === "out");
-                if (blk.isStation || blk.hoppoStationName || mustMove) {
+                const edge = blk.isStation && (blk.stationIdx === STATION_MAP["草津"] || blk.stationIdx === STATION_MAP["西明石"]);
+                if (edge && !globalThis.__HOP_IN_STATION) {
+                    /* ★複々線の端 (草津・西明石) では、停まっている列車をその場で隣の線路の番線へ飛び移らせない
+                         (利用者の指摘 5. 草津で停車中の列車が番線を移っていた)。ここでの内外の振り分けは
+                         move() が発車のときに渡り線で行う (js/12-train-move.js の「複々線の端での内外の振り分け」)。 */
+                } else if (blk.isStation || blk.hoppoStationName || mustMove) {
                     this.attemptTrackSwitch(want, 20, true);
                 }
             }
