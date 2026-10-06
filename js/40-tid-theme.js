@@ -1282,8 +1282,9 @@ const TID_JUNCTIONS = {
        ★JR東西線は塚本 (画面左) 側、JR宝塚線は立花 (画面右) 側に分かれる。
          以前は上りの2本だけ側が逆で、上り宝塚線が画面左・
          上り東西線が画面右に描かれていた。 */
-    "尼崎":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"],
-                             ["Down_In", "Up_In", "x"]],
+    /* ★高画質の配線略図 (スクリーンショット(758).png) では、下り内 (4番の線) と上り内 (5番の線) は
+         立花方に延びる引上線を通してしかつながらない。直接の渡り線は無いので外した (2026-10)。 */
+    "尼崎":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
                 junctions: [["Up_In", "Fukuchi_Up", "in", "R"], ["Up_In", "Tozai_Up", "out", "L"],
                             ["Down_In", "Tozai_Down", "in", "L"], ["Down_In", "Fukuchi_Down", "out", "R"]] },
     /* 塚本 — 北方貨物線 (宮原操経由) は尼崎 (画面右) 側で分かれる。
@@ -1312,6 +1313,8 @@ const TID_JUNCTIONS = {
          吹田の本線の南を並んで通るだけで、本線とつながるのは茨木の千里丘方 (695)。
          以前は吹田に北方貨物線の合流・分岐を描いていた。吹田貨物ターミナルは北方貨物線の帯に描く。 */
     "吹田":   { crossovers: [["Down_In", "Up_In", "x", "R"]] },
+    // ★南草津 — 草津 (画面左) 側に 下り外→下り内・上り内→上り外 の片渡り (配線略図 PDF。2026-10)
+    "南草津": { crossovers: [["Down_In", "Down_Out", "l", "L"], ["Up_In", "Up_Out", "l", "L"]] },
     "岸辺":   { stubs: [{ side: "R", from: "Up_Out", up: false, label: "吹田総合車両所・吹田機関区" }] },
     /* 茨木 — 内外の渡り線は2組とも千里丘 (画面右) 側。
        ★千里丘方で列車線から貨物線 (北方貨物線の帯) が分かれ、貨物線から大阪貨物ターミナル方
@@ -1320,7 +1323,8 @@ const TID_JUNCTIONS = {
                 junctions: [["Up_Out", "Up_Hoppo", "in", "R"], ["Down_Out", "Down_Hoppo", "out", "R"]],
                 stubs: [{ side: "R", from: "Down_Hoppo", up: true, label: "大阪貨物ターミナル方" }] },
     // 高槻 — 電留線 (高槻派出所) は島本 (画面左) 側、本線の下
-    "高槻":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
+    // ★大阪 (画面右) 側に 下り内→上り内 の片渡りがある (スクリーンショット(755).png。2026-10)
+    "高槻":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"], ["Down_In", "Up_In", "l", "R"]],
                 stubs: [{ side: "L", from: "Up_Out", up: false, label: "明石支所高槻派出所" }] },
     /* ★山崎 — 図 (スクリーンショット(694).png) にあるのは
        下り外側線の**上**に付く待避線への転てつ器だけで、
@@ -1345,7 +1349,10 @@ const TID_JUNCTIONS = {
          折り返しは駅の南側の引上線 (4〜7番につながる) で行う形にする。
          利用者の指摘どおり、6番・7番に着いた当駅止まりの多くは
          京都駅の留置線へ入る (js/04-depots.js の "京都")。 */
-    "京都":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"]],
+    /* ★高画質の配線略図 (スクリーンショット(754).png。2026-10) では、西大路 (画面右) 側に
+         上り内→下り内 の片渡りが向きを変えて2つある。西大路方から来た上り電車線の列車は4番に入り、
+         そのまま下り電車線へ出る (京都止まりの普通の折り返し。進路は STATION_ROUTES の "京都")。 */
+    "京都":   { crossovers: [["Up_Out", "Up_In", "x"], ["Down_In", "Down_Out", "x"], ["Down_In", "Up_In", "x", "R"]],
                 /* 奈良線は山科 (画面左) 側の上、山陰本線は西大路 (画面右) 側の上へ出る
                    (スクリーンショット(693).png)。以前は左右が逆だった。 */
                 stubs: [{ side: "L", from: "Down_Out", up: true,  label: "奈良線 東福寺方" },
@@ -1378,7 +1385,9 @@ const TID_JUNCTIONS = {
        草津線は栗東と同じ画面左側、図では上から入ってくる。 */
     "草津":   { crossovers: [["Up_Out", "Up_In", "x"],
                              ["Down_In", "Down_Out", "x", "R"],
-                             ["Down_In", "Up_In", "x", "L"]],
+                             ["Down_In", "Up_In", "x", "L"],
+                             // ★京都 (画面右) 側にも 下り内→上り内 の片渡り (スクリーンショット(759).png。2026-10)
+                             ["Down_In", "Up_In", "l", "R"]],
                 stubs: [{ side: "L", from: "Down_Out", up: true, label: "草津線 手原方" }] },
     // 野洲 — 電留線 (野洲派出所) は篠原 (画面左) 側、本線の上
     "野洲":   { crossovers: [["Up_Out", "Down_Out", "x"]],

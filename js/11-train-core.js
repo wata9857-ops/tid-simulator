@@ -1090,6 +1090,18 @@ class Train {
         const curB = blks[this.currBlockIndex];
         const targetB = targetBlks.find(b => Math.abs(b.x - curB.x) < dist);
         if (!targetB || targetB.x === -1000) return false;
+        /* ★上下で番線を共有する駅 (京都・野洲など) では、いまの番線から移る先の線路へ出られるなら
+             番線はそのままで線路の名前だけ変える (駅の中で別の番線へ飛び移らない。2026-10) */
+        if (targetB.lanes === curB.lanes && curB.lanes.indexOf(this) >= 0 && (curB.isStation || curB.hoppoStationName)) {
+            const stN = curB.hoppoStationName || (STATIONS[curB.stationIdx] || {}).name;
+            const here = curB.lanes.indexOf(this);
+            const allowed = stN ? stationRouteLanes(stN, targetId, "depart") : null;
+            if (!allowed || allowed.indexOf(here) >= 0) {
+                this.trackId = targetId; this.currBlockIndex = targetB.index; this.lane = here;
+                this.rerouteToOuter = false;
+                return true;
+            }
+        }
         // ★修正: 0番レーン固定をやめ、全レーンから空きを探す
         /* 移った先の線路から出られる番線を選ぶ。
            ★ここで移る先を渡していなかったため、尼崎のように線路ごとに

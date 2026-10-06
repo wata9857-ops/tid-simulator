@@ -66,18 +66,18 @@ const STATION_PLATFORM_RULES = {
     "大久保": { labels:["4","3","2","1","下通"], lanes:[true,true,true,true,false] }, "西明石": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "明石": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "朝霧": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
     "舞子": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "垂水": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "塩屋": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "須磨": { labels:["上外","4","3","2","1","下外"], lanes:[false,true,true,true,true,false] },
     "須磨海浜公園": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "鷹取": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "新長田": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "兵庫": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
-    "神戸": { labels:["5","4","3","2","1"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] },
+    "神戸": { labels:["1","2","3","4","5"], lanes:[true,true,true,true,true] }, "元町": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "三ノ宮": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摩耶": { labels:["上待","上外","2","1","下外"], lanes:[false,false,true,true,false] },
     "灘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "六甲道": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "住吉": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "摂津本山": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "甲南山手": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] },
-    "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","上外","2","1","下外","下待"], lanes:[false,false,true,true,false,false] }, "甲子園口": { labels:["4","3","1","2","下外"], lanes:[true,true,true,true,false] },
+    "芦屋": { labels:["上通","4","3","2","1","下通"], lanes:[false,true,true,true,true,false] }, "さくら夙川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西宮": { labels:["上待","4","3","2","1","下待"], lanes:[false,true,true,true,true,false] }, "甲子園口": { labels:["4","3","1","2","下外"], lanes:[true,true,true,true,false] },
     "立花": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "尼崎": { labels:["9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true] }, "塚本": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "大阪": { labels:["8","9","10","11","7","6","5","4","3"], lanes:[true,true,true,true,true,true,true,true,true] },
     "新大阪": { labels:["上通","10","9","8","7","6","5","4","3","2","1"], lanes:[false,true,true,true,true,true,true,true,true,true,true] }, "東淀川": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "吹田": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "岸辺": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "千里丘": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "茨木": { labels:["上待","4","3","2","1","下待"], lanes:[false,true,true,true,true,false] }, "JR総持寺": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "摂津富田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "高槻": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "島本": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "山崎": { labels:["4","3","2","1","下待"], lanes:[true,true,true,true,false] }, "長岡京": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
-    "向日町": { labels:["1","2","3","4","下待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["上外","上り着発1","上り着発2","上内","下内","下外","下り着発1","下り着発2"], lanes:[false,false,false,false,false,false,false,false], type:"yard" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
+    "向日町": { labels:["1","2","3","4","上待"], lanes:[true,true,true,true,false] }, "向日町操": { labels:["上外","上り着発1","上り着発2","上内","下内","下外","下り着発1","下り着発2"], lanes:[false,false,false,false,false,false,false,false], type:"yard" }, "桂川": { labels:["上外","2","1","下外"], lanes:[false,true,true,false] }, "西大路": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
     "京都": { labels:["下通","0","2","3","4","5","6","7"], lanes:[false,true,true,true,true,true,true,true] },
     "山科": { labels:["上通","3","2","下通"], lanes:[false,true,true,false] }, "大津": { labels:["1","2","3","4"], lanes:[true,true,true,true] }, "膳所": { labels:["1","2","3","4","上待","下待"], lanes:[true,true,true,true,false,false] }, "石山": { labels:["4","3","2","1","上待","下待"], lanes:[true,true,true,true,false,false] }, "瀬田": { labels:["4","3","2","1"], lanes:[true,true,true,true] },
-    "南草津": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "草津": { labels:["6","5","4","3","2","1"], lanes:[true,true,true,true,true,true] }, "栗東": { labels:["2","1"], lanes:[true,true] }, "守山": { labels:["2","1"], lanes:[true,true] }, "野洲": { labels:["3","2","1"], lanes:[true,true,true] },
-    "篠原": { labels:["2","1"], lanes:[true,true] }, "近江八幡": { labels:["3","2","1"], lanes:[true,true,true] }, "安土": { labels:["3","2","1"], lanes:[true,true,true] }, "能登川": { labels:["3","2","1"], lanes:[true,true,true] }, "稲枝": { labels:["2","1"], lanes:[true,true] },
+    "南草津": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "草津": { labels:["上通","6","5","4","3","下通","2"], lanes:[false,true,true,true,true,false,true] }, "栗東": { labels:["2","1"], lanes:[true,true] }, "守山": { labels:["2","1"], lanes:[true,true] }, "野洲": { labels:["上待","3","2","1"], lanes:[false,true,true,true] },
+    "篠原": { labels:["2","1"], lanes:[true,true] }, "近江八幡": { labels:["上待","3","2","1"], lanes:[false,true,true,true] }, "安土": { labels:["3","2","1"], lanes:[true,true,true] }, "能登川": { labels:["3","2","1"], lanes:[true,true,true] }, "稲枝": { labels:["2","1"], lanes:[true,true] },
     "河瀬": { labels:["3","2","1"], lanes:[true,true,true] }, "南彦根": { labels:["2","1"], lanes:[true,true] }, "彦根": { labels:["2","1"], lanes:[true,true] }, "米原": { labels:["8","7","6","5","4","3","2","1"], lanes:[true,true,true,true,true,true,true,true] }, "坂田": { labels:["2","1"], lanes:[true,true] },
     "田村": { labels:["2","1"], lanes:[true,true] }, "長浜": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "虎姫": { labels:["2","1"], lanes:[true,true] }, "河毛": { labels:["2","1"], lanes:[true,true] }, "高月": { labels:["2","1"], lanes:[true,true] },
     "木ノ本": { labels:["3","2","1"], lanes:[true,true,true] }, "余呉": { labels:["2","1"], lanes:[true,true] }, "近江塩津": { labels:["4","3","2","1"], lanes:[true,true,true,true] }, "新疋田": { labels:["3","2","1"], lanes:[true,true,true] }, "敦賀": { labels:["7","6","5","4","3"], lanes:[true,true,true,true,true] }
@@ -642,7 +642,27 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 30, downOutY + 30];
     }
     else if (stationName === "向日町") {
-        yPositions = [upOutY, upInY, downInY, downOutY, downOutY + 35];
+        // ★待避線は上り外側線の外側 (配線略図 PDF。2026-10)。以前は下り側に置いていた
+        yPositions = [upOutY, upInY, downInY, downOutY, upOutY - 35];
+    }
+    /* ★配線略図 PDF (配線図kougashitu pdf.pdf。2026-10) で読み直した駅。外側線の外側に待避線がある形。
+         西宮・茨木 … 島式2面4線 (外側線・内側線ともホームあり) ＋ 上下の外側線の外側に待避線
+         摩耶       … 島式1面2線 (内側線) ＋ 上り外側線の外側に待避線。下り外側線の外側の線は行き止まりの側線なので番線にしない
+         神戸       … 島式2面4線 ＋ 上り外側線の外側に着発線 (北側の島式ホーム)
+       以前は既定の並べ方で待避線が内側線に付き、内側線に実在しない待避線ができていた。 */
+    else if (stationName === "西宮" || stationName === "茨木") {
+        yPositions = [upOutY - 28, upOutY, upInY, downInY, downOutY, downOutY + 28];
+    }
+    else if (stationName === "摩耶") {
+        yPositions = [upOutY - 28, upOutY, upInY, downInY, downOutY];
+    }
+    else if (stationName === "神戸") {
+        yPositions = [upOutY - 28, upOutY, upInY, downInY, downOutY];
+    }
+    else if (stationName === "近江八幡") {
+        /* 配線略図 PDF: 下り本線と下りの着発線に島式ホーム、上り本線に単式ホーム。
+           上り本線の内側 (上下本線のあいだ) に待避線 (ホーム無し)。 */
+        yPositions = [upOutY + (downOutY - upOutY) * 0.15, upOutY, downOutY, downOutY + 30];
     }
     else if (stationName === "向日町操") {
         /* ★向日町操は旅客駅ではない。吹田総合車両所京都支所 (向日町) の出入口で、
@@ -663,9 +683,9 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
              7番 … 上り内側線 (電車線)。普通
              8番 … 上り外側線 (列車線)。新快速・快速
              3・4番 … 5番のさらに南。JR宝塚線(下り)・特急・朝夕の優等。
-                       4番は電車線 (6番の線) からも渡り線で入れる
+                       (下り外から入る。下り内からは5番へ渡れるが4番へは渡れない。大阪高画質.png)
              9・10・11番 … 8番のさらに北。JR宝塚線(上り)・特急・朝夕の優等。
-                       9番は電車線 (7番の線) からも渡り線で入れる
+                       (上り外から入る。上り内からは8番へ渡れる。大阪高画質.png)
            ★以前は 9番を7番と8番のあいだ、4番を5番と6番のあいだに描いていた
              (電車線の2本目のレーンとして持っていたため)。実物の並びと違い、
              番線の表示が食い違っていた。いまは実物どおりの位置に置き、
@@ -696,7 +716,27 @@ function stationLaneBaseYs(stationName, upOutY, upInY, downInY, downOutY) {
         yPositions = [upOutY-20, upOutY+10, upInY-10, upInY+20, downInY-20, downInY+10, downOutY-10, downOutY+20];
     }
     else if (stationName === "高槻") {
-        yPositions = [upOutY-15, upOutY+15, upInY-15, upInY+15, downInY, downOutY];
+        /* ★高画質の配線略図 (スクリーンショット(755).png) で並べ直した (2026-10)。
+             内側線のホームは上下1線ずつ (3番・4番)。外側線は本線と、本線から分かれて戻る着発線の2本ずつで、
+             下り外 … 1番 (本線)・2番 (着発線) / 上り外 … 6番 (本線)・5番 (着発線)。
+             以前は内側線に2本ずつ置き、下り側に実在しない「下待」が2本できていた。
+           ラベルの並びは ["6","5","4","3","2","1"]。 */
+        yPositions = [upOutY-15, upOutY+15, upInY, downInY, downOutY-15, downOutY+15];
+    }
+    else if (stationName === "草津") {
+        /* 配線略図 (スクリーンショット(759).png。左 = 栗東方、上 = 下り側)。
+             下り外 … 3番・下り通過線 (ホーム無し)・2番 (草津線と共用の島式の外側)
+             下り内 … 4番 / 上り内 … 5番 / 上り外 … 6番・上り通過線 (ホーム無し)
+           草津線の1番 (京都方が行き止まり) はこの線路図の範囲外 (草津線を持たない)。
+           ラベルの並びは ["上通","6","5","4","3","下通","2"]。 */
+        yPositions = [upOutY-18, upOutY+8, upInY, downInY, downOutY-18, downOutY+8, downOutY+30];
+    }
+    else if (stationName === "野洲") {
+        /* 配線略図 (スクリーンショット(760).png。左 = 篠原方、上 = 下り側)。
+             1番 … 下り本線 (単式) / 2番 … 中線 (両端で上下本線につながる。島式) /
+             3番 … 上り本線 (島式) / 上待 … 上り本線の外側の待避線 (ホーム無し)。
+           ★以前は待避線を下り側に置いていた。ラベルの並びは ["上待","3","2","1"]。 */
+        yPositions = [upOutY - 30, upOutY, upOutY + (downOutY - upOutY) * 0.15, downOutY];
     }
     else if (stationName === "新大阪") {
         /* ★以前は「上り外の少し上から 35 ずつ下へ」という並べ方だった。
@@ -930,10 +970,19 @@ function stationMainLaneCount(stName, trackId) {
        本線4線と、外側線のそばの着発線 上り2線・下り2線 (694)。
        (js/05-track-manager.js もこの値を使う) */
     if (stName === "向日町操") return (trackId === "Up_Out" || trackId === "Down_Out") ? 3 : 1;
+    // 高画質の配線略図で読み直した駅 (2026-10)。内側線は1線ずつ、外側線は着発線・通過線を含めた本数
+    if (stName === "高槻") return isInner ? 1 : 2;
+    if (stName === "草津") return isInner ? 1 : (trackId === "Down_Out" ? 3 : 2);
+    if (stName === "野洲") return trackId === "Up_Out" ? 3 : 1;
+    if (stName === "西宮" || stName === "茨木") return isInner ? 1 : 2;
+    if (stName === "摩耶") return isInner ? 1 : (trackId === "Up_Out" ? 2 : 1);
+    if (stName === "神戸") return isInner ? 1 : (trackId === "Up_Out" ? 2 : 1);
+    if (stName === "安土") return trackId === "Up_Out" ? 2 : 1;          // 中線 (2番) は上り側に置く。下り側の待避線は無い
+    if (stName === "近江八幡") return 2;
     if (STATION_LANES_2.indexOf(stName) >= 0) return 2;
     if (stName === "能登川" && trackId.indexOf("Up") === 0) return 2;
     if (stName === "近江八幡" && trackId.indexOf("Down") === 0) return 2;
-    if (["芦屋", "須磨", "神戸"].indexOf(stName) >= 0 && isInner) return 2;
+    if (["芦屋", "須磨"].indexOf(stName) >= 0 && isInner) return 2;
     if (stName === "大久保") return 2;
     /* ★ひめじ別所・鷹取・西大路の外側線の2本目 (貨物の待避線) はやめた。
          姫路貨物駅・神戸貨物ターミナル・京都貨物駅は、旅客駅とは別の
@@ -1237,18 +1286,25 @@ const STATION_ROUTES = {
          8番 … 上り外側線 (列車線)  新快速・快速
          3・4番 … 5番の南側 (JR宝塚線 下り・特急・朝夕の優等)
          9・10・11番 … 8番の北側 (JR宝塚線 上り・特急・朝夕の優等) */
+    /* ★高画質の配線略図 (大阪高画質.png。左 = 新大阪方、上 = 南) で進路を引き直した (2026-10)。
+         新大阪方ののど … 下り外 → 4番の線へ入り、3番・5番へ分かれる。下り内 → 6番、渡り線で5番。
+                          (以前は「下り内から4番」としていたが、下り内から4番へ行く渡り線は無い)
+                          上りの発車: 7番 → 上り内 / 8番 → 上り内・上り外 / 9〜11番 → 上り外
+                          (9番の線から上り内へ渡る片渡りがあるので 9〜11番も上り内へ出られる)
+         塚本方ののど   … 上り内 → 7番、8番 (8番⇔7番の渡り線) / 上り外 → 9番、8番・10番・11番。
+                          上り内⇔上り外・下り内⇔下り外 はそれぞれ両渡りでつながる */
     "大阪": {
         arrive: {
-            Down_Out: ["5", "3"],
-            Down_In:  ["6", "4"],
-            Up_In:    ["7", "9"],
-            Up_Out:   ["8", "10", "11"]
+            Down_Out: ["5", "4", "3"],
+            Down_In:  ["6", "5"],
+            Up_In:    ["7", "8", "9"],
+            Up_Out:   ["8", "9", "10", "11"]
         },
         depart: {
-            Down_Out: ["5", "3"],
-            Down_In:  ["6", "4"],
-            Up_In:    ["7", "9"],
-            Up_Out:   ["8", "10", "11"]
+            Down_Out: ["5", "4", "3", "6"],
+            Down_In:  ["6", "5", "4", "3"],
+            Up_In:    ["7", "8", "9", "10", "11"],
+            Up_Out:   ["8", "9", "10", "11"]
         },
         /* 引上線。東海道線のホームの東 (京都方) と西 (神戸方) に1本ずつ。
            大阪環状線のホームの西にも2本あるが、環状線はこの線路図の
@@ -1256,8 +1312,11 @@ const STATION_ROUTES = {
            西引上線は、早朝のJR京都線の始発 (宮原から回送で入り、
            ここで方向を変える) と、1時ごろの最終列車の折り返しに使う。 */
         drawUp: [
-            { label: "東引上線", from: ["8", "9", "10", "11"], side: "E" },
-            { label: "西引上線", from: ["3", "4", "5", "6", "7"], side: "W" }
+            /* ★どちらの引上線も内側線 (電車線) 2本のあいだにあり、6番・7番の線とつながる
+                 (大阪高画質.png)。以前は東を 8〜11番、西を 3〜7番につないでいた。
+                 西引上線は図の右端で切れているが、6番・7番の線から分かれて内側線のあいだを延びる */
+            { label: "東引上線", from: ["6", "7"], side: "E" },
+            { label: "西引上線", from: ["6", "7"], side: "W" }
         ],
         /* 番線の使い分け (利用者の指摘 12-2)
              ふだん      新快速・快速 = 5番/8番、普通 = 6番/7番
@@ -1311,6 +1370,12 @@ const STATION_ROUTES = {
         arrive: { Tozai_Down: ["2", "1", "3"] },
         depart: { Tozai_Up: ["2", "1", "3"] }
     },
+    /* ★吹田 (配線略図 PDF。2026-10) … 岸辺方 (京都方) の内側線2本のあいだに引上線がある。岸辺方が行き止まりで、
+         駅の側で下り内 (2番) と上り内 (3番) の両方につながる。これで上下どちらから来た列車も吹田で折り返せる。
+         大阪方には内側線どうしの両渡り (TID_JUNCTIONS) もある */
+    "吹田": {
+        drawUp: [{ label: "吹田 京都方引上線", from: ["2", "3"], side: "E" }]
+    },
     /* 京橋。大阪城北詰方の引上線は 3番・4番のどちらからも入れる。 */
     "京橋": {
         drawUp: [{ label: "京橋 引上線", from: ["3", "4"], side: "W" }]
@@ -1321,24 +1386,40 @@ const STATION_ROUTES = {
          4・5番 … JR京都線 下り 内側線 (普通は4番、それ以外は5番)
          6・7番 … JR京都線 下り 外側線。朝と平日夕の新快速、
                    および琵琶湖線・湖西線・草津線からの当駅止まり */
+    /* ★高画質の配線略図 (スクリーンショット(754).png。左 = 山科方、上 = 南) で進路を引き直した (2026-10)。
+         西大路方ののど … 上り外 → 2番・3番、両渡りで下通・0番の線へ / 上り内 → 4番だけ
+                          (4番からは 上り内→下り内 の片渡りでそのまま下り電車線へ出られる。京都止まりの普通の折り返し)
+                          下りの発車: 4〜7番 → 下り内、5〜7番・4番 → 下り内から片渡りで下り外 (8番の線も下り外へ)
+         山科方ののど   … 下り外 → 6番・7番 / 下り内 → 4番・5番 (両渡りで下り内⇔下り外)
+                          上りの発車: 0番・下通 → 上り外 / 2番 → 上り内 (両渡りで上り外) /
+                          3番 → 内側線のあいだの線を通って上り内 / 4番・5番 → 同じ線を通って上り内
+         ★上り内から2番・3番へ入る進路は図の範囲 (西大路方ののど) には無い。図の右端より先にあるかは分からない */
     "京都": {
         arrive: {
-            Up_Out:   ["下通", "0"],
-            Up_In:    ["2", "3"],
+            Up_Out:   ["2", "3", "0", "下通"],
+            Up_In:    ["4"],
             Down_In:  ["4", "5"],
             Down_Out: ["6", "7"]
         },
         depart: {
-            Up_Out:   ["下通", "0"],
-            Up_In:    ["2", "3"],
-            Down_In:  ["4", "5"],
-            Down_Out: ["6", "7"]
+            Up_Out:   ["下通", "0", "2", "3"],
+            Up_In:    ["2", "3", "4", "5"],
+            Down_In:  ["4", "5", "6", "7"],
+            Down_Out: ["6", "7", "5", "4"]
         },
         /* 駅の南側 (下り線の外側) に、西向きの行き止まり線が4本並ぶ。
            配線略図 スクリーンショット(693).png / (680).png。
            当駅止まりの折り返しと日中の留置に使う
            (留置場としては js/04-depots.js の "京都")。 */
-        drawUp: [{ label: "京都駅 引上線", from: ["4", "5", "6", "7"], side: "W" }]
+        drawUp: [{ label: "京都駅 引上線", from: ["4", "5", "6", "7"], side: "W" },
+                 /* 山科方の内側線のあいだの引上線 (山科方が行き止まり)。2〜5番の線とつながる (754) */
+                 { label: "京都 山科方引上線", from: ["2", "3", "4", "5"], side: "E" }]
+    },
+    /* 野洲 (スクリーンショット(760).png)。中線の2番は両端で上下本線につながり、野洲止まり・野洲始発と待避に使う。
+         上待 (ホーム無し) は上り本線の外側の待避線で、両端で上り本線につながる。 */
+    "野洲": {
+        arrive: { Down_Out: ["1", "2"], Up_Out: ["2", "3", "上待"] },   // 京都方から来た上りは中線 (2番) を先に (野洲止まりはそこで折り返す)
+        depart: { Down_Out: ["1", "2"], Up_Out: ["3", "2", "上待"] }
     }
 };
 
@@ -1497,6 +1578,16 @@ function canTurnBackOnPlatform(stName, trackId, lane, toTrackId) {
     /* ★そもそも方転できない駅では、ホーム折り返しも構内折り返しもできない
        (js/03-stations.js の canReverseAt)。 */
     if (!canReverseAt(stName)) return false;
+    /* ★上下で番線を共有する駅 (京都・野洲など) では、進路の表 (STATION_ROUTES) で
+         その番線から折り返したあとの線路へ出られるときだけホームで折り返す (2026-10)。
+         例) 野洲の3番 (上り本線) から京都方の下り本線へは出られない。京都の2・3番から下りへは出られない。
+         出られなければ引上線 (あれば) を使い、無ければ折り返さない (入区・回送で抜ける) */
+    if (toTrackId && STATION_SHARED_LANES[stName] === "all") {
+        const allowed = stationRouteLanes(stName, toTrackId, "depart");
+        if (allowed && allowed.indexOf(lane) < 0) {
+            return stationDrawUpTracks(stName).length ? canUseDrawUp(stName, trackId, lane) : false;
+        }
+    }
     /* 着いたときに渡り線で反対側のホームへ入った列車 (吹田・近江今津など) は、
        もう発車する線路に居るので、ここでは渡り線を要らない */
     if (toTrackId && toTrackId === trackId) return true;
@@ -1617,9 +1708,14 @@ const STATION_REVERSE_BY_CROSSOVER = {
     "灘":       [["Down_In", "Up_In"], ["Down_In", "Up_In"]],
     "神戸":     [["Down_In", "Up_In"]],
     "芦屋":     [["Down_In", "Up_In"]],
-    "尼崎":     [["Down_In", "Up_In"]],
+    /* ★尼崎の下り内側線と上り内側線は、引上線 (4番・5番の線から入る) を通してしかつながらない
+         (スクリーンショット(758).png)。直接の渡り線は無いので、ここから外した (方転は引上線で行う)。 */
     "吹田":     [["Down_In", "Up_In"]],
-    "草津":     [["Down_In", "Up_In"]],
+    // 京都 … 西大路方ののどに 上り内→下り内 の片渡りが2つ (向きが逆)。4番に着いた上り電車線の列車がそのまま下り電車線へ出る (754)
+    "京都":     [["Down_In", "Up_In"]],
+    // 高槻 … 大阪方ののどに 下り内→上り内 の片渡り (755)
+    "高槻":     [["Down_In", "Up_In"]],
+    "草津":     [["Down_In", "Up_In"], ["Down_In", "Up_In"]],   // 米原方に両渡り・京都方に片渡り (759)
     // ---- 琵琶湖線・北陸本線 (複線区間)
     "野洲":     [["Up_Out", "Down_Out"]],
     "篠原":     [["Up_Out", "Down_Out"]],
@@ -1695,7 +1791,7 @@ const STATION_ARRIVAL_CROSSOVER = {
     "須磨": { up: false, down: true },  "摩耶": { up: true, down: false },
     "灘": { up: true, down: true },     "神戸": { up: false, down: true },
     "芦屋": { up: false, down: true },  "吹田": { up: true, down: false },
-    "草津": { up: false, down: true },  "野洲": { up: true, down: true },
+    "草津": { up: true, down: true },   "野洲": { up: true, down: true },
     "篠原": { up: true, down: false },  "近江八幡": { up: false, down: true },
     "安土": { up: true, down: true },   "能登川": { up: false, down: true },
     "河瀬": { up: true, down: true },   "彦根": { up: true, down: true },
@@ -1731,7 +1827,8 @@ function canCrossArriveAt(stName, dir) {
        JR神戸線・JR京都線の本数が落ちた (実測)。 */
     if (!stationBranchLine(stName) && innerTrackExists(STATION_MAP[stName]) &&
         STATION_CROSS_ARRIVE_QUAD.indexOf(stName) < 0) return false;
-    if (STATION_SHARED_LANES[stName] || STATION_ROUTES[stName]) return false;
+    const rt = STATION_ROUTES[stName];
+    if (STATION_SHARED_LANES[stName] || (rt && (rt.arrive || rt.depart))) return false;
     if (STATION_NO_PLATFORM_TURNBACK.indexOf(stName) >= 0) return false;
     return dir === 1 ? !!c.up : !!c.down;
 }
@@ -1793,13 +1890,15 @@ function canReverseAt(stName) {
               上りホーム・下りホームのどちらでも折り返せる (696) */
 const STATION_REVERSE_SIDE = {
     "甲子園口": { up: false, down: true },
+    // 吹田は京都方の引上線で上下どちらからも折り返せる (canReverseAtDir は引上線を先に見る)。渡り線だけで見たときの向き
     "吹田":     { up: true,  down: false }
 };
 
 /* 複々線の中の駅でも、終着の列車が渡り線で反対側のホームに入れる駅。
    吹田は大阪方ののどに内側線どうしの両渡りがあり、大阪方から来た当駅止まりは
    下り内側線のホームにも入ってそのまま大阪方へ折り返せる (696)。 */
-const STATION_CROSS_ARRIVE_QUAD = ["吹田"];
+/* 草津 … 京都方ののどに 下り内↔上り内 の片渡りがあり、京都方から来た当駅止まりは4番 (下り内) に入り、そのまま京都方へ出る (759) */
+const STATION_CROSS_ARRIVE_QUAD = ["吹田", "草津"];
 
 /**
  * その駅に dir の向きで着いた列車が、配線の上で来た方へ折り返せるか。
@@ -1893,6 +1992,10 @@ function canUseDrawUp(stName, trackId, lane) {
    ★大住・JR三山木・祝園 (交換駅) は上下の線が分かれているので共有しない。 */
 const STATION_SHARED_LANES = {
     "尼崎": "side", "大阪": "side",
+    /* 京都・野洲 (2026-10、高画質の配線略図) … 上り側の線路と下り側の番線がつながる。
+         京都: 西大路方から来た上り電車線の列車は4番 (下り側の島式) に入る。
+         野洲: 中線 (2番) を上下どちらの列車も使う。どの線路からどの番線へ入れるかは STATION_ROUTES で決める */
+    "京都": "all", "野洲": "all",
     /* 相生・網干・英賀保 … 中線 (網干は折返し線) が両端で上下本線につながり、
        上下どちらの列車も使う。どの線路からどの番線へ入れるかは STATION_ROUTES で決める。 */
     "相生": "all", "網干": "all", "英賀保": "all",

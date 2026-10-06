@@ -1083,7 +1083,12 @@ OperationsManager.prototype.moveToOppositeTrack = function (train, stName, newDi
     const newB = targetBlks.find(b => Math.abs(b.x - blk.x) < 5 && b.x !== -1000);
     if (!newB) return false;
     /* ★上下でレーンを共有する駅では、反対方向の線路も同じ番線。
-       その場で線路の名前と向きだけ変える (木津・上郡・播州赤穂など)。 */
+       その場で線路の名前と向きだけ変える (木津・上郡・播州赤穂など)。
+       ただし進路の表 (STATION_ROUTES) で、その番線から反対方向の線路へ出られないときは移さない (野洲の3番など。2026-10) */
+    if (newB.lanes === blk.lanes && blk.lanes.indexOf(train) >= 0 && STATION_SHARED_LANES[stName] === "all") {
+        const allowed = stationRouteLanes(stName, newTrackId, "depart");
+        if (allowed && allowed.indexOf(blk.lanes.indexOf(train)) < 0) return false;
+    }
     if (newB.lanes === blk.lanes && blk.lanes.indexOf(train) >= 0) {
         train.trackId = newTrackId;
         train.dir = newDir;
@@ -1209,6 +1214,12 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     // 上下でレーンを共有する駅 (単線の駅など) は、その場で向きを変えるのと同じ
     const sharedHere = (newB.lanes === blk.lanes);
     if (!inPlace && sharedHere) lane = blk.lanes.indexOf(train);
+    /* ★上下で番線を共有する駅 (京都・野洲など) では、その番線から折り返した先の線路へ出られるときだけ
+         (STATION_ROUTES の depart)。野洲の3番・京都の2番から下りへは出られない。出られなければ入区・回送で抜ける (2026-10) */
+    if (sharedHere && STATION_SHARED_LANES[stName] === "all") {
+        const allowed = stationRouteLanes(stName, newTrackId, "depart");
+        if (allowed && allowed.indexOf(lane) < 0) return false;
+    }
     if (!inPlace && !sharedHere) {
         lane = train.findFreeLane(newB, newTrackId);
         if (lane === -1) {

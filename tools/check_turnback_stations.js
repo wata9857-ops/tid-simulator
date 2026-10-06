@@ -6,7 +6,7 @@
      2. 甲子園口へ向かう下り列車を「大阪行き」にすると、甲子園口の折返線 (2番) に入り、
         上り内側線へ出ていく
      3. 吹田へ向かう上り列車を「大阪行き」にすると、吹田で折り返して下り内側線へ出ていく
-     4. 京都方から吹田へ向かう下り列車を「吹田止まり」にはできない (渡り線は大阪方ののどにある)
+     4. 京都方から吹田へ向かう下り列車も「吹田止まり」にできる (2026-10: 京都方の内側線のあいだに引上線がある。配線略図 PDF)
      5. どの駅でも、その向きに着いた列車が折り返せない駅では折り返していない
 */
 'use strict';
@@ -52,10 +52,10 @@ function follow(t, st, ticks) {
     return seen;
 }
 
-function tryCase(label, st, trackId, newDest, wantLane, wantOut) {
+function tryCase(label, st, trackId, newDest, wantLane, wantOut, types) {
     let done = false;
     for (let round = 0; round < 40 && !done; round++) {
-        const list = approaching(st, trackId, ['普通', '快速']);
+        const list = approaching(st, trackId, types || ['普通', '快速']);
         for (const t of list) {
             const r = game.applyCommand({ name: 'change', trainId: t.id, dest: newDest, type: 'no_change' });
             if (!r.ok) continue;
@@ -73,16 +73,17 @@ function tryCase(label, st, trackId, newDest, wantLane, wantOut) {
 }
 
 tryCase('甲子園口 (折返線)', '甲子園口', 'Down_In', '大阪', '2', 'Up_In');
-tryCase('吹田 (大阪方の両渡り)', '吹田', 'Up_In', '大阪', null, 'Down_In');
+// 普通で試す (快速は平日朝の高槻→大阪で外側線を走るので、下り外から出ていくのが正しい)
+tryCase('吹田 (大阪方の両渡り)', '吹田', 'Up_In', '大阪', null, 'Down_In', ['普通']);
 
-// 京都方から来る下り列車は吹田止まりにできない
+// 京都方から来る下り列車も吹田止まりにできる (京都方の引上線)
 {
     let tested = false;
     for (let round = 0; round < 20 && !tested; round++) {
         const t = approaching('吹田', 'Down_In', ['普通'])[0];
         if (!t) { __run(300); continue; }
         const r = game.applyCommand({ name: 'change', trainId: t.id, dest: '吹田', type: 'no_change' });
-        ok('京都方からの下り列車は吹田止まりにできない', !r.ok, r.msg);
+        ok('京都方からの下り列車も吹田止まりにできる (京都方の引上線)', r.ok, r.msg);
         tested = true;
     }
     if (!tested) ok('吹田へ向かう下り列車が見つかった', false);
