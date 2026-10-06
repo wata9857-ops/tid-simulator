@@ -257,7 +257,7 @@ UIManager.prototype.showDepartureBoard = function (stName) {
                     } else {
                         typeHtml = typeName;
                     }
-                    let fontSize = typeName.length >= 6 ? "28px" : "42px";
+                    let fontSize = typeName.length >= 9 ? "20px" : typeName.length >= 6 ? "28px" : "42px";
 
                     let destStr = t.dest;
                     if (t.dest.length === 2) {

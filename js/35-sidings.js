@@ -19,9 +19,13 @@ Train.prototype.sidingStep = function () {
     this.turnbackAt = null;                                     // 1回だけ見る
     const sd = st && SIDINGS[st];
     if (!sd) return;
-    if (this.state !== "waiting_start" || (this.timer || 0) < SIDING_MIN_LAYOVER) return;
+    /* ★必ず使う引上線 (sd.mustUse。京橋・大阪・京都・尼崎・吹田) は、待ちが短くてもいったん引上線に入って向きを変える
+         (入換の時間を足す)。以前の引上線 (神戸・松井山手) は待ちが長いときだけ入る */
+    const minWait = sd.mustUse ? 0 : SIDING_MIN_LAYOVER;
+    if (this.state !== "waiting_start" || (this.timer || 0) < minWait) return;
     if (["普通", "快速", "新快速", "回送"].indexOf(this.type) < 0) return;
     if (sd.from.indexOf(this.trackId) < 0) return;
+    if (sd.labels && sd.labels.indexOf(platformLabelOf(st, this.trackId, this.lane)) < 0) return;
     const blks = g.trackMgr.blocks[this.trackId];
     const blk = blks ? blks[this.currBlockIndex] : null;
     if (!blk || blockStationName(blk) !== st) return;
@@ -37,6 +41,7 @@ Train.prototype.sidingStep = function () {
     this.lane = lane;
     sb.lanes[lane] = this;
     this.turnbackTrack = null;
+    if (sd.mustUse) this.timer = Math.max(this.timer || 0, SIDING_RETURN_SEC + 90);   // 引上線での入換・向きを変える時間
     g.sidingStats = g.sidingStats || { enter: 0, back: 0 };
     g.sidingStats.enter++;
 };

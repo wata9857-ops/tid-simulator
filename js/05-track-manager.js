@@ -45,7 +45,7 @@ class TrackManager {
            ターミナルどうし・ほかの線区とは横位置が重ならない。 */
         TRACKS.forEach(trk => {
             if (trk.type === "freight_terminal") this.trackY[trk.id] = this.trackY["Down_Hoppo"] + 70;
-            if (trk.type === "siding") this.trackY[trk.id] = (trk.siding === "松井山手") ? this.trackY["Tozai_Up"] : this.trackY["Up_In"];
+            if (trk.type === "siding") this.trackY[trk.id] = (stationBranchLine(trk.siding) === "tozai") ? this.trackY["Tozai_Up"] : this.trackY["Up_In"];
         });
     }
 

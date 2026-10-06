@@ -301,24 +301,31 @@ function rapidSectionText(t) {
     return parts.join("・");
 }
 
-/** 画面に出す種別 (区間快速・丹波路快速・快速 (高槻〜西明石間 快速) …) */
+/** JR宝塚線の快速で、JR東西線・学研都市線からの直通ではないもの (= 丹波路快速。大阪〜JR宝塚線) */
+function trainIsTanbaji(t) {
+    if (!t || t.type !== "快速") return false;
+    const ends = [t.startName, t.dest].filter(Boolean);
+    if (ends.some(n => _TN_SETS.tozai.has(n) || n === "奈良")) return false;
+    if (/^Tozai/.test(t.trackId || "")) return false;
+    return ends.some(n => _TN_SETS.fukuchi.has(n) && n !== "尼崎") || /^Fukuchi/.test(t.trackId || "");
+}
+/** 画面に出す種別。快速は次の5つのどれかだけを使う (利用者の指摘 2026-10。区間を書き足さない)
+     区間快速 / 快速 / 丹波路快速 / 快速（京都～高槻間快速） / 快速（高槻より先） */
 function trainServiceName(t) {
     if (!t) return "";
     if (t.type !== "快速") return t.type || "";
     if (trainIsSectionRapid(t)) return "区間快速";
-    const ends = [t.startName, t.dest];
-    if (ends.some(n => ["篠山口", "福知山"].indexOf(n) >= 0) && ends.some(n => n === "大阪" || _tnMainIdx(n) > STATION_MAP["尼崎"])) return "丹波路快速";
-    const sec = rapidSectionText(t);
-    // 朝の京都発の快速は京都〜高槻で長岡京だけに停まる (js/24-service-rules.js の kyotoEarlyRapid)
-    if (t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo) return "快速 (京都〜高槻間 長岡京のみ停車" + (sec ? "・" + sec + "間 快速" : "") + ")";
-    return sec ? "快速 (" + sec + "間 快速)" : "快速";
+    if (trainIsTanbaji(t)) return "丹波路快速";
+    // 朝の京都発の快速 (京都〜高槻で長岡京だけに停まる。js/24-service-rules.js の kyotoEarlyRapid)
+    if (t.kyotoEarlyNo && t.kyotoEarlyNo === t.trainNo) return "快速（京都～高槻間快速）";
+    // 高槻より京都方 (高槻〜京都・琵琶湖線) まで走る快速。高槻から先は各駅に停まる
+    const mi = [t.startName, t.dest].map(n => _tnMainIdx(n)).filter(i => i !== undefined);
+    if (mi.some(i => i > STATION_MAP["高槻"])) return "快速（高槻より先）";
+    return "快速";
 }
-/** 短い種別 (表・札) */
+/** 表・札・発車標に出す種別 (詳しい種別と同じ5つ) */
 function trainServiceShort(t) {
-    if (!t) return "";
-    if (t.type === "快速" && trainIsSectionRapid(t)) return "区間快速";
-    const n = trainServiceName(t);
-    return n === "丹波路快速" ? n : (t.type || "");
+    return trainServiceName(t);
 }
 
 /* ------------------------------------------------------------------ 列車に付ける */
@@ -385,17 +392,27 @@ function trainNoProblems(t) {
     return out;
 }
 
-/* ★丹波路快速 (大阪〜篠山口・福知山の快速) は、すべて大阪始発 (利用者の指摘 2026-10)。
-     尼崎・高槻など大阪以外の本線の駅から篠山口・福知山へ行く快速を作ろうとしたときは、新三田行きの快速にする。
-     JR東西線・学研都市線からの直通 (丹波路快速ではない快速) はそのまま。 */
+/* ★丹波路快速 (JR宝塚線の快速。JR東西線からの直通を除く) は、すべて大阪始発 (利用者の指摘 2026-10)。
+     尼崎・高槻など大阪以外の本線の駅から JR宝塚線へ向かう快速を作ろうとしたときは普通にする。
+     尼崎で折り返して JR宝塚線へ入る快速も普通にする。JR東西線・学研都市線からの直通の快速はそのまま。 */
+function tanbajiNotFromOsaka(type, startName, dest, trackId) {
+    if (type !== "快速" || globalThis.__NO_TANBAJI_OSAKA || !startName || startName === "大阪") return false;
+    if (_TN_SETS.tozai.has(startName) || /^Tozai/.test(trackId || "")) return false;
+    const toFukuchi = (_TN_SETS.fukuchi.has(dest) && dest !== "尼崎") || /^Fukuchi_Down/.test(trackId || "");
+    return toFukuchi && (_tnMainIdx(startName) !== undefined || startName === "尼崎");
+}
 (function () {
     const baseAdd = GameSystem.prototype.addTrain;
     GameSystem.prototype.addTrain = function (c) {
-        if (c && c.type === "快速" && !globalThis.__NO_TANBAJI_OSAKA && ["篠山口", "福知山"].indexOf(c.dest) >= 0 &&
-            c.startName && c.startName !== "大阪" && _tnMainIdx(c.startName) !== undefined) {
-            c.dest = "新三田";
-            if (c.name && c.dutyName === c.name) c.dutyName = null;
+        if (c && tanbajiNotFromOsaka(c.type, c.startName, c.dest, c.trackId)) {
+            c.type = "普通";
+            if (c.name) { if (c.dutyName === c.name) c.dutyName = null; c.name = null; }
         }
         return baseAdd.call(this, c);
+    };
+    const baseSw = Train.prototype.maybeSwitchTozaiType;
+    Train.prototype.maybeSwitchTozaiType = function (stName, newTrackId) {
+        baseSw.call(this, stName, newTrackId);
+        if (stName === "尼崎" && this.type === "快速" && /^Fukuchi/.test(newTrackId || "") && this.canChangeTypeTo("普通", stName)) this.type = "普通";
     };
 })();

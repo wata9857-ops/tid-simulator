@@ -226,7 +226,13 @@ const TRACKS = [
     { id: "Frt_Kyoto_Down", label: "京都タ 下り着発線", dir: -1, type: "freight_terminal", terminal: "京都タ" },
     // 駅の引上線 (SIDINGS)。折り返す列車が待ちのあいだ入る
     { id: "Sid_Kobe", label: "神戸 引上線", dir: 0, type: "siding", siding: "神戸" },
-    { id: "Sid_Matsuiyamate", label: "松井山手 引上線", dir: 0, type: "siding", siding: "松井山手" }
+    { id: "Sid_Matsuiyamate", label: "松井山手 引上線", dir: 0, type: "siding", siding: "松井山手" },
+    // ★2026-10: 配線略図で足した引上線も本物の線路にする (以前は折り返しの判定と描画だけだった)
+    { id: "Sid_Kyobashi", label: "京橋 引上線", dir: 0, type: "siding", siding: "京橋" },
+    { id: "Sid_Suita", label: "吹田 京都方引上線", dir: 0, type: "siding", siding: "吹田" },
+    { id: "Sid_Osaka", label: "大阪 西引上線", dir: 0, type: "siding", siding: "大阪" },
+    { id: "Sid_Kyoto", label: "京都 山科方引上線", dir: 0, type: "siding", siding: "京都" },
+    { id: "Sid_Amagasaki", label: "尼崎 西引上線", dir: 0, type: "siding", siding: "尼崎" }
 ];
 
 /* ------------------------------------------------------------------ 駅の引上線
@@ -247,7 +253,26 @@ const SIDINGS = {
     "神戸":     { id: "Kobe", name: "引上線 (網干方)", pos: STATION_MAP["神戸"] * UNITS_PER_STATION - 1, side: "R",
                   from: ["Up_In", "Down_In"], lanes: 1, ref: "(704)" },
     "松井山手": { id: "Matsuiyamate", name: "引上線 (大住方)", pos: STATION_MAP["松井山手"] * UNITS_PER_STATION + 1, side: "L",
-                  from: ["Tozai_Up", "Tozai_Down"], lanes: 1, ref: "(727)" }
+                  from: ["Tozai_Up", "Tozai_Down"], lanes: 1, ref: "(727)" },
+    /* ★2026-10: 配線略図 (高画質・PDF) で足した引上線。折り返す列車は必ずいったん引上線に入ってから向きを変える (mustUse)。
+         引上線がふさがっているときだけホームで折り返す。夜間留置の編成も、空いていれば引上線で夜を明かす。
+         labels … 引上線へ入れる番線 (STATION_ROUTES の drawUp と同じ) / rows … 線路図で引上線をはさむ線路
+         drawUp … 同じ引上線を表す STATION_ROUTES の drawUp の名前 (線路図ではこちらを描くので、二重に描かない) */
+    "京橋":     { id: "Kyobashi", name: "引上線 (大阪城北詰方)", pos: STATION_MAP["京橋"] * UNITS_PER_STATION - 1, side: "R",
+                  from: ["Tozai_Up", "Tozai_Down"], lanes: 1, mustUse: true, rows: ["Tozai_Up", "Tozai_Down"],
+                  drawUp: "京橋 引上線", ref: "touzaikatamachikougashitu" },
+    "吹田":     { id: "Suita", name: "京都方引上線", pos: STATION_MAP["吹田"] * UNITS_PER_STATION + 1, side: "L",
+                  from: ["Down_In", "Up_In"], labels: ["2", "3"], lanes: 1, mustUse: true, rows: ["Down_In", "Up_In"],
+                  drawUp: "吹田 京都方引上線", ref: "配線略図 PDF" },
+    "大阪":     { id: "Osaka", name: "西引上線", pos: STATION_MAP["大阪"] * UNITS_PER_STATION - 1, side: "R",
+                  from: ["Down_In", "Up_In"], labels: ["6", "7"], lanes: 1, mustUse: true, rows: ["Down_In", "Up_In"],
+                  drawUp: "西引上線", ref: "大阪高画質.png" },
+    "京都":     { id: "Kyoto", name: "山科方引上線", pos: STATION_MAP["京都"] * UNITS_PER_STATION + 1, side: "L",
+                  from: ["Up_Out", "Up_In", "Down_In", "Down_Out"], labels: ["2", "3", "4", "5"], lanes: 1, mustUse: true,
+                  rows: ["Down_In", "Up_In"], drawUp: "京都 山科方引上線", ref: "(754)" },
+    "尼崎":     { id: "Amagasaki", name: "西引上線", pos: STATION_MAP["尼崎"] * UNITS_PER_STATION - 1, side: "R",
+                  from: ["Down_In", "Up_In"], labels: ["4", "5"], lanes: 1, mustUse: true, rows: ["Down_In", "Up_In"],
+                  drawUp: "西引上線", ref: "(758)" }
 };
 function isSidingTrack(trackId) { return /^Sid_/.test(trackId || ""); }
 function sidingOfTrack(trackId) {

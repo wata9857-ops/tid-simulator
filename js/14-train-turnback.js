@@ -744,6 +744,14 @@ Train.prototype.executeTurnBack = function () {
                 tl = pickRouteLane(newB, stName, newTrackId, "depart",
                                    this.type, hOfDay, true);
             }
+            /* ★上下で番線を共有する駅 (京都・野洲など) で、いまの番線から折り返した先へ出られないときは、
+                 出られる番線が空くまで待つ (空いていれば構内で移る)。出られない番線のまま向きを変えない (2026-10) */
+            if (sameSpot && newB.lanes === blk.lanes && STATION_SHARED_LANES[stName] === "all" && blk.lanes.indexOf(this) >= 0) {
+                const allowedHere = stationRouteLanes(stName, newTrackId, "depart");
+                if (allowedHere && allowedHere.indexOf(blk.lanes.indexOf(this)) < 0) {
+                    tl = pickRouteLane(newB, stName, newTrackId, "depart", this.type, hOfDay, true);
+                }
+            }
             
             if (tl !== -1) {
                 if (!sameSpot) {

@@ -260,7 +260,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 線内の本数が足りず間隔が大きく空いていた。 */
         if (ct >= this.nextFukuchiDown && !inSvc("fukuchi")) this.nextFukuchiDown = ct + 300;
         if (ct >= this.nextFukuchiDown) {
-            let type = Math.random() < 0.35 ? "快速" : "普通";
+            let type = "普通";     // ★尼崎始発の JR宝塚線は普通だけ (快速・丹波路快速は大阪始発。利用者の指摘 2026-10)
             let destOptions = (type === "快速")
                 ? [{d:"新三田",w:100}]   // ★篠山口・福知山行き (丹波路快速) は大阪始発だけ (利用者の指摘 2026-10)
                 : [{d:"新三田",w:45}, {d:"宝塚",w:35}, {d:"篠山口",w:15}, {d:"塚口",w:5}];

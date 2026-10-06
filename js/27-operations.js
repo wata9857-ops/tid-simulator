@@ -1300,6 +1300,8 @@ OperationsManager.prototype.preferTurnback = function (train, stName) {
     train.isFinalStop = false;
     // 折り返しの時間 (乗車・乗務員の移動)。遅れていれば詰めて、そのぶん回復する
     train.applyTurnbackDwell(stName);
+    // ★引上線のある駅では、折り返しの待ちに入ったら引上線へ入る (js/35-sidings.js。2026-10: 京橋などで使われていなかった)
+    train.turnbackAt = stName;
     this.stats.turnback = (this.stats.turnback || 0) + 1;
     return true;
 };
@@ -1673,6 +1675,22 @@ OperationsManager.prototype.tryStableOvernight = function (t, stName) {
     t.stuckTime = 0;
     t.state = "waiting_start";
     t.timer = leaveAt - now;
+    /* ★その駅に引上線があって空いていれば、引上線で夜を明かす (ホームを空けておく。2026-10)。
+         朝は発車の少し前にホームへ戻る (js/35-sidings.js の sidingReturn) */
+    {
+        const sd = SIDINGS[stName];
+        const blk = (g.trackMgr.blocks[t.trackId] || [])[t.currBlockIndex];
+        const sb = sd ? (g.trackMgr.blocks[sidingTrackId(stName)] || [])[sd.pos] : null;
+        const sl = sb ? sb.lanes.indexOf(null) : -1;
+        if (sd && blk && sl >= 0 && sd.from.indexOf(t.trackId) >= 0 &&
+            (!sd.labels || sd.labels.indexOf(platformLabelOf(stName, t.trackId, t.lane)) >= 0)) {
+            t.sidingBack = { trackId: t.trackId, index: t.currBlockIndex, turnbackTrack: t.turnbackTrack || null, lane: t.lane, at: now };
+            freeOwnLane(blk.lanes, t);
+            t.trackId = sidingTrackId(stName); t.currBlockIndex = sd.pos; t.lane = sl; sb.lanes[sl] = t;
+            t.turnbackTrack = null;
+            this.stats.stabledSiding = (this.stats.stabledSiding || 0) + 1;
+        }
+    }
     this.stats.stabled = (this.stats.stabled || 0) + 1;
     g.ui.updateBanner(`【夜間留置】${oldNo} は ${stName}駅で運用を終え、編成 ${t.vehicles.map(v => v.fullId).join("+")} は` +
                       `${stabledPlatformLabel(t)}で朝まで留置します (翌朝 ${stabledClock(leaveH)} 発の始発に充当)。`, "banner-blue");

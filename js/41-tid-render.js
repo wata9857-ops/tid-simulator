@@ -1180,7 +1180,12 @@ class TidRenderer {
         const sd = SIDINGS[stName];
         if (!sd) return null;
         let y;
-        if (stName === "神戸") {
+        if (sd.rows) {
+            const ys = sd.rows.map(r => this.trackY[r]).filter(v => v !== undefined);
+            if (!ys.length) return null;
+            const lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+            y = hi - lo > 12 ? (lo + hi) / 2 : lo + 14;
+        } else if (stName === "神戸") {
             if (this.trackY["Down_In"] === undefined || this.trackY["Up_In"] === undefined) return null;
             y = (this.trackY["Down_In"] + this.trackY["Up_In"]) / 2;         // 電車線の上下のあいだ (704)
         } else {
@@ -1200,7 +1205,7 @@ class TidRenderer {
             const a = Math.min(G.x0, G.x1), b = Math.max(G.x0, G.x1);
             tidDrawRail(ctx, a, b, G.y);
             // つながる線路への取付け (神戸 … 電車線の上下、松井山手 … 上下線)
-            const linkRows = st === "神戸" ? ["Down_In", "Up_In"] : ["Tozai_Down", "Tozai_Up"];
+            const linkRows = SIDINGS[st].rows || (st === "神戸" ? ["Down_In", "Up_In"] : ["Tozai_Down", "Tozai_Up"]);
             tidDrawLinks(ctx, G.x0, G.y, linkRows.map(r => this.trackY[r]).filter(y => y !== undefined), G.sgn);
             ctx.strokeStyle = "#1B2440"; ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.moveTo(G.x1, G.y - 6); ctx.lineTo(G.x1, G.y + 6); ctx.stroke();   // 車止め
@@ -1245,6 +1250,7 @@ class TidRenderer {
     drawDrawUps(ctx, xMin, xMax) {
         for (const st in STATION_ROUTES) {
             for (const G of this.drawUpGeoms(st)) {
+                if (SIDINGS[st] && SIDINGS[st].drawUp === G.label) continue;      // 本物の引上線 (SIDINGS) として描く
                 if (Math.max(G.x0, G.x1) < xMin - 200 || Math.min(G.x0, G.x1) > xMax + 200) continue;
                 const a = Math.min(G.x0, G.x1), b = Math.max(G.x0, G.x1);
                 tidDrawRail(ctx, a, b, G.y);
