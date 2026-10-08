@@ -377,7 +377,8 @@ function trainServiceLabel(t) {
 /** 種別の色のキー (TID_TYPE_COLORS / CONFIG.colors)。丹波路快速は専用の色 (#c1ab05) */
 function trainColorKey(t) {
     if (!t) return "普通";
-    if (t.type === "快速" && t.game && typeof trainServiceShort === "function" && trainServiceShort(t) === "丹波路快速") return "丹波路快速";
+    /* ★JR宝塚線から JR東西線に入らず本線 (大阪) へ行く快速 (丹波路快速・G快速 …) はすべて黄色 (利用者の指摘 2026-10) */
+    if (t.type === "快速" && t.game && typeof trainIsTanbaji === "function" && trainIsTanbaji(t)) return "丹波路快速";
     return t.type;
 }
 

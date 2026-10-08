@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>JR西日本 輸送指令 Super TID</title>
-<link rel="stylesheet" href="css/header-log.css?v=e87cbf0b">
-<link rel="stylesheet" href="css/depot-view.css?v=e87cbf0b">
-<link rel="stylesheet" href="css/tid.css?v=e87cbf0b">
+<link rel="stylesheet" href="css/header-log.css?v=06c10860">
+<link rel="stylesheet" href="css/depot-view.css?v=06c10860">
+<link rel="stylesheet" href="css/tid.css?v=06c10860">
 </head>
 <body class="tid-body">
 
@@ -158,6 +158,14 @@
             <button id="tid-btn-force" class="tid-btn tid-btn-force">▶ 強制発車 (指令扱い)</button>
             <p class="tid-hint">強制発車は、抑止を解いて続行間隔の自動判定を1回だけ飛ばす指令扱いの操作です。
                 進路が開通していない場合は発車しません。</p>
+            <div class="tid-group-title">その場で運転を止める</div>
+            <div class="tid-row">
+                <button id="tid-btn-term" class="tid-btn tid-btn-stop">当駅で打ち切り</button>
+                <button id="tid-btn-deadhead" class="tid-btn">回送に変更</button>
+                <button id="tid-btn-turnhere" class="tid-btn">その場で折り返し</button>
+            </div>
+            <p class="tid-hint">打ち切り … いまの駅 (駅間なら次の駅) で運転を打ち切って折り返します。折り返せない駅なら回送で前方の折り返せる駅へ。
+                回送に変更 … いまの駅でお客様を降ろし回送にします。折り返し … いまの駅 (無理なら前方で最初に折り返せる駅) で折り返し、来た方向へ戻します。</p>
         </div>
 
         <div class="tid-group">
@@ -352,58 +360,59 @@
 </div>
 
 <!-- シミュレーション本体。index.html とまったく同じ順序で読み込む。 -->
-<script src="js/01-config.js?v=e87cbf0b"></script>
-<script src="js/02-fleet-data.js?v=e87cbf0b"></script>
-<script src="js/03-stations.js?v=e87cbf0b"></script>
-<script src="js/04-depots.js?v=e87cbf0b"></script>
-<script src="js/05-track-manager.js?v=e87cbf0b"></script>
-<script src="js/06-fleet.js?v=e87cbf0b"></script>
-<script src="js/07-spawner-core.js?v=e87cbf0b"></script>
-<script src="js/08-spawner-mainline.js?v=e87cbf0b"></script>
-<script src="js/09-spawner-branch.js?v=e87cbf0b"></script>
-<script src="js/10-timetable.js?v=e87cbf0b"></script>
-<script src="js/11-train-core.js?v=e87cbf0b"></script>
-<script src="js/12-train-move.js?v=e87cbf0b"></script>
-<script src="js/13-train-hold.js?v=e87cbf0b"></script>
-<script src="js/14-train-turnback.js?v=e87cbf0b"></script>
-<script src="js/15-train-depot.js?v=e87cbf0b"></script>
-<script src="js/16-train-adjust.js?v=e87cbf0b"></script>
-<script src="js/17-renderer.js?v=e87cbf0b"></script>
-<script src="js/18-ui-core.js?v=e87cbf0b"></script>
-<script src="js/19-ui-log.js?v=e87cbf0b"></script>
-<script src="js/20-ui-cmd.js?v=e87cbf0b"></script>
-<script src="js/21-ui-board.js?v=e87cbf0b"></script>
-<script src="js/22-depot-view.js?v=e87cbf0b"></script>
-<script src="js/23-game.js?v=e87cbf0b"></script>
-<script src="js/24-service-rules.js?v=e87cbf0b"></script>
-<script src="js/25-signals.js?v=e87cbf0b"></script>
-<script src="js/26-incidents.js?v=e87cbf0b"></script>
-<script src="js/27-operations.js?v=e87cbf0b"></script>
-<script src="js/28-dispatch.js?v=e87cbf0b"></script>
-<script src="js/29-sim-bus.js?v=e87cbf0b"></script>
-<script src="js/30-duty-log.js?v=e87cbf0b"></script>
-<script src="js/31-comms.js?v=e87cbf0b"></script>
-<script src="js/32-records.js?v=e87cbf0b"></script>
-<script src="js/33-incident-scenarios.js?v=e87cbf0b"></script>
-<script src="js/34-freight-terminals.js?v=e87cbf0b"></script>
-<script src="js/35-sidings.js?v=e87cbf0b"></script>
-<script src="js/36-special-events.js?v=e87cbf0b"></script>
-<script src="js/37-amagasaki-prc.js?v=e87cbf0b"></script>
-<script src="js/38-freight-timetable.js?v=e87cbf0b"></script>
-<script src="js/38b-night-work.js?v=e87cbf0b"></script>
-<script src="js/38c-dispatch-rules.js?v=e87cbf0b"></script>
-<script src="js/38d-train-numbers.js?v=e87cbf0b"></script>
-<script src="js/38e-night-work-detail.js?v=e87cbf0b"></script>
+<script src="js/01-config.js?v=06c10860"></script>
+<script src="js/02-fleet-data.js?v=06c10860"></script>
+<script src="js/03-stations.js?v=06c10860"></script>
+<script src="js/04-depots.js?v=06c10860"></script>
+<script src="js/05-track-manager.js?v=06c10860"></script>
+<script src="js/06-fleet.js?v=06c10860"></script>
+<script src="js/07-spawner-core.js?v=06c10860"></script>
+<script src="js/08-spawner-mainline.js?v=06c10860"></script>
+<script src="js/09-spawner-branch.js?v=06c10860"></script>
+<script src="js/10-timetable.js?v=06c10860"></script>
+<script src="js/11-train-core.js?v=06c10860"></script>
+<script src="js/12-train-move.js?v=06c10860"></script>
+<script src="js/13-train-hold.js?v=06c10860"></script>
+<script src="js/14-train-turnback.js?v=06c10860"></script>
+<script src="js/15-train-depot.js?v=06c10860"></script>
+<script src="js/16-train-adjust.js?v=06c10860"></script>
+<script src="js/17-renderer.js?v=06c10860"></script>
+<script src="js/18-ui-core.js?v=06c10860"></script>
+<script src="js/19-ui-log.js?v=06c10860"></script>
+<script src="js/20-ui-cmd.js?v=06c10860"></script>
+<script src="js/21-ui-board.js?v=06c10860"></script>
+<script src="js/22-depot-view.js?v=06c10860"></script>
+<script src="js/23-game.js?v=06c10860"></script>
+<script src="js/24-service-rules.js?v=06c10860"></script>
+<script src="js/25-signals.js?v=06c10860"></script>
+<script src="js/26-incidents.js?v=06c10860"></script>
+<script src="js/27-operations.js?v=06c10860"></script>
+<script src="js/28-dispatch.js?v=06c10860"></script>
+<script src="js/29-sim-bus.js?v=06c10860"></script>
+<script src="js/30-duty-log.js?v=06c10860"></script>
+<script src="js/31-comms.js?v=06c10860"></script>
+<script src="js/32-records.js?v=06c10860"></script>
+<script src="js/33-incident-scenarios.js?v=06c10860"></script>
+<script src="js/34-freight-terminals.js?v=06c10860"></script>
+<script src="js/35-sidings.js?v=06c10860"></script>
+<script src="js/36-special-events.js?v=06c10860"></script>
+<script src="js/37-amagasaki-prc.js?v=06c10860"></script>
+<script src="js/38-freight-timetable.js?v=06c10860"></script>
+<script src="js/38b-night-work.js?v=06c10860"></script>
+<script src="js/38c-dispatch-rules.js?v=06c10860"></script>
+<script src="js/38d-train-numbers.js?v=06c10860"></script>
+<script src="js/38e-night-work-detail.js?v=06c10860"></script>
+<script src="js/38f-congestion-control.js?v=06c10860"></script>
 <!-- Super-TID 画面 -->
-<script src="js/40-tid-theme.js?v=e87cbf0b"></script>
-<script src="js/41-tid-render.js?v=e87cbf0b"></script>
-<script src="js/42-tid-ui.js?v=e87cbf0b"></script>
-<script src="js/43-tid-zoom.js?v=e87cbf0b"></script>
-<script src="js/44-tid-duty.js?v=e87cbf0b"></script>
-<script src="js/45-tid-comms.js?v=e87cbf0b"></script>
-<script src="js/46-tid-station.js?v=e87cbf0b"></script>
-<script src="js/47-tid-nightwork.js?v=e87cbf0b"></script>
-<script src="js/49-tid-boot.js?v=e87cbf0b"></script>
+<script src="js/40-tid-theme.js?v=06c10860"></script>
+<script src="js/41-tid-render.js?v=06c10860"></script>
+<script src="js/42-tid-ui.js?v=06c10860"></script>
+<script src="js/43-tid-zoom.js?v=06c10860"></script>
+<script src="js/44-tid-duty.js?v=06c10860"></script>
+<script src="js/45-tid-comms.js?v=06c10860"></script>
+<script src="js/46-tid-station.js?v=06c10860"></script>
+<script src="js/47-tid-nightwork.js?v=06c10860"></script>
+<script src="js/49-tid-boot.js?v=06c10860"></script>
 
 <!-- ===================================================== 版の食い違いの見張り
      GitHub Pages は js を `Cache-Control: max-age=600` で配るので、

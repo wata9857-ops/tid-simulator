@@ -408,6 +408,10 @@ class TidUI {
         on("tid-btn-hold-at",   () => this.cmdHold(true));
         on("tid-btn-release",   () => this.cmdRelease());
         on("tid-btn-force",     () => this.cmdForceStart());
+        // ★その場で運転を止める処置 (js/38f-congestion-control.js。利用者の指摘 2026-10)
+        on("tid-btn-term",      () => this.cmdOnTheSpot("terminateHere"));
+        on("tid-btn-deadhead",  () => this.cmdOnTheSpot("deadheadHere"));
+        on("tid-btn-turnhere",  () => this.cmdOnTheSpot("turnbackHere"));
         on("tid-btn-apply",     () => this.cmdApplyChange());
         on("tid-btn-track",     () => this.cmdTrackChange());
         on("tid-btn-depot-out", () => this.cmdDepotOut());
@@ -497,6 +501,11 @@ class TidUI {
     cmdForceStart() {
         if (!this.selectedId) { this.notify("対象列車を選んでください。"); return; }
         this.run({ name: "force", trainId: this.selectedId });
+    }
+
+    cmdOnTheSpot(name) {
+        if (!this.selectedId) { this.notify("対象列車を選んでください。"); return; }
+        this.run({ name: name, trainId: this.selectedId });
     }
 
     cmdApplyChange() {

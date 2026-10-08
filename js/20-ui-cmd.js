@@ -260,6 +260,15 @@ UIManager.prototype.executeSuspendOff = function () {
         this.updateTrainSelector();
 };
 
+/** その場で運転を止める処置 (当駅打ち切り / 回送に変更 / その場で折り返し)。実体は js/38f-congestion-control.js */
+UIManager.prototype.executeOnTheSpot = function (name) {
+    const id = document.getElementById('cmd-no').value;
+    if (!id) { alert("対象列車を選択してください。"); return; }
+    const r = this.game.dispatch({ name: name, trainId: id });
+    alert(r.msg || (r.ok ? "指示しました" : "実行できませんでした"));
+    this.updateTrainSelector();
+};
+
 /**
  * 強制発車指令。
  * 抑止(即時・予約・同ホーム抑止)を解除し、続行間隔や順序待ちの

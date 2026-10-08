@@ -469,7 +469,21 @@ class Train {
                 const ob = this.game.trackMgr.blocks[outId];
                 const onb = ob ? ob[this.currBlockIndex] : null;
                 if (onb && onb.x !== -1000) {
-                    const lane = this.findFreeLane(onb);
+                    /* ★外側線の番線は外側線の決まりで選ぶ (以前は内側線の線路のまま選んでいたので、
+                         草津で快速が上り外側線の通過線 (ホームの無い線) に入り、そこで客扱いをしていた)。
+                         まだ客扱いをしていない列車は、ホームのある番線だけにする */
+                    const keepT = this.trackId;
+                    this.trackId = outId;
+                    let lane = this.findFreeLane(onb);
+                    this.trackId = keepT;
+                    const stN = isRealStationBlock(onb) ? blockStationName(onb) : null;
+                    if (lane !== -1 && stN && !this.hasStoppedAtCurrent && this.passengerStopsAt(stN) &&
+                        !laneHasPlatform(stN, outId, lane)) {
+                        lane = -1;
+                        for (let l = 0; l < onb.lanes.length; l++) {
+                            if (onb.lanes[l] === null && laneHasPlatform(stN, outId, l) && canArriveAt(stN, outId, l)) { lane = l; break; }
+                        }
+                    }
                     if (lane !== -1) {
                         /* ★自分が入っている枠だけを空ける。
                            this.lane が実際の枠とずれていることがあり、

@@ -923,7 +923,8 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                     /* ★草津止まりを減らした (大阪駅の時刻表: 上りの快速は野洲・米原行きが中心)。
                          以前は、草津止まりの列車の多くが草津で終わらずに外側線へ移されて野洲方へ走っていた
                          (直した)。そのぶん草津〜野洲が空かないよう、行先の割合を時刻表に寄せる。 */
-                    return [{d:"米原",w:24}, {d:"野洲",w:25}, {d:"京都",w:37}, {d:"高槻",w:10}, {d:"草津",w:4}];
+                    /* ★高槻行きの快速は無い (尼崎駅の時刻表 2026-10: 上りの快速は野洲・米原・京都行きだけ。利用者の指摘) */
+                    return [{d:"米原",w:26}, {d:"野洲",w:28}, {d:"京都",w:42}, {d:"草津",w:4}];
                 }
                 if (type === "普通") {
                     if (koseiStations.includes(startName)) return [{d:"近江今津",w:91}, {d:"永原",w:9}];
@@ -940,7 +941,8 @@ Spawner.prototype.getDestination = function (type, dir, startName, trackId) {
                         return [{d:"高槻",w:45}, {d:"京都",w:50}, {d:"草津",w:5}];
                     }
 
-                    let options = [{d:"松井山手",w:20}, {d:"四条畷",w:15}, {d:"同志社前",w:5}, {d:"高槻",w:27}, {d:"京都",w:30}, {d:"草津",w:3}];
+                    /* ★JR東西線へ入る普通は 4本/時 (尼崎駅の時刻表 2026-10)。JR神戸線の上りの普通 12本/時 の 3分の1 */
+                    let options = [{d:"松井山手",w:13}, {d:"四条畷",w:13}, {d:"同志社前",w:2}, {d:"高槻",w:34}, {d:"京都",w:35}, {d:"草津",w:3}];
                     
                     // ★追加: 尼崎到着時の3連続被り防止ロジック
                     let recentDests = this.getAmagasakiRecentDestinations(startName, dir, type);

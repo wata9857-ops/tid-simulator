@@ -385,6 +385,15 @@ Train.prototype.move = function () {
                     const sib = this.siblingPlatformEntry(nextBlock);
                     if (sib) { targetTrackId = sib.trackId; targetLane = sib.lane; actualNextBlock = sib.block; }
                 }
+                /* ★それでも入れないとき、遅れている列車は上下をつなぐ渡り線で反対側の番線へ入れる (crossoverReliefEntry)。
+                     発車のときに渡り線で自分の線路へ戻る (turnbackTrack) */
+                if (targetLane === -1) {
+                    const rel = this.crossoverReliefEntry(nextBlock);
+                    if (rel) {
+                        targetTrackId = rel.trackId; targetLane = rel.lane; actualNextBlock = rel.block;
+                        this.reliefReturnTrack = this.trackId;
+                    }
+                }
             }
         }
 
@@ -406,6 +415,16 @@ Train.prototype.move = function () {
             this.lane = targetLane;
             actualNextBlock.lanes[this.lane] = this;
             nextBlock = actualNextBlock; // 以降の処理（停車判定など）を新しいブロックで行うために上書き
+            // 渡り線で反対側の番線へ入ったときは、発車のときに渡り線で自分の線路へ戻る (crossoverReliefEntry)
+            if (this.reliefReturnTrack) {
+                if (this.trackId !== this.reliefReturnTrack) {
+                    this.turnbackTrack = this.reliefReturnTrack;
+                    this.game.reliefStats = this.game.reliefStats || {};
+                    const rn = blockStationName(actualNextBlock);
+                    this.game.reliefStats[rn] = (this.game.reliefStats[rn] || 0) + 1;
+                }
+                this.reliefReturnTrack = null;
+            }
             if (resv) this.completeReservation("進入しました");
         } else {
             // 満線の場合や転線先が見つからない場合は移動せずに手前で待機
@@ -710,7 +729,7 @@ Train.prototype.shouldStop = function (st) {
  *   ・入る先に空きが2本以上あるか、入る先の線路の後続がいないこと
  * 戻り値 { trackId, block, lane } / null
  */
-Train.prototype.siblingPlatformEntry = function (nextBlock) {
+Train.prototype.siblingPlatformEntry = function (nextBlock, dry) {
     if (globalThis.__NO_SIBLING) return null;
     if (!nextBlock || !isRealStationBlock(nextBlock)) return null;
     if (!/^(Up|Down)_(In|Out)$/.test(this.trackId)) return null;
@@ -741,7 +760,58 @@ Train.prototype.siblingPlatformEntry = function (nextBlock) {
         const b = sblks[nextBlock.index - this.dir * k];
         if (b && b.lanes.some(l => l && l.dir === this.dir)) return null;
     }
-    this.game.siblingStats = this.game.siblingStats || {};
-    this.game.siblingStats[st] = (this.game.siblingStats[st] || 0) + 1;
+    if (!dry) {
+        this.game.siblingStats = this.game.siblingStats || {};
+        this.game.siblingStats[st] = (this.game.siblingStats[st] || 0) + 1;
+    }
     return { trackId: sibId, block: sb, lane: free[free.length - 1] };
+};
+
+/**
+ * ★遅れのときの救済: 上下をつなぐ渡り線で、反対方向の線路の番線へ入る (利用者の指摘 2026-10)。
+ * ■ 何が起きていたか
+ *   両方ののど (到着側・発車側) に上下の渡り線がある駅でも、反対側の番線を使えるのは終着列車だけだった
+ *   (terminalCrossArrival)。自分の側が満線だと、反対側の番線が空いていても手前で止まり、
+ *   後続を巻き込んで詰まっていた。
+ * ■ 条件
+ *   ・その駅の両ののどに上下の渡り線がある (STATION_ARRIVAL_CROSSOVER の up と down。canCrossArriveAt の決まりも満たす)
+ *   ・自分の側に入れる番線が無い (findFreeLane / siblingPlatformEntry で入れない)
+ *   ・遅れているか止まっている (ふだんの運転では使わない)
+ *   ・反対側に、客扱いをする列車ならホームのある番線の空きがある
+ *   ・反対側の番線を取ったあとも空きが1本残るか、反対方向から1駅以内に来る列車がいない (相手の番線を奪わない)
+ *   戻り値 { trackId, block, lane } / null
+ */
+const CROSS_RELIEF_EXCLUDE = ["放出"];
+Train.prototype.crossoverReliefEntry = function (nextBlock) {
+    if (globalThis.__NO_CROSS_RELIEF) return null;
+    if (!nextBlock || !isRealStationBlock(nextBlock)) return null;
+    if (["普通", "快速", "新快速", "回送"].indexOf(this.type) < 0) return null;
+    if (this.serviceChange || this.trackChangeReservation || this.turnbackTrack) return null;
+    if (!((this.stuckTime || 0) >= 60 || (this.delayTime || 0) >= 120)) return null;
+    const st = blockStationName(nextBlock);
+    if (!st || st === this.dest || !canCrossArriveAt(st, 1) || !canCrossArriveAt(st, -1)) return null;
+    // 放出の2・3番は折り返し・電留線の出入り専用 (通る列車は入れない。tools/check_hanaten.js)
+    if (CROSS_RELIEF_EXCLUDE.indexOf(st) >= 0) return null;
+    if (trackDirOf(this.trackId) !== this.dir) return null;
+    const oppId = this.oppositeTrackId(st);
+    if (!oppId || oppId === this.trackId) return null;
+    const ob = this.game.trackMgr.blocks[oppId];
+    const oppB = ob ? ob[nextBlock.index] : null;
+    if (!oppB || oppB.x === -1000 || blockStationName(oppB) !== st) return null;
+    const stops = typeof this.passengerStopsAt === "function" ? this.passengerStopsAt(st) : true;
+    const free = [];
+    for (let l = 0; l < oppB.lanes.length; l++) {
+        if (oppB.lanes[l] !== null) continue;
+        if (stops && !laneHasPlatform(st, oppId, l)) continue;
+        free.push(l);
+    }
+    if (!free.length) return null;
+    if (free.length < 2) {
+        // 反対方向からこの駅へ向かってくる列車 (反対の線路で、この駅より先にいて近づいてくる) がいれば使わない
+        for (let k = 1; k <= UNITS_PER_STATION; k++) {
+            const b = ob[nextBlock.index + this.dir * k];
+            if (b && b.lanes.some(x => x && x.dir === -this.dir)) return null;
+        }
+    }
+    return { trackId: oppId, block: oppB, lane: free[free.length - 1] };
 };

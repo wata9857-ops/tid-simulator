@@ -311,11 +311,49 @@ function trainIsTanbaji(t) {
 }
 /** 画面に出す種別。快速は次のどれかだけを使う (利用者の指摘 2026-10。区間を書き足さない)
      区間快速 / 快速 / 丹波路快速 / 快速（京都まで普通） / 快速（高槻まで普通） / 快速（京都から普通） / 快速（高槻から普通） */
+/* ★うれしート (有料座席) を連結した快速には線区の記号を付ける (尼崎・姫路・四条畷駅の時刻表 2026-10。利用者の指摘)。
+     A … JR神戸線・JR京都線の快速 / G … JR宝塚線から大阪へ (本線へ) 行く快速・丹波路快速・区間快速 /
+     H … JR東西線・学研都市線の快速・区間快速。
+   時刻表では A快速はほぼ終日、G・H は朝夕に多い。列車番号ごとに1回だけ決めて覚える。 */
+const URESHIITO_RATE = { A: 0.8, G: 0.3, H: 0.2 };
+function trainLineMark(t) {
+    const ends = [t.startName, t.dest].filter(Boolean);
+    if (ends.some(n => _TN_SETS.tozai.has(n) || n === "奈良") || /^Tozai/.test(t.trackId || "")) return "H";
+    if (trainIsTanbaji(t)) return "G";
+    return "A";
+}
+function trainUreshiito(t) {
+    if (!t || t.type !== "快速") return false;
+    if (t._usNo !== t.trainNo) {
+        t._usNo = t.trainNo;
+        let h = 0;
+        const s = String(t.trainNo || t.id || "");
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+        const hr = t.game ? (t.game.currentTime / 3600) % 24 : 12;
+        const peak = (hr >= 6.5 && hr < 9.5) || (hr >= 16 && hr < 22);
+        const m = trainLineMark(t);
+        let rate = URESHIITO_RATE[m] || 0;
+        if (m !== "A") rate = peak ? Math.min(1, rate * 1.6) : rate * 0.5;
+        t.ureshiito = ((h % 1000) / 1000) < rate;
+    }
+    return !!t.ureshiito;
+}
 function trainServiceName(t) {
     if (!t) return "";
     if (t.type !== "快速") return t.type || "";
-    if (trainIsSectionRapid(t)) return "区間快速";
-    if (trainIsTanbaji(t)) return "丹波路快速";
+    const mk = trainUreshiito(t) ? trainLineMark(t) : "";
+    if (trainIsSectionRapid(t)) return (mk === "H" ? "H" : "") + "区間快速";
+    if (trainIsTanbaji(t)) {
+        /* JR宝塚線から本線 (大阪) へ行く快速は、行先・始発が篠山口・福知山なら丹波路快速、それ以外は快速。
+           どちらも黄色で出す (trainColorKey)。 */
+        const tb = [t.startName, t.dest].some(n => n === "篠山口" || n === "福知山");
+        return (mk === "G" ? "G" : "") + (tb ? "丹波路快速" : "快速");
+    }
+    if (mk === "H") return "H快速";
+    if (mk === "A") return "A" + _tnMainRapidName(t);
+    return _tnMainRapidName(t);
+}
+function _tnMainRapidName(t) {
     /* ★京都〜高槻を通る快速だけ、向きと停車駅で4つに分ける (利用者の指摘 2026-10)。通らない快速は「快速」。
          下り (大阪方面): 京都まで普通 = 京都から快速 (朝の京都発。長岡京だけに停まる) / 高槻まで普通 = 京都〜高槻は各駅
          上り (京都方面): 京都から普通 = 京都まで快速 / 高槻から普通 = 高槻から先は各駅 */
@@ -415,6 +453,14 @@ function tanbajiNotFromOsaka(type, startName, dest, trackId) {
 (function () {
     const baseAdd = GameSystem.prototype.addTrain;
     GameSystem.prototype.addTrain = function (c) {
+        /* ★JR宝塚線へ向かう尼崎始発の列車 (宮原からの送り込み) は大阪始発にする (利用者の指摘 2026-10) */
+        if (c && c.startName === "尼崎" && c.dir === -1 && c.trackId === "Fukuchi_Down" && !globalThis.__NO_TANBAJI_OSAKA) {
+            c.startName = "大阪"; c.trackId = "Down_In";
+        }
+        /* ★高槻行きの快速は無い (利用者の指摘 2026-10)。上りは京都まで、下りは普通にする */
+        if (c && c.type === "快速" && c.dest === "高槻" && !c.name) {
+            if (c.dir === 1) c.dest = "京都"; else c.type = "普通";
+        }
         if (c && tanbajiNotFromOsaka(c.type, c.startName, c.dest, c.trackId)) {
             c.type = "普通";
             if (c.name) { if (c.dutyName === c.name) c.dutyName = null; c.name = null; }

@@ -67,8 +67,10 @@ ok('予約で止まり続ける列車が無い (待ちの上限 + 余裕)', res.
 // 断るべき予約
 {
     // 前方に駅が3つ以上ある列車で試す (内側線の終わり近くの列車だと「先の駅」が無い)
+    // 後ろに駅のある列車を選ぶ (線区の端の最初の閉塞にいる列車では「通過済みの駅」が作れない)
+    const hasBehind = (x) => { const bl = game.trackMgr.blocks[x.trackId]; for (let i = x.currBlockIndex - x.dir; i >= 0 && i < bl.length; i -= x.dir) { if (bl[i].x !== -1000 && isRealStationBlock(bl[i])) return true; } return false; };
     const t = game.trains.find(x => x.state === 'running' && x.trackId === 'Up_In' &&
-                                    trainStationsAhead(game, x, 4).length >= 3);
+                                    trainStationsAhead(game, x, 4).length >= 3 && hasBehind(x));
     const blks = game.trackMgr.blocks[t.trackId];
     let behind = null;
     for (let i = t.currBlockIndex - t.dir; i >= 0 && i < blks.length; i -= t.dir) {
@@ -76,7 +78,11 @@ ok('予約で止まり続ける列車が無い (待ちの上限 + 余裕)', res.
         if (b.x !== -1000 && isRealStationBlock(b)) { behind = blockStationName(b); break; }
     }
     const ahead = trainStationsAhead(game, t, 4)[2];
-    const r1 = behind ? game.applyCommand({ name: 'trackChange', trainId: t.id, station: behind, trackId: t.trackId, lane: 0 }) : { ok: false, msg: '-' };
+    // 後ろの駅のホームのある番線を指す (ホームの無い線だと「通過済み」より先に断られる)
+    const bsb = behind ? stationBlockOn(game, t.trackId, behind) : null;
+    let bLane = 0;
+    if (bsb) { for (let l = 0; l < bsb.lanes.length; l++) if (laneHasPlatform(behind, t.trackId, l)) { bLane = l; break; } }
+    const r1 = behind ? game.applyCommand({ name: 'trackChange', trainId: t.id, station: behind, trackId: t.trackId, lane: bLane }) : { ok: false, msg: '-' };
     const r2 = game.applyCommand({ name: 'trackChange', trainId: t.id, station: ahead, trackId: t.trackId.replace('Up', 'Down'), lane: 0 });
     const r3 = game.applyCommand({ name: 'trackChange', trainId: t.id, station: ahead, trackId: t.trackId, lane: 99 });
     ok('通過済みの駅は断る', !r1.ok && /通り過ぎ/.test(r1.msg), r1.msg);

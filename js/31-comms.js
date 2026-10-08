@@ -60,11 +60,19 @@ const COMM_MAX_PENDING  = 2;            // 同時に抱える件数 (3 → 2)
      hold   … 答えが出るまで当該列車を抑止するか
      limit  … 答えを待つ時間 [秒]
      label  … 画面に出す表示 */
+/* ★答えを待つ時間を短くした (利用者の指摘 2026-10)。以前は 要判断 210秒・緊急 150秒、場面ごとに 100〜120秒で、
+     細かい照会のたびに列車を 2〜3分止めて遅れの元になっていた。
+     いまは 要判断 45秒・緊急 60秒・連絡 30秒が上限 (場面ごとの limit もこれを超えない)。
+     答えが無ければ別の指令員がすぐ自動で処理する。 */
 const COMM_LEVELS = {
-    minor:     { hold: false, limit: 90,  label: "連絡",   rank: 0 },
-    important: { hold: true,  limit: 210, label: "要判断", rank: 1 },
-    critical:  { hold: true,  limit: 150, label: "緊急",   rank: 2 }
+    minor:     { hold: false, limit: 30,  label: "連絡",   rank: 0 },
+    important: { hold: true,  limit: 45,  label: "要判断", rank: 1 },
+    critical:  { hold: true,  limit: 60,  label: "緊急",   rank: 2 }
 };
+/* 指令連絡の答えとして掛ける「時間で解ける抑止」(commHold) の長さの倍率と下限 [秒]。
+   以前は 120〜300秒をそのまま掛けていた。待避・続行のならしに要る分だけにする。 */
+const COMM_HOLD_SCALE = 0.4;
+const COMM_HOLD_MIN   = 45;
 
 /** 重みつきの抽選 */
 function commPick(list) {
@@ -210,7 +218,7 @@ const COMM_HOLD_GIVEUP = 1500;      // 抑止駅に着かないまま諦める�
 function commHold(game, t, at, holdSec) {
     if (!t) return;
     game.applyCommand({ name: "hold", trainId: t.id, at: at });
-    t.commHoldLimit = holdSec || 180;
+    t.commHoldLimit = Math.max(COMM_HOLD_MIN, Math.round((holdSec || 180) * COMM_HOLD_SCALE));
     t.commHoldTimer = 0;
     t.commHoldExpire = game.currentTime + COMM_HOLD_GIVEUP;
 }
@@ -1460,7 +1468,7 @@ class CommSystem {
     emit(scene, ctx) {
         const now = this.game.currentTime;
         const lv = COMM_LEVELS[scene.level || "minor"] || COMM_LEVELS.minor;
-        const limit = scene.limit || lv.limit;
+        const limit = Math.min(scene.limit || lv.limit, lv.limit);
         const p = {
             id: "C" + (this.seq++),
             sceneId: scene.id,

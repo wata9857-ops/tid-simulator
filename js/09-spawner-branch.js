@@ -78,6 +78,8 @@ Spawner.prototype.willConflictAtAmagasaki = function (startName, dest, type, dir
         return false;
 };
 
+/* JR東西線の始発 (放出・尼崎) の間隔を広げる倍率 (2026-10)。直通・折り返しの列車で 8本/時 に近づける */
+const TOZAI_SPAWN_STRETCH = 1.6;
 Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
         let h = (ct / 3600) % 24;
         /* 分岐線の普通だけは、折り返しで走り続けて実際の2倍以上になるので
@@ -157,14 +159,16 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                      京橋方面が 4本/時 (ほぼすべて JR宝塚線からの快速・区間快速の折り返し) なのに、
                      以前は宝塚線の快速の 3分の1 しか東西線へ入らず、同志社前は 1〜2本/時だった。 */
                 [{d:"大阪",w:30}, {d:"新大阪",w:1}, {d:"同志社前",w:26}, {d:"木津",w:8}, {d:"奈良",w:1.5}] :
-                [{d:"高槻",w:32}, {d:"大阪",w:15}, {d:"四条畷",w:12}, {d:"松井山手",w:8}, {d:"長尾",w:4}, {d:"京田辺",w:3}, {d:"木津",w:2}, {d:"放出",w:1}];
+                /* ★JR宝塚線の普通は大阪・高槻へ行く (尼崎駅の時刻表 2026-10: JR東西線へ入るのは区間快速・快速)。
+                     東西線へ入る普通は朝夕の少しだけにした */
+                [{d:"高槻",w:40}, {d:"大阪",w:20}, {d:"四条畷",w:4}, {d:"松井山手",w:2}];
             
             // ★追加: 尼崎到着時の3連続被り防止ロジック
             let recentDests = this.getAmagasakiRecentDestinations("新三田", 1, type);
             if (recentDests.length === 2) {
                 if (recentDests[0] === "Tozai" && recentDests[1] === "Tozai") {
                     destOptions = isRapid ? [{d:"大阪",w:95}, {d:"新大阪",w:5}] : [{d:"高槻",w:68}, {d:"大阪",w:32}];
-                } else if (recentDests[0] === "Honsen" && recentDests[1] === "Honsen") {
+                } else if (isRapid && recentDests[0] === "Honsen" && recentDests[1] === "Honsen") {
                     destOptions = isRapid ? [{d:"同志社前",w:75}, {d:"木津",w:20}, {d:"奈良",w:5}] : [{d:"四条畷",w:40}, {d:"松井山手",w:30}, {d:"長尾",w:15}, {d:"京田辺",w:10}, {d:"木津",w:3}, {d:"放出",w:2}];
                 }
             }
@@ -247,7 +251,10 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
 
             if (canSpawn && (budget(type, "tozai") || starved("tozai", -1)) && !jammedAhead("Tozai_Down", "放出", -1)) {
                 this.game.addTrain({type:type, dir:-1, trackId:"Tozai_Down", dest:dest, startName:"放出", nextAction:"depot"});
-                this.nextTozaiDown += (type === "快速" ? 750 : 600) * timeFactor;
+                /* ★JR東西線の本数を減らした (利用者の指摘 2026-10)。尼崎・四条畷駅の時刻表では昼間 8本/時
+                     (区間快速4・普通4) で、ほとんどが学研都市線の折り返しと JR宝塚線・JR神戸線からの直通。
+                     放出始発をこれまでどおり出すと 10本/時を超えていた。 */
+                this.nextTozaiDown += (type === "快速" ? 750 : 600) * timeFactor * TOZAI_SPAWN_STRETCH;
             } else {
                 this.nextTozaiDown += 180;
             }
@@ -266,25 +273,27 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 : [{d:"新三田",w:45}, {d:"宝塚",w:35}, {d:"篠山口",w:15}, {d:"塚口",w:5}];
             let dest = this.weightedRandom(destOptions);
             
+            /* ★JR宝塚線へ向かう列車は尼崎始発 (宮原からの送り込み) をやめ、すべて大阪始発にする (利用者の指摘 2026-10)。
+                 大阪の JR神戸線 下り (内側線) から出て、尼崎で JR宝塚線へ入る。
+                 間隔も広げた: 尼崎駅の時刻表では JR宝塚線の普通は 4本/時 で、高槻から直通する普通もある。 */
             let canSpawn = true;
-            let blks = this.game.trackMgr.blocks["Fukuchi_Down"];
+            let blks = this.game.trackMgr.blocks["Down_In"];
             if (blks) {
-                let startB = blks.find(b => b.stationIdx === STATION_MAP["尼崎"]);
+                let startB = blks.find(b => b.stationIdx === STATION_MAP["大阪"]);
                 if (startB) {
                     let freeLanes = startB.lanes.filter(l => l === null).length;
-                    let existingSameRoute = startB.lanes.filter(l => l !== null && l.trackId === "Fukuchi_Down").length;
-                    if (freeLanes < 2 || existingSameRoute >= 2) canSpawn = false;
+                    if (freeLanes < 2) canSpawn = false;
                 }
             }
 
             // ★本線からの乗り入れ列車(宝塚行きなど)との高度ETA干渉チェック
-            if (canSpawn && this.willConflictAtAmagasaki("尼崎", dest, type, -1)) {
+            if (canSpawn && this.willConflictAtAmagasaki("大阪", dest, type, -1)) {
                 canSpawn = false;
             }
 
             if (canSpawn && (budget(type, "fukuchi") || starved("fukuchi", -1)) && !jammedAhead("Fukuchi_Down", "尼崎", -1)) {
-                this.game.addTrain({type:type, dir:-1, trackId:"Fukuchi_Down", dest:dest, startName:"尼崎", nextAction:"depot"});
-                this.nextFukuchiDown += (type === "快速" ? 620 : 430) * timeFactor;
+                this.game.addTrain({type:type, dir:-1, trackId:"Down_In", dest:dest, startName:"大阪", nextAction:"depot"});
+                this.nextFukuchiDown += (type === "快速" ? 620 : 900) * timeFactor;
             } else {
                 this.nextFukuchiDown += 180;
             }
@@ -336,7 +345,7 @@ Spawner.prototype.checkFukuchiTozaiSpawns = function (ct) {
                 // 学研都市線の終点では折り返して尼崎方へ戻る (留置場があるのは放出だけ)
                 this.game.addTrain({type:type, dir:1, trackId:"Tozai_Up", dest:dest, startName:"尼崎",
                                     nextAction: (dest === "放出") ? "depot" : "turnback"});
-                this.nextTozaiUp += (type === "快速" ? 750 : 600) * timeFactor;
+                this.nextTozaiUp += (type === "快速" ? 750 : 600) * timeFactor * TOZAI_SPAWN_STRETCH;
             } else {
                 this.nextTozaiUp += 180;
             }

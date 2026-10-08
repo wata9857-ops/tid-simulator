@@ -58,7 +58,7 @@ const DEPOT_DUTIES = [
              普通は尼崎始発 (JR宝塚線の普通は尼崎で折り返すか JR東西線から来る) を残し、半分を大阪始発にする。 */
         { h: [5.0, 9.0],  every: 2400, dir: -1, via: "大阪", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 },
         { h: [9.0, 16.0], every: 1800, dir: -1, via: "大阪", as: "快速", dest: ["新三田", "篠山口"], ratio: 1.0 },
-        { h: [9.0, 16.0], every: 4800, dir: -1, via: "尼崎", as: "普通", dest: ["新三田"], ratio: 0.8 },
+        { h: [9.0, 16.0], every: 4800, dir: -1, via: "大阪", as: "普通", dest: ["新三田"], ratio: 0.8 },   // ★尼崎始発をやめて大阪始発に (2026-10)
         { h: [9.0, 16.0], every: 4800, dir: -1, via: "大阪", as: "普通", dest: ["新三田", "宝塚"], ratio: 0.8 },
         { h: [16.0, 21.5], every: 2400, dir: -1, via: "大阪", as: "快速", dest: ["新三田", "篠山口"], ratio: 0.9 }
     ]},
@@ -1983,8 +1983,10 @@ OperationsManager.prototype.checkShortTurns = function (ct) {
            その駅で発車できる L を1本、先に出す (go)。H の番線を早めに空ける
        ・待避先の空き番線を予約として数え、2本の L が同じ駅の最後の1線を取り合わないようにする
      決めたことは ovPlans に置き、checkHold が見る。45秒で消えるので、状況が変われば次のTickで決め直す。 */
-const OV_LOOK_STATIONS = 6;
-const OV_FULL_ETA = 240;
+/* ★2026-10: 先読みの範囲を 6 → 8駅、「満線の駅から先に1本出す」見込みを 4 → 6分に広げた (詰まりを早めに解く)。
+     満線かどうかは「空きレーンがあるか」ではなく「優等列車が実際に入れる番線があるか」(enterableLaneCount) で見る。 */
+const OV_LOOK_STATIONS = 8;
+const OV_FULL_ETA = 360;
 
 OperationsManager.prototype.planOvertakes = function (ct) {
     if (globalThis.__NO_OV_PLAN) { this.ovPlans = null; return; }
@@ -2007,9 +2009,40 @@ OperationsManager.prototype.planOvertakes = function (ct) {
         plans.set(t.id, { act: act, st: st, by: by, force: !!force, until: ct + 45 });
     };
     const active = (t) => t.state !== "finished" && t.state !== "in_depot" && !t.overnightStable;
+    /* その駅で「先に出す」と決めた列車 (その番線はまもなく空く) */
+    const goingAt = (b, except) => {
+        const s = new Set();
+        const here = blockStationName(b);
+        b.lanes.forEach(x => {
+            if (!x || x === except) return;
+            const p = plans.get(x.id);
+            if (p && p.act === "go" && p.st === here) s.add(x);
+        });
+        return s;
+    };
+    /* H がその駅に入れるか (先に出す列車の番線は空くものとして数える。渡り線で隣の線路へ入れるなら入れる) */
+    const hCanEnter = (H, b, except) =>
+        enterableLaneCount(H, b, goingAt(b, except)) > 0 || !!H.siblingPlatformEntry(b, true);
+    /* 待避駅に L が入ったあと、H が入れる番線が残るか。reserved のぶん (ほかの L の待避の予約) を先に埋める */
+    const refugeRoom = (L, H, refuge, key) => {
+        const fake = Object.create(refuge);
+        fake.lanes = refuge.lanes.slice();
+        for (let i = 0; i < (reserved[key] || 0); i++) {
+            const x = L.findFreeLane(fake);
+            if (x < 0 || fake.lanes[x] !== null) break;
+            fake.lanes[x] = L;
+        }
+        const lLane = L.findFreeLane(fake);
+        if (lLane < 0 || fake.lanes[lLane] !== null) return { l: false, h: 0 };
+        fake.lanes[lLane] = L;
+        return { l: true, h: enterableLaneCount(H, fake) };
+    };
 
     for (const H of g.trains) {
         if (!active(H) || H.type === "普通" || H.type === "貨物" || H.minorTrouble || H.isManuallySuspended) continue;
+        /* ★複線だけの分岐線 (湖西線など) では回送のために待避させない (湖西線の夜、入区の回送を堅田・近江舞子で
+             待って普通が長く止まっていた。利用者の指摘 2026-10) */
+        if (H.type === "回送" && doubleTrackOnly(H.trackId)) continue;
         /* 止まっている優等列車は待たない (★120秒 → 60秒。止まった優等列車を待つあいだ待避駅の番線がふさがり、
            ほかの優等列車まで入れなくなっていた。利用者の指摘 ③ 2026-10) */
         if (H.stuckTime > 60) continue;
@@ -2031,9 +2064,13 @@ OperationsManager.prototype.planOvertakes = function (ct) {
             const b = blks[H.currBlockIndex + H.dir * k];
             if (!b || b.x === -1000 || etaH[b.index] === undefined) break;
             const here = blockStationName(b);
-            /* 1. H があと数分で着く駅が、待っている下位の列車で満線 → 1本を先に出す */
-            if (isRealStationBlock(b) && b.lanes.every(x => x) && etaH[b.index] < OV_FULL_ETA) {
+            /* 1. H があと数分で着く駅に、H の入れる番線が無い (下位の列車で埋まっている) → 1本を先に出す。
+                 ★満線かどうかを「H が入れる番線があるか」で見る (進路・ホームの決まりで入れない空き番線を数えない)。
+                 ★朝まで留置している編成 (overnightStable / 留置) は出せないので選ばない
+                   (以前は選んでしまい、本当に出せる列車が出ずに湖西線の夜に止まっていた) */
+            if (isRealStationBlock(b) && etaH[b.index] < OV_FULL_ETA && !hCanEnter(H, b, null)) {
                 const ready = b.lanes.filter(L => L && L !== H && L.dir === H.dir && L.getPriority() < pH &&
+                    !L.overnightStable && L.type !== "留置" &&
                     ["stopped", "holding", "waiting_start"].indexOf(L.state) >= 0 && L.hasStoppedAtCurrent !== false &&
                     !L.isManuallySuspended && !L.commIncident && !L.minorTrouble)
                     .sort((a, c) => (a.timer || 0) - (c.timer || 0) || (c.stuckTime || 0) - (a.stuckTime || 0));
@@ -2043,12 +2080,16 @@ OperationsManager.prototype.planOvertakes = function (ct) {
             /* 2. 前を走る下位の列車との追いつき */
             for (const L of b.lanes) {
                 if (!L || L === H || L.dir !== H.dir || !active(L)) continue;
+                // 1. で先に出すと決めた列車はそのまま出す
+                { const pl = plans.get(L.id); if (pl && pl.force && pl.act === "go" && pl.st === here) continue; }
                 if (["普通", "快速"].indexOf(L.type) < 0 || L.getPriority() >= pH) continue;
                 // 停車駅がほとんど同じなら格の差が無いものとして扱う (js/38c-dispatch-rules.js。利用者の指摘 ③)
                 if (typeof stopPatternSimilar === "function" && stopPatternSimilar(L, H)) continue;
                 // 西明石より西の複線では回送を先に通さない (overtakeWorthWaiting と同じ)
                 if (H.type === "回送" && westDoubleTrack(L, here)) continue;
                 if (!isRefuge(b) || ["stopped", "holding", "waiting_start"].indexOf(L.state) < 0) continue;
+                // ホームの無い線 (通過線・待避の側線) にいる列車は、そこで待避させない (客扱いの停車になってしまう)
+                if (L.type !== "回送" && !laneHasPlatform(here, L.trackId, L.lane)) continue;
                 // L が次の待避駅 (または行先) に入るまでの見込み
                 let tL = waitNow(L), refuge = null;
                 for (let j = 1; j <= UNITS_PER_STATION * 10; j++) {
@@ -2065,16 +2106,22 @@ OperationsManager.prototype.planOvertakes = function (ct) {
                     : tH + Math.abs(before - (H.currBlockIndex + H.dir * look)) * runOf(H);
                 const destReached = blockStationName(refuge) === L.dest;
                 const key = L.trackId + "#" + refuge.index;
-                const refugeFree = refuge.lanes.filter(x => !x).length - (reserved[key] || 0);
+                /* ★待避駅の空きは「L が実際に入れる番線」と「そのあと H が入れる番線」で数える (refugeRoom)。
+                     以前は空きレーンの数だけを見ていたので、L が入れない待避駅へ「逃げ切れる」と出して手前で詰まっていた */
+                const room = destReached ? { l: true, h: 1 } : refugeRoom(L, H, refuge, key);
                 /* 逃げ切れる … 次の待避駅に H より先に入れ、そこに H の番線も残る。
                    ★H がまだ十分遠い (4分以上の余裕) なら、次の待避駅の空きは1線でよい
                    (以前は2線を求めたので、加古川が1線ふさがっているだけで、遠くの新快速を大久保で長く待っていた) */
                 const margin = tHb - (tL + runOf(H));
-                if (margin > 0 && (destReached || refugeFree >= 2 || (refugeFree >= 1 && margin > 240))) {
+                if (margin > 0 && room.l && (destReached || room.h >= 1 || margin > 240)) {
                     set(L, "go", here, H.trainNo, false);        // 逃げ切れる
                     if (!destReached) reserved[key] = (reserved[key] || 0) + 1;
-                } else if (b.lanes.some(x => !x) || H.currBlockIndex === b.index) {
-                    set(L, "yield", here, H.trainNo, false);     // ここで待避 (H の番線は残っている)
+                } else if (hCanEnter(H, b, L) || H.currBlockIndex === b.index) {
+                    /* ここで待避 (H の番線は残っている)。
+                       ★先に出すと決めた列車 (1.) の番線は空くものとして数える。以前は満線のままと見て、
+                         普通A を先に出したあと、後ろの快速C を待つべき普通B まで「満線で待てない」として続けて出していた
+                         (利用者の指摘 2026-10) */
+                    set(L, "yield", here, H.trainNo, false);
                 } else {
                     set(L, "go", here, H.trainNo, true);         // 満線で待てない。先に出して番線を空ける
                 }

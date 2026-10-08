@@ -129,8 +129,12 @@ Train.prototype.checkHold = function (isStarting) {
                     if (targetNextBlk && this.findFreeLane(targetNextBlk, targetTrackId) === -1) return true;
                 }
             } else {
-                // 満線でも、終着列車は反対側の着発線へ入れることがある (move() と同じ判定)
-                if (nextBlk.lanes.every(l => l !== null) && !this.terminalCrossArrival(nextBlk)) return true;
+                /* 満線でも、終着列車は反対側の着発線へ入れることがある (move() と同じ判定)。
+                   ★「どこか1本でも空いていれば入れる」と見ていたのを、move() と同じ番線の選び方にした
+                     (進路・ホームの決まりで入れない空き番線を数えない / 渡り線で隣の線路・反対側の番線へ入れるなら入れる)。
+                     以前は入れないのに発車して駅の手前で止まり、後続も含めて詰まっていた (利用者の指摘 2026-10) */
+                if (this.findFreeLane(nextBlk) === -1 && !this.terminalCrossArrival(nextBlk) &&
+                    !this.siblingPlatformEntry(nextBlk, true) && !this.crossoverReliefEntry(nextBlk)) return true;
             }
         }
         
@@ -628,7 +632,7 @@ Train.prototype.checkHold = function (isStarting) {
                        let isStrictPriorityStation = ["米原", "草津", "京都", "姫路"].includes(stName);
                        let checkDist = Math.ceil(UNITS_PER_STATION * (isStrictPriorityStation ? 5 : 3));
                        
-                       let approaching = false;
+                       let approaching = false, approachTrain = null;
                        let isSpecialOvertake = false;
                        let followers = 0;
                        let freeLanesCount = 0;
@@ -685,6 +689,7 @@ Train.prototype.checkHold = function (isStarting) {
                                                 if (!overtakeWorthWaiting(this, l, k, stName)) continue;
 
                                                 approaching = true;
+                                                if (!approachTrain) approachTrain = l;
                                                 if (k <= 2) veryCloseHigherPriority = true; // ★追加: 同一駅〜手前2ブロック以内なら超接近と判定
 
                                                 if (["特急", "新快速", "貨物"].includes(l.type)) isSpecialOvertake = true;
@@ -707,7 +712,14 @@ Train.prototype.checkHold = function (isStarting) {
 
                        // ★満線デッドロック回避の強化 (芦屋駅・大阪駅などでの内側線詰まりを解消)
                        // 自線路が満線で、優等列車が接近している場合は待避を打ち切り先行発車する
-                       if (approaching && myTrackFreeLanes === 0) {
+                       /* ★空きレーンがあっても、優等列車がそこへ入れない (進路・ホームの決まり) なら満線と同じ。
+                            待避しても抜いてもらえず、互いに待ち合う (利用者の指摘 2026-10) */
+                       let hBlockedHere = false;
+                       if (approaching && approachTrain && approachTrain.trackId === this.trackId && myTrackFreeLanes > 0) {
+                           const hb = (this.game.trackMgr.blocks[this.trackId] || [])[this.currBlockIndex];
+                           if (hb && enterableLaneCount(approachTrain, hb) === 0 && !approachTrain.siblingPlatformEntry(hb, true)) hBlockedHere = true;
+                       }
+                       if (approaching && (myTrackFreeLanes === 0 || hBlockedHere)) {
                            if (Math.random() < 0.15 && this.stuckTime > 15) {
                                this.game.ui.updateBanner(`【運転整理】${stName}駅 満線デッドロック回避のため、${this.trainNo}は待避を中止し先行発車します。`, "banner-orange");
                            }
@@ -846,9 +858,45 @@ function westDoubleTrack(t, stName) {
     return here < nishi && /^(Up|Down)_Out$/.test(t.trackId);
 }
 
+/** 複々線ではない (追い抜きの線を持たない) 分岐線の線路か */
+function doubleTrackOnly(trackId) {
+    return /^(Kosei|Fukuchi|Tozai|Ako)_/.test(trackId || "");
+}
+
+/**
+ * その列車がその駅のブロックで入れる番線の数。move() と同じ選び方 (findFreeLane) で数える。
+ * ★以前の先読みは「空いているレーンの数」だけを見ていたので、進路がつながっていない・ホームの無い番線まで
+ *   数えていた。「入れるつもりで待避したのに入れない」形の詰まりになっていた (利用者の指摘 2026-10)。
+ *   freed … 在線していても先に出ていく列車 (Set)。その番線は空きとして数える
+ */
+function enterableLaneCount(t, block, freed) {
+    if (!t || !block || typeof t.findFreeLane !== "function") return 0;
+    const fake = Object.create(block);
+    fake.lanes = block.lanes.map(x => (x && freed && freed.has(x)) ? null : x);
+    let n = 0;
+    for (let g = 0; g < fake.lanes.length; g++) {
+        const l = t.findFreeLane(fake);
+        if (l < 0 || fake.lanes[l] !== null) break;
+        fake.lanes[l] = t;
+        n++;
+    }
+    return n;
+}
+
 function overtakeWorthWaiting(t, l, k, stName) {
     // 停車駅がほとんど同じなら待っても得が無い (js/38c-dispatch-rules.js。利用者の指摘 ③)
     if (typeof stopPatternSimilar === "function" && stopPatternSimilar(t, l)) return false;
+    /* ★複線だけの分岐線 (湖西線・JR宝塚線・JR東西線・赤穂線) では回送を待たない (2026-10。湖西線の夜、
+         入区の回送を堅田・近江舞子で待って普通が長く止まっていた) */
+    if (l.type === "回送" && doubleTrackOnly(t.trackId)) return false;
+    /* ★待ちの上限 (2026-10)。優等列車がここへ着くまで6分を超える見込み、または自分がもう7分以上待っていて
+         優等列車がまだ駅の手前2閉塞より遠いときは待たない (湖西線の堅田で、遅れた新快速を11分待っていた) */
+    {
+        const runL0 = BLOCK_RUN_SEC[l.type] || BLOCK_RUN_SEC["普通"];
+        const wait0 = (["stopped", "holding", "waiting_start"].indexOf(l.state) >= 0) ? Math.max(0, l.timer || 0) : 0;
+        if (k * runL0 + wait0 > 360) return false;
+        if ((t.stuckTime || 0) > 420 && k > 2) return false;
+    }
     /* ★西明石の下りの発車も含める (以前は西明石では必ず待っていた。利用者の指摘 ③ 2026-10) */
     if (!westDoubleTrack(t, stName)) return true;
     const here = STATION_MAP[stName];
@@ -1299,9 +1347,21 @@ Train.prototype.completeReservation = function (how) {
  *   { trackId, block, lane, free } / null (予約が当てはまらない)
  * 指定の番線がふさがったまま待ちの上限を過ぎたら、予約を取りやめて null を返す。
  */
+/* ★予約が古くなっていないか・いまの線路から入れるかを、使う前に確かめ直す (2026-10)。
+     指令連絡の自動処理で付いた予約が、その駅へ着かないまま列車が折り返して3時間後に戻ってきたときに使われ、
+     進路のつながっていない番線 (京都の上り内側線) に入っていた。30分たっても使われない予約は取りやめる。 */
+const TRACK_RES_STALE = 1800;
+Train.prototype.reservationStale = function (r) {
+    if (this.game.currentTime - (r.setAt || 0) > TRACK_RES_STALE) { this.failReservation("時間がたち、状況が変わった"); return true; }
+    const inTrack = stationRouteLanes(r.stationName, this.trackId, "arrive") ? this.trackId : r.targetTrackId;
+    if (!canArriveAt(r.stationName, inTrack, r.targetLane)) { this.failReservation("いまの線路からは進路が構成できない"); return true; }
+    return false;
+};
+
 Train.prototype.reservedEntry = function (nextIdx) {
     const r = this.trackChangeReservation;
     if (!r || r.status !== "pending") return null;
+    if (this.reservationStale(r)) return null;
     const own = this.game.trackMgr.blocks[this.turnbackTrack || this.trackId] ||
                 this.game.trackMgr.blocks[this.trackId];
     const nb = own ? own[nextIdx] : null;
@@ -1339,6 +1399,7 @@ Train.prototype.reservedEntry = function (nextIdx) {
 Train.prototype.applyTrackReservation = function () {
     const r = this.trackChangeReservation;
     if (!r || r.status !== "pending") return;
+    if (this.reservationStale(r)) return;
     const blks = this.game.trackMgr.blocks[this.trackId];
     const cb = blks ? blks[this.currBlockIndex] : null;
     if (!cb) return;
